@@ -1,13 +1,15 @@
 package com.barbershop.service;
 
-import com.barbershop.model.dto.*;
+import com.barbershop.model.dto.employee.CreateEmployeeRequest;
+import com.barbershop.model.dto.employee.EmployeeDTO;
+import com.barbershop.model.dto.employee.EmployeeEarningsDTO;
+import com.barbershop.model.dto.employee.UpdateEmployeeRequest;
 import com.barbershop.model.entity.Employee;
 import com.barbershop.model.entity.Order;
 import com.barbershop.repository.EmployeeRepository;
 import com.barbershop.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,7 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor

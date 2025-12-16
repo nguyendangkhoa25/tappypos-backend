@@ -1,9 +1,9 @@
 package com.barbershop.service;
 
-import com.barbershop.model.dto.CreateInvoiceRequest;
-import com.barbershop.model.dto.InvoiceDTO;
-import com.barbershop.model.dto.SyncInvoiceRequest;
-import com.barbershop.model.dto.UpdateInvoiceRequest;
+import com.barbershop.model.dto.invoice.CreateInvoiceRequest;
+import com.barbershop.model.dto.invoice.InvoiceDTO;
+import com.barbershop.model.dto.invoice.SyncInvoiceRequest;
+import com.barbershop.model.dto.invoice.UpdateInvoiceRequest;
 import com.barbershop.model.entity.Invoice;
 import com.barbershop.model.entity.Order;
 import com.barbershop.repository.InvoiceRepository;

@@ -1,6 +1,10 @@
 package com.barbershop.controller;
 
 import com.barbershop.model.dto.*;
+import com.barbershop.model.dto.invoice.CreateInvoiceRequest;
+import com.barbershop.model.dto.invoice.InvoiceDTO;
+import com.barbershop.model.dto.invoice.SyncInvoiceRequest;
+import com.barbershop.model.dto.invoice.UpdateInvoiceRequest;
 import com.barbershop.service.InvoiceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;

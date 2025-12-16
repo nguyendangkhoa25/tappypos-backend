@@ -1,0 +1,18 @@
+package com.barbershop.model.dto.employee;
+
+import lombok.*;
+
+import java.time.LocalDate;
+
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class CreateEmployeeRequest {
+    private String name;
+    private String phone;
+    private String email;
+    private String position;
+    private LocalDate hireDate;
+}

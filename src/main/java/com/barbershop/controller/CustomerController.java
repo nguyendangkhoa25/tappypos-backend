@@ -1,6 +1,9 @@
 package com.barbershop.controller;
 
 import com.barbershop.model.dto.*;
+import com.barbershop.model.dto.customer.CreateCustomerRequest;
+import com.barbershop.model.dto.customer.CustomerDTO;
+import com.barbershop.model.dto.customer.UpdateCustomerRequest;
 import com.barbershop.service.CustomerService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;

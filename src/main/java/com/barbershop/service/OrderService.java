@@ -1,6 +1,8 @@
 package com.barbershop.service;
 
-import com.barbershop.model.dto.*;
+import com.barbershop.model.dto.customer.CreateCustomerRequest;
+import com.barbershop.model.dto.customer.CustomerDTO;
+import com.barbershop.model.dto.order.*;
 import com.barbershop.model.entity.*;
 import com.barbershop.repository.EmployeeRepository;
 import com.barbershop.repository.OrderRepository;

@@ -1,6 +1,10 @@
 package com.barbershop.controller;
 
 import com.barbershop.model.dto.*;
+import com.barbershop.model.dto.employee.CreateEmployeeRequest;
+import com.barbershop.model.dto.employee.EmployeeDTO;
+import com.barbershop.model.dto.employee.EmployeeEarningsDTO;
+import com.barbershop.model.dto.employee.UpdateEmployeeRequest;
 import com.barbershop.service.EmployeeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;

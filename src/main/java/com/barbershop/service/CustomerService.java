@@ -1,8 +1,8 @@
 package com.barbershop.service;
 
-import com.barbershop.model.dto.CreateCustomerRequest;
-import com.barbershop.model.dto.CustomerDTO;
-import com.barbershop.model.dto.UpdateCustomerRequest;
+import com.barbershop.model.dto.customer.CreateCustomerRequest;
+import com.barbershop.model.dto.customer.CustomerDTO;
+import com.barbershop.model.dto.customer.UpdateCustomerRequest;
 import com.barbershop.model.entity.Customer;
 import com.barbershop.repository.CustomerRepository;
 import lombok.RequiredArgsConstructor;
