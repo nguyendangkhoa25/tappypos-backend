@@ -1,6 +1,25 @@
 -- Tenant database setup (phuc_barber_db)
 -- This script should be run on the tenant database
 
+-- Products Table
+CREATE TABLE IF NOT EXISTS products (
+                                        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                                        name VARCHAR(255) NOT NULL,
+    description TEXT,
+    price_before_tax DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+    tax DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+    price DECIMAL(10, 2) NOT NULL,
+    duration_minutes INT NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by VARCHAR(100) NOT NULL,
+    updated_by VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_active (active),
+    INDEX idx_created_at (created_at),
+    INDEX idx_updated_at (updated_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=20260000;
+
 -- Employees Table
 CREATE TABLE IF NOT EXISTS employees (
                                          id BIGINT AUTO_INCREMENT PRIMARY KEY,

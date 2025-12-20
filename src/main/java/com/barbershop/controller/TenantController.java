@@ -5,18 +5,13 @@ import com.barbershop.model.dto.TenantDTO;
 import com.barbershop.service.TenantService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * TenantController - REST API endpoints for tenant operations
@@ -41,7 +36,7 @@ public class TenantController {
         List<TenantDTO> tenants = tenantService.getAllActiveTenants();
         log.info("Retrieved {} tenants", tenants.size());
         return ResponseEntity.ok(
-            ApiResponse.success(tenants, "Tenants retrieved successfully")
+                ApiResponse.success(tenants, "Tenants retrieved successfully")
         );
     }
 
@@ -56,58 +51,7 @@ public class TenantController {
         TenantDTO tenant = tenantService.getTenantById(tenantId);
         log.info("Retrieved tenant: {}", tenantId);
         return ResponseEntity.ok(
-            ApiResponse.success(tenant, "Tenant retrieved successfully")
-        );
-    }
-
-    /**
-     * POST /api/tenants
-     * Create a new tenant
-     * Admin only (no header check because it's for admin use)
-     */
-    @PostMapping
-    public ResponseEntity<ApiResponse<TenantDTO>> createTenant(@RequestBody Map<String, String> request) {
-        log.info("Request: Create new tenant: {}", request.get("tenantId"));
-
-        TenantDTO tenant = tenantService.createTenant(
-            request.get("tenantId"),
-            request.get("name"),
-            request.get("dbUrl"),
-            request.get("dbName"),
-            request.get("dbUsername"),
-            request.get("dbPassword")
-        );
-
-        log.info("Created tenant: {}", request.get("tenantId"));
-        return ResponseEntity.status(HttpStatus.CREATED)
-            .body(ApiResponse.success(tenant, "Tenant created successfully"));
-    }
-
-    /**
-     * PUT /api/tenants/{tenantId}/deactivate
-     * Deactivate a tenant
-     */
-    @PutMapping("/{tenantId}/deactivate")
-    public ResponseEntity<ApiResponse<TenantDTO>> deactivateTenant(@PathVariable String tenantId) {
-        log.info("Request: Deactivate tenant: {}", tenantId);
-        TenantDTO tenant = tenantService.deactivateTenant(tenantId);
-        log.info("Deactivated tenant: {}", tenantId);
-        return ResponseEntity.ok(
-            ApiResponse.success(tenant, "Tenant deactivated successfully")
-        );
-    }
-
-    /**
-     * PUT /api/tenants/{tenantId}/activate
-     * Activate a tenant
-     */
-    @PutMapping("/{tenantId}/activate")
-    public ResponseEntity<ApiResponse<TenantDTO>> activateTenant(@PathVariable String tenantId) {
-        log.info("Request: Activate tenant: {}", tenantId);
-        TenantDTO tenant = tenantService.activateTenant(tenantId);
-        log.info("Activated tenant: {}", tenantId);
-        return ResponseEntity.ok(
-            ApiResponse.success(tenant, "Tenant activated successfully")
+                ApiResponse.success(tenant, "Tenant retrieved successfully")
         );
     }
 }
