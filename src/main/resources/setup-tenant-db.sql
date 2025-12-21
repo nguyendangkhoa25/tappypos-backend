@@ -66,6 +66,35 @@ CREATE TABLE IF NOT EXISTS customers (
     INDEX idx_deleted_at (deleted_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=68202600001;
 
+-- Shop Info Table
+CREATE TABLE IF NOT EXISTS shop_info (
+                                         id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                                         shop_name VARCHAR(100) NOT NULL DEFAULT 'Tiệm tóc của tôi',
+    address VARCHAR(500) DEFAULT '',
+    company_name VARCHAR(100) DEFAULT '',
+    default_tax_rate DECIMAL(5, 2) NOT NULL DEFAULT 0.00,
+    e_invoice_username VARCHAR(100) DEFAULT '',
+    e_invoice_password VARCHAR(500) DEFAULT '',
+    e_invoice_key VARCHAR(500) DEFAULT '',
+    phone VARCHAR(20) DEFAULT '',
+    email VARCHAR(100) DEFAULT '',
+    tax_code VARCHAR(150) DEFAULT '',
+    invoice_vendor VARCHAR(50) DEFAULT '',
+    website VARCHAR(200) DEFAULT '',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    deleted_at TIMESTAMP NULL,
+    INDEX idx_deleted (deleted),
+    INDEX idx_deleted_at (deleted_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=3920260101;
+
+-- Insert default shop info if not exists
+INSERT IGNORE INTO shop_info (id, shop_name, address, company_name, default_tax_rate, e_invoice_username, e_invoice_password, e_invoice_key, phone, email, tax_code, invoice_vendor, website, deleted)
+VALUES (3920260101, 'Tiệm tóc của tôi', '', '', 0.00, '', '', '', '', '', '', 'VIETTEL','', FALSE);
+
+
+
 -- Orders Table
 CREATE TABLE IF NOT EXISTS orders (
                                       id BIGINT AUTO_INCREMENT PRIMARY KEY,
