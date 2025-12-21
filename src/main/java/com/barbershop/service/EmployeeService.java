@@ -141,6 +141,10 @@ public class EmployeeService {
             employee.setBaseSalary(request.getBaseSalary());
         }
 
+        if (request.getPhone() != null) {
+            employee.setPhone(request.getPhone());
+        }
+
         Employee updated = employeeRepository.save(employee);
         log.info("Employee updated successfully - id: {}, name: {}", updated.getId(), updated.getName());
         return mapToDTO(updated);
