@@ -26,6 +26,9 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
     @Query("SELECT e FROM Employee e WHERE e.deletedAt IS NULL AND e.status = :status")
     List<Employee> findByStatus(String status);
 
+    @Query("SELECT e FROM Employee e WHERE e.deletedAt IS NULL AND e.status = :status")
+    Page<Employee> findByStatus(Employee.EmployeeStatus status, Pageable pageable);
+
     @Query("SELECT e FROM Employee e WHERE e.deletedAt IS NULL AND " +
            "(LOWER(e.name) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
            "LOWER(e.phone) LIKE LOWER(CONCAT('%', :keyword, '%')))")

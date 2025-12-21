@@ -25,14 +25,18 @@ public abstract class BaseEntity {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @Column(name = "deleted", nullable = false)
+    private Boolean deleted = false;
+
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
     public boolean isDeleted() {
-        return deletedAt != null;
+        return deleted != null && deleted;
     }
 
     public void softDelete() {
+        this.deleted = true;
         this.deletedAt = LocalDateTime.now();
     }
 }

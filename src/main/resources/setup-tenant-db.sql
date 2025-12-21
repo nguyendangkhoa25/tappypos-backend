@@ -28,18 +28,21 @@ CREATE TABLE IF NOT EXISTS employees (
                                          id BIGINT AUTO_INCREMENT PRIMARY KEY,
                                          name VARCHAR(100) NOT NULL,
     phone VARCHAR(20) NOT NULL UNIQUE,
-    email VARCHAR(100) UNIQUE,
+    email VARCHAR(100) NULL,
     position VARCHAR(50) NOT NULL,
     hire_date DATE,
     status ENUM('ACTIVE', 'INACTIVE', 'ON_LEAVE') NOT NULL DEFAULT 'ACTIVE',
+    description TEXT,
+    base_salary DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
     total_earned DECIMAL(10, 2) DEFAULT 0.00,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
     deleted_at TIMESTAMP NULL,
     INDEX idx_status (status),
     INDEX idx_phone (phone),
     INDEX idx_deleted_at (deleted_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=79202600001;
 
 -- Customers Table
 CREATE TABLE IF NOT EXISTS customers (
@@ -53,7 +56,7 @@ CREATE TABLE IF NOT EXISTS customers (
     deleted_at TIMESTAMP NULL,
     INDEX idx_phone (phone),
     INDEX idx_deleted_at (deleted_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=68202600001;
 
 -- Orders Table
 CREATE TABLE IF NOT EXISTS orders (
@@ -73,7 +76,7 @@ CREATE TABLE IF NOT EXISTS orders (
     INDEX idx_customer_id (customer_id),
     INDEX idx_employee_id (assigned_employee_id),
     INDEX idx_deleted_at (deleted_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=39202600001;
 
 -- Order Items Table
 CREATE TABLE IF NOT EXISTS order_items (
@@ -89,7 +92,7 @@ CREATE TABLE IF NOT EXISTS order_items (
     FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
     INDEX idx_order_id (order_id),
     INDEX idx_deleted_at (deleted_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=38202600001;
 
 -- Invoices Table
 CREATE TABLE IF NOT EXISTS invoices (
@@ -109,7 +112,7 @@ CREATE TABLE IF NOT EXISTS invoices (
     INDEX idx_status (status),
     INDEX idx_invoice_number (invoice_number),
     INDEX idx_deleted_at (deleted_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=21202600001;
 
 -- Indexes for better query performance
 CREATE INDEX idx_order_created_at ON orders(created_at);

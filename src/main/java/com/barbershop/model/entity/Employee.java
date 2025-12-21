@@ -41,10 +41,16 @@ public class Employee extends BaseEntity {
     @Enumerated(EnumType.STRING)
     private EmployeeStatus status;
 
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
+    @Column(name = "base_salary", nullable = false, precision = 10, scale = 2)
+    private BigDecimal baseSalary;
+
     @Column(name = "total_earned")
     private BigDecimal totalEarned;
 
-    @OneToMany(mappedBy = "assignedEmployee", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "assignedEmployee", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<Order> orders = new ArrayList<>();
 
     public enum EmployeeStatus {

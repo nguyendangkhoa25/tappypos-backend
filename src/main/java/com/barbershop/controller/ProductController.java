@@ -10,7 +10,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import java.util.List;
 
 /**
  * ProductController - REST API endpoints for product (service) management
@@ -27,36 +26,58 @@ public class ProductController {
     /**
      * POST /api/products
      * Create a new product (service)
+     * <p>
+     * Request Body:
+     * - name: Product name (required)
+     * - description: Product description (optional)
+     * - price: Product price including tax (required)
+     * - priceBeforeTax: Product price before tax (optional)
+     * - tax: Tax amount or percentage (optional, defaults to 0)
+     * - durationMinutes: Service duration in minutes (optional)
+     * - commissionRate: Commission rate in percentage (optional, defaults to 0)
+     * - quantity: Product quantity (optional, defaults to 0)
+     * <p>
+     * Examples:
+     * - POST /api/products
+     * {
+     * "name": "Haircut",
+     * "description": "Basic haircut service",
+     * "price": 100000,
+     * "priceBeforeTax": 100000,
+     * "tax": 0,
+     * "durationMinutes": 30,
+     * "commissionRate": 10,
+     * "quantity": 0
+     * }
      */
     @PostMapping
     public ResponseEntity<ApiResponse<ProductDTO>> createProduct(
             @RequestBody ProductDTO productDTO) {
         log.info("Request: Create new product");
         ProductDTO createdProduct = productService.createProduct(productDTO);
-        log.info("Created product: {}", createdProduct.getId());
         return ResponseEntity.status(HttpStatus.CREATED)
-            .body(ApiResponse.success(createdProduct, "Product created successfully"));
+                .body(ApiResponse.success(createdProduct, "Product created successfully"));
     }
 
     /**
      * GET /api/products
-     * Get all products with optional pagination, status filtering, and search
-     *
+     * Get all products with optional pagination, status filtering, search, and sorting
+     * <p>
      * Query Parameters:
      * - page: Page number (0-based, default: 0)
      * - size: Page size (default: 20)
-     * - sort: Sort field (default: id,asc)
-     * - sortBy: Sort by field name (e.g., "id", "createdAt", "name") (optional, default: "id")
-     * - sortDirection: Sort direction "ASC" or "DESC" (optional, default: "DESC")
-     * - status: Filter by status - "active" or "inactive" (optional)
      * - search: Search term to search in name and description (optional)
-     *
+     * - status: Filter by status - "active" or "inactive" (optional)
+     * - sortBy: Sort by field name (e.g., "id", "createdAt", "name", "price", "commissionRate") (optional, default: "id")
+     * - sortDirection: Sort direction "ASC" or "DESC" (optional, default: "DESC")
+     * <p>
      * Examples:
-     * - GET /api/products?page=0&size=10
-     * - GET /api/products?page=0&size=10&sortBy=createdAt&sortDirection=DESC
-     * - GET /api/products?page=0&size=10&status=active
-     * - GET /api/products?page=0&size=10&search=massage&sortBy=name&sortDirection=ASC
-     * - GET /api/products?page=0&size=10&status=active&search=massage&sortBy=price&sortDirection=DESC
+     * - GET /api/products?page=0&size=20
+     * - GET /api/products?page=0&size=20&search=haircut
+     * - GET /api/products?page=0&size=20&status=active
+     * - GET /api/products?page=0&size=20&sortBy=createdAt&sortDirection=DESC
+     * - GET /api/products?page=0&size=20&search=massage&status=active&sortBy=price&sortDirection=ASC
+     * - GET /api/products?page=0&size=20&sortBy=commissionRate&sortDirection=DESC
      */
     @GetMapping
     public ResponseEntity<ApiResponse<Page<ProductDTO>>> getAllProducts(
@@ -78,28 +99,68 @@ public class ProductController {
                 searchTerm, statusFilter, sortBy, sortDirection, pageable);
         log.info("Retrieved {} products from page {}", productsPage.getContent().size(), pageable.getPageNumber());
         return ResponseEntity.ok(
-            ApiResponse.success(productsPage, "Products retrieved successfully")
+                ApiResponse.success(productsPage, "Products retrieved successfully")
         );
     }
 
     /**
      * GET /api/products/{productId}
-     * Get specific product details
+     * Get specific product details by ID
+     * <p>
+     * Path Parameters:
+     * - productId: Product ID (required)
+     * <p>
+     * Returns:
+     * - id: Product ID
+     * - name: Product name
+     * - description: Product description
+     * - price: Product price (with tax)
+     * - priceBeforeTax: Product price before tax
+     * - tax: Tax amount
+     * - durationMinutes: Service duration in minutes
+     * - commissionRate: Commission rate in percentage
+     * - quantity: Product quantity
+     * - active: Active status
+     * <p>
+     * Examples:
+     * - GET /api/products/20260000
      */
     @GetMapping("/{productId}")
     public ResponseEntity<ApiResponse<ProductDTO>> getProduct(
             @PathVariable Long productId) {
         log.info("Request: Get product: {}", productId);
         ProductDTO product = productService.getProductById(productId);
-        log.info("Retrieved product: {}", productId);
         return ResponseEntity.ok(
-            ApiResponse.success(product, "Product retrieved successfully")
+                ApiResponse.success(product, "Product retrieved successfully")
         );
     }
 
     /**
      * PUT /api/products/{productId}
-     * Update a product
+     * Update an existing product
+     * <p>
+     * Path Parameters:
+     * - productId: Product ID (required)
+     * <p>
+     * Request Body:
+     * - name: Product name (optional)
+     * - description: Product description (optional)
+     * - price: Product price including tax (optional)
+     * - priceBeforeTax: Product price before tax (optional)
+     * - tax: Tax amount or percentage (optional)
+     * - durationMinutes: Service duration in minutes (optional)
+     * - commissionRate: Commission rate in percentage (optional)
+     * - quantity: Product quantity (optional)
+     * <p>
+     * Examples:
+     * - PUT /api/products/20260000
+     * {
+     * "name": "Premium Haircut",
+     * "price": 150000,
+     * "priceBeforeTax": 150000,
+     * "durationMinutes": 45,
+     * "commissionRate": 15
+     * }
      */
     @PutMapping("/{productId}")
     public ResponseEntity<ApiResponse<ProductDTO>> updateProduct(
@@ -107,54 +168,68 @@ public class ProductController {
             @RequestBody ProductDTO productDTO) {
         log.info("Request: Update product: {}", productId);
         ProductDTO updatedProduct = productService.updateProduct(productId, productDTO);
-        log.info("Updated product: {}", productId);
         return ResponseEntity.ok(
-            ApiResponse.success(updatedProduct, "Product updated successfully")
+                ApiResponse.success(updatedProduct, "Product updated successfully")
         );
     }
 
     /**
-     * PUT /api/products/{productId}/deactivate
-     * Deactivate a product
+     * PATCH /api/products/{productId}/deactivate
+     * Deactivate a product (soft delete)
+     * <p>
+     * Path Parameters:
+     * - productId: Product ID (required)
+     * <p>
+     * Examples:
+     * - PATCH /api/products/20260000/deactivate
      */
     @PatchMapping("/{productId}/deactivate")
     public ResponseEntity<ApiResponse<ProductDTO>> deactivateProduct(
             @PathVariable Long productId) {
         log.info("Request: Deactivate product: {}", productId);
         ProductDTO deactivatedProduct = productService.deactivateProduct(productId);
-        log.info("Deactivated product: {}", productId);
         return ResponseEntity.ok(
-            ApiResponse.success(deactivatedProduct, "Product deactivated successfully")
+                ApiResponse.success(deactivatedProduct, "Product deactivated successfully")
         );
     }
 
     /**
-     * PUT /api/products/{productId}/activate
+     * PATCH /api/products/{productId}/activate
      * Activate a product
+     * <p>
+     * Path Parameters:
+     * - productId: Product ID (required)
+     * <p>
+     * Examples:
+     * - PATCH /api/products/20260000/activate
      */
     @PatchMapping("/{productId}/activate")
     public ResponseEntity<ApiResponse<ProductDTO>> activateProduct(
             @PathVariable Long productId) {
         log.info("Request: Activate product: {}", productId);
         ProductDTO activatedProduct = productService.activateProduct(productId);
-        log.info("Activated product: {}", productId);
         return ResponseEntity.ok(
-            ApiResponse.success(activatedProduct, "Product activated successfully")
+                ApiResponse.success(activatedProduct, "Product activated successfully")
         );
     }
 
     /**
      * DELETE /api/products/{productId}
-     * Delete a product
+     * Delete (hard delete) a product
+     * <p>
+     * Path Parameters:
+     * - productId: Product ID (required)
+     * <p>
+     * Examples:
+     * - DELETE /api/products/20260000
      */
     @DeleteMapping("/{productId}")
     public ResponseEntity<ApiResponse<Void>> deleteProduct(
             @PathVariable Long productId) {
         log.info("Request: Delete product: {}", productId);
         productService.deleteProduct(productId);
-        log.info("Deleted product: {}", productId);
         return ResponseEntity.ok(
-            ApiResponse.success(null, "Product deleted successfully")
+                ApiResponse.success(null, "Product deleted successfully")
         );
     }
 }

@@ -19,6 +19,8 @@ public class EmployeeDTO {
     private String position;
     private LocalDate hireDate;
     private String status;
+    private String description;
+    private BigDecimal baseSalary;
     private BigDecimal totalEarned;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
