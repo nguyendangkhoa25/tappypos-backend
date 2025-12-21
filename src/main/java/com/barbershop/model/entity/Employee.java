@@ -31,6 +31,9 @@ public class Employee extends BaseEntity {
     @Column(unique = true)
     private String email;
 
+    @Column(length = 50)
+    private String username;
+
     @Column(nullable = false)
     private String position;
 

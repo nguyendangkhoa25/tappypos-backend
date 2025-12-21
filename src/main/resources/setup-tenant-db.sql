@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS employees (
     phone VARCHAR(20) NOT NULL UNIQUE,
     email VARCHAR(100) NULL,
     position VARCHAR(50) NOT NULL,
+    username VARCHAR(50) NULL,
     hire_date DATE,
     status ENUM('ACTIVE', 'INACTIVE', 'ON_LEAVE') NOT NULL DEFAULT 'ACTIVE',
     description TEXT,
@@ -93,7 +94,71 @@ CREATE TABLE IF NOT EXISTS shop_info (
 INSERT IGNORE INTO shop_info (id, shop_name, address, company_name, default_tax_rate, e_invoice_username, e_invoice_password, e_invoice_key, phone, email, tax_code, invoice_vendor, website, deleted)
 VALUES (3920260101, 'Tiệm tóc của tôi', '', '', 0.00, '', '', '', '', '', '', 'VIETTEL','', FALSE);
 
+-- Roles Table - Only predefined roles are allowed
+CREATE TABLE IF NOT EXISTS roles (
+                                     id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                                     name VARCHAR(50) NOT NULL UNIQUE,
+    description VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    deleted_at TIMESTAMP NULL,
+    INDEX idx_name (name),
+    INDEX idx_deleted (deleted),
+    INDEX idx_deleted_at (deleted_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=202600001;
+-- Insert 5 predefined roles (only these roles are available in the system)
+    INSERT IGNORE INTO roles (id, name, description) VALUES
+    (1, 'SHOP_OWNER', 'Shop Owner - Full access to all features'),
+    (2, 'MANAGER', 'Manager - Can manage shop, employees, and reports'),
+    (3, 'RECEPTIONIST', 'Receptionist - Can manage appointments and customers'),
+    (4, 'CLEANER', 'Cleaner - Can manage cleaning tasks and inventory'),
+    (5, 'TECHNICIAN', 'Technician/Employee - Can view appointments and customer info');
 
+-- Users Table
+CREATE TABLE IF NOT EXISTS users (
+                                     id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                                     username VARCHAR(50) NOT NULL UNIQUE,
+    email VARCHAR(100),
+    password VARCHAR(255) NOT NULL,
+    full_name VARCHAR(100),
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    account_non_locked BOOLEAN NOT NULL DEFAULT TRUE,
+    credentials_non_expired BOOLEAN NOT NULL DEFAULT TRUE,
+    account_non_expired BOOLEAN NOT NULL DEFAULT TRUE,
+    notes VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    deleted_at TIMESTAMP NULL,
+    INDEX idx_username (username),
+    INDEX idx_active (active),
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=36202600001;
+
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+                                              id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                                              user_id BIGINT NOT NULL,
+                                              token VARCHAR(500) NOT NULL UNIQUE,
+    expiry_date BIGINT NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    INDEX idx_token (token),
+    INDEX idx_user_id (user_id),
+    INDEX idx_active (active)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- User Roles Junction Table
+CREATE TABLE IF NOT EXISTS user_roles (
+                                          user_id BIGINT NOT NULL,
+                                          role_id BIGINT NOT NULL,
+                                          PRIMARY KEY (user_id, role_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
+    INDEX idx_user_id (user_id),
+    INDEX idx_role_id (role_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Orders Table
 CREATE TABLE IF NOT EXISTS orders (

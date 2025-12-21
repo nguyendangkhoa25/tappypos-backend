@@ -1,15 +1,13 @@
 package com.barbershop.model.entity;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import lombok.*;
 
-/**
- * User entity for authentication
- */
+import java.util.HashSet;
+import java.util.Set;
+
 @Entity
 @Table(name = "users")
 @Getter
@@ -17,42 +15,57 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class User {
+public class User extends BaseEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(nullable = false, unique = true)
+    @NotBlank(message = "Username is required")
+    @Column(unique = true, nullable = false, length = 50)
     private String username;
 
-    @Column(nullable = false)
-    private String password; // Should be encrypted with BCrypt
-
-    @Column(nullable = false)
+    @Email(message = "Email should be valid")
+    @Column(length = 100)
     private String email;
 
+    @NotBlank(message = "Password is required")
     @Column(nullable = false)
+    private String password;
+
+    @Column(length = 100)
     private String fullName;
 
     @Column(nullable = false)
-    private Boolean active;
+    private Boolean active = true;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private Long createdAt;
+    @Column(nullable = false)
+    private Boolean accountNonLocked = true;
 
-    @Column(name = "updated_at")
-    private Long updatedAt;
+    @Column(nullable = false)
+    private Boolean credentialsNonExpired = true;
 
-    @PrePersist
-    protected void onCreate() {
-        createdAt = System.currentTimeMillis();
-        updatedAt = System.currentTimeMillis();
+    @Column(nullable = false)
+    private Boolean accountNonExpired = true;
+
+    // Many-to-many relationship with Roles
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(
+            name = "user_roles",
+            joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "role_id")
+    )
+    private Set<Role> roles = new HashSet<>();
+
+    @Column(length = 255)
+    private String notes;
+
+    // Add a role to this user
+    public void addRole(Role role) {
+        this.roles.add(role);
+        role.getUsers().add(this);
     }
 
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = System.currentTimeMillis();
+    // Remove a role from this user
+    public void removeRole(Role role) {
+        this.roles.remove(role);
+        role.getUsers().remove(this);
     }
 }
 
