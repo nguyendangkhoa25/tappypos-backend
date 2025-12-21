@@ -46,22 +46,27 @@ public class ProductController {
      * - page: Page number (0-based, default: 0)
      * - size: Page size (default: 20)
      * - sort: Sort field (default: id,asc)
+     * - sortBy: Sort by field name (e.g., "id", "createdAt", "name") (optional, default: "id")
+     * - sortDirection: Sort direction "ASC" or "DESC" (optional, default: "DESC")
      * - status: Filter by status - "active" or "inactive" (optional)
      * - search: Search term to search in name and description (optional)
      *
      * Examples:
      * - GET /api/products?page=0&size=10
+     * - GET /api/products?page=0&size=10&sortBy=createdAt&sortDirection=DESC
      * - GET /api/products?page=0&size=10&status=active
-     * - GET /api/products?page=0&size=10&search=massage
-     * - GET /api/products?page=0&size=10&status=active&search=massage
+     * - GET /api/products?page=0&size=10&search=massage&sortBy=name&sortDirection=ASC
+     * - GET /api/products?page=0&size=10&status=active&search=massage&sortBy=price&sortDirection=DESC
      */
     @GetMapping
     public ResponseEntity<ApiResponse<Page<ProductDTO>>> getAllProducts(
             @RequestParam(value = "search", required = false) String searchTerm,
             @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "sortBy", required = false, defaultValue = "id") String sortBy,
+            @RequestParam(value = "sortDirection", required = false, defaultValue = "DESC") String sortDirection,
             Pageable pageable) {
-        log.info("Request: Get all products - search: {}, status: {}, page: {}, size: {}",
-                searchTerm, status, pageable.getPageNumber(), pageable.getPageSize());
+        log.info("Request: Get all products - search: {}, status: {}, sortBy: {}, sortDirection: {}, page: {}, size: {}",
+                searchTerm, status, sortBy, sortDirection, pageable.getPageNumber(), pageable.getPageSize());
 
         // Convert status string to boolean (null, true for "active", false for "inactive")
         Boolean statusFilter = null;
@@ -69,7 +74,8 @@ public class ProductController {
             statusFilter = status.equalsIgnoreCase("active");
         }
 
-        Page<ProductDTO> productsPage = productService.getAllProductsWithFilters(searchTerm, statusFilter, pageable);
+        Page<ProductDTO> productsPage = productService.getAllProductsWithFilters(
+                searchTerm, statusFilter, sortBy, sortDirection, pageable);
         log.info("Retrieved {} products from page {}", productsPage.getContent().size(), pageable.getPageNumber());
         return ResponseEntity.ok(
             ApiResponse.success(productsPage, "Products retrieved successfully")

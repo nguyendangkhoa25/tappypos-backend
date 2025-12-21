@@ -38,6 +38,13 @@ public class Product {
     @Column(nullable = false)
     private Integer durationMinutes;
 
+    //Hoa hồng cho thợ khi làm
+    @Column(nullable = false)
+    private BigDecimal commissionRate;
+
+    @Column(nullable = false)
+    private Integer quantity;
+
     @Column(nullable = false)
     private Boolean active;
 
@@ -60,6 +67,12 @@ public class Product {
         active = true;
         if (tax == null) {
             tax = BigDecimal.ZERO;
+        }
+        if (commissionRate == null) {
+            commissionRate = BigDecimal.ZERO;
+        }
+        if (quantity == null) {
+            quantity = 0;
         }
         if (price == null && priceBeforeTax != null) {
             price = priceBeforeTax.add(tax);

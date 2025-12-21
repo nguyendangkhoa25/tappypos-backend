@@ -10,7 +10,10 @@ CREATE TABLE IF NOT EXISTS products (
     tax DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
     price DECIMAL(10, 2) NOT NULL,
     duration_minutes INT NOT NULL,
+    commission_rate DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+    quantity INT NOT NULL DEFAULT 0,
     active BOOLEAN NOT NULL DEFAULT TRUE,
+    product_as_service BOOLEAN NOT NULL DEFAULT TRUE,
     created_by VARCHAR(100) NOT NULL,
     updated_by VARCHAR(100) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -18,7 +21,7 @@ CREATE TABLE IF NOT EXISTS products (
     INDEX idx_active (active),
     INDEX idx_created_at (created_at),
     INDEX idx_updated_at (updated_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=20260000;
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=20260001;
 
 -- Employees Table
 CREATE TABLE IF NOT EXISTS employees (

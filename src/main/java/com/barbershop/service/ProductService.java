@@ -6,7 +6,9 @@ import com.barbershop.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -32,6 +34,8 @@ public class ProductService {
                 .tax(productDTO.getTax() != null ? productDTO.getTax() : BigDecimal.ZERO)
                 .price(productDTO.getPrice())
                 .durationMinutes(productDTO.getDurationMinutes())
+                .commissionRate(productDTO.getCommissionRate() != null ? productDTO.getCommissionRate() : BigDecimal.ZERO)
+                .quantity(productDTO.getQuantity() != null ? productDTO.getQuantity() : 0)
                 .active(true)
                 .createdBy(currentUser)
                 .updatedBy(currentUser)
@@ -63,29 +67,43 @@ public class ProductService {
     }
 
     /**
-     * Get all products with pagination, status filtering, and search
+     * Get all products with pagination, status filtering, search, and custom sorting
      * @param searchTerm - Optional search term to search in name and description
      * @param status - Optional status filter (true for active, false for inactive, null for all)
+     * @param sortBy - Field to sort by (default: "id")
+     * @param sortDirection - Sort direction "ASC" or "DESC" (default: "DESC")
      * @param pageable - Pagination information
      * @return Page of ProductDTOs
      */
-    public Page<ProductDTO> getAllProductsWithFilters(String searchTerm, Boolean status, Pageable pageable) {
-        log.info("Fetching products with filters - searchTerm: {}, status: {}", searchTerm, status);
+    public Page<ProductDTO> getAllProductsWithFilters(String searchTerm, Boolean status, String sortBy, String sortDirection, Pageable pageable) {
+        log.info("Fetching products with filters - searchTerm: {}, status: {}, sortBy: {}, sortDirection: {}",
+                searchTerm, status, sortBy, sortDirection);
+
+        // Create Sort object with custom sorting
+        Sort.Direction direction = Sort.Direction.fromString(sortDirection != null && sortDirection.equalsIgnoreCase("ASC") ? "ASC" : "DESC");
+        Sort sort = Sort.by(direction, sortBy != null && !sortBy.trim().isEmpty() ? sortBy : "id");
+
+        // Create new Pageable with custom sort
+        Pageable pageableWithSort = org.springframework.data.domain.PageRequest.of(
+                pageable.getPageNumber(),
+                pageable.getPageSize(),
+                sort);
 
         Page<Product> productsPage;
 
         if (searchTerm != null && !searchTerm.trim().isEmpty()) {
             // Search by text and optionally filter by status
-            productsPage = productRepository.searchProducts(searchTerm, status, pageable);
+            productsPage = productRepository.searchProducts(searchTerm, status, pageableWithSort);
         } else if (status != null) {
             // Filter by status only
-            productsPage = productRepository.findByActive(status, pageable);
+            productsPage = productRepository.findByActive(status, pageableWithSort);
         } else {
             // Get all products with pagination
-            productsPage = productRepository.findAll(pageable);
+            productsPage = productRepository.findAll(pageableWithSort);
         }
 
-        log.info("Retrieved {} products from page {}", productsPage.getContent().size(), pageable.getPageNumber());
+        log.info("Retrieved {} products from page {} with sort: {} {}",
+                productsPage.getContent().size(), pageable.getPageNumber(), sortBy, sortDirection);
         return productsPage.map(this::mapToDTO);
     }
 
@@ -100,6 +118,8 @@ public class ProductService {
         product.setTax(productDTO.getTax() != null ? productDTO.getTax() : BigDecimal.ZERO);
         product.setPrice(calculatePrice(productDTO.getPriceBeforeTax(), productDTO.getTax()));
         product.setDurationMinutes(productDTO.getDurationMinutes());
+        product.setCommissionRate(productDTO.getCommissionRate() != null ? productDTO.getCommissionRate() : BigDecimal.ZERO);
+        product.setQuantity(productDTO.getQuantity() != null ? productDTO.getQuantity() : 0);
         product.setUpdatedBy(currentUser);
 
         Product updatedProduct = productRepository.save(product);
@@ -149,6 +169,8 @@ public class ProductService {
                 .tax(product.getTax())
                 .price(product.getPrice())
                 .durationMinutes(product.getDurationMinutes())
+                .commissionRate(product.getCommissionRate())
+                .quantity(product.getQuantity())
                 .active(product.getActive())
                 .createdBy(product.getCreatedBy())
                 .updatedBy(product.getUpdatedBy())

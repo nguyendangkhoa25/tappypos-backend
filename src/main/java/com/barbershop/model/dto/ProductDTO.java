@@ -20,6 +20,8 @@ public class ProductDTO {
     private BigDecimal tax;
     private BigDecimal price;
     private Integer durationMinutes;
+    private BigDecimal commissionRate;
+    private Integer quantity;
     private Boolean active;
     private String createdBy;
     private String updatedBy;
