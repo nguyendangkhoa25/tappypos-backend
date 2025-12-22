@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS customers (
                                          id BIGINT AUTO_INCREMENT PRIMARY KEY,
                                          name VARCHAR(100) NOT NULL,
     phone VARCHAR(20) NOT NULL UNIQUE,
-    email VARCHAR(100) UNIQUE,
+    email VARCHAR(100),
     notes TEXT,
     zalo_id VARCHAR(100),
     facebook_id VARCHAR(100),

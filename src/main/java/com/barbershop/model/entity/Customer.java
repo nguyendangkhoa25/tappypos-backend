@@ -26,7 +26,6 @@ public class Customer extends BaseEntity {
     private String phone;
 
     @Email(message = "Email should be valid")
-    @Column(unique = true)
     private String email;
 
     @Column(length = 500)
