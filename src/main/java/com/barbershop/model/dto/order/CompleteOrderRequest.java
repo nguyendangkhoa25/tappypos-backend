@@ -14,6 +14,8 @@ public class CompleteOrderRequest {
     private List<OrderItemUpdate> itemUpdates;
     private BigDecimal discountAmount;
     private BigDecimal taxPercentage;
+    private BigDecimal taxAmount;
+    private BigDecimal totalAmount;
     private String notes;
 
     @Getter
@@ -25,6 +27,7 @@ public class CompleteOrderRequest {
         private Long itemId;
         private Integer quantity;
         private BigDecimal unitPrice;
+        private BigDecimal amount;
     }
 }
 

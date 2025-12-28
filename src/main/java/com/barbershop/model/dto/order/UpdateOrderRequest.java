@@ -16,5 +16,8 @@ public class UpdateOrderRequest {
     private String notes;
     private BigDecimal discountAmount;
     private BigDecimal taxPercentage;
+    private BigDecimal taxAmount;
+    private BigDecimal commissionAmount;
+    private BigDecimal totalAmount;
     private List<CreateOrderItemRequest> orderItems;
 }

@@ -11,13 +11,17 @@ UPDATE orders SET status = 'PENDING' WHERE status = 'DRAFT';
 ALTER TABLE orders
 ADD COLUMN IF NOT EXISTS discount_amount DECIMAL(10,2) DEFAULT 0,
 ADD COLUMN IF NOT EXISTS tax_percentage DECIMAL(5,2) DEFAULT 0,
-ADD COLUMN IF NOT EXISTS tax_amount DECIMAL(10,2) DEFAULT 0;
+ADD COLUMN IF NOT EXISTS tax_amount DECIMAL(10,2) DEFAULT 0,
+ADD COLUMN IF NOT EXISTS commission_amount DECIMAL(10,2) DEFAULT 0;
 
 -- 3. Add new columns to order_items table
 ALTER TABLE order_items
 ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL DEFAULT 'READY',
+ADD COLUMN IF NOT EXISTS amount_before_tax DECIMAL(10,2) DEFAULT 0,
 ADD COLUMN IF NOT EXISTS tax_percentage DECIMAL(5,2) DEFAULT 0,
 ADD COLUMN IF NOT EXISTS tax_amount DECIMAL(10,2) DEFAULT 0,
+ADD COLUMN IF NOT EXISTS commission_rate DECIMAL(5,2) DEFAULT 0,
+ADD COLUMN IF NOT EXISTS commission_amount DECIMAL(10,2) DEFAULT 0,
 ADD COLUMN IF NOT EXISTS assigned_employee_id BIGINT NULL,
 ADD COLUMN IF NOT EXISTS completed_at DATETIME NULL;
 
@@ -33,6 +37,8 @@ CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id);
 CREATE INDEX IF NOT EXISTS idx_orders_discount ON orders(discount_amount);
 CREATE INDEX IF NOT EXISTS idx_orders_tax ON orders(tax_percentage);
+CREATE INDEX IF NOT EXISTS idx_orders_commission ON orders(commission_amount);
+CREATE INDEX IF NOT EXISTS idx_order_items_commission_rate ON order_items(commission_rate);
 
 -- 6. Verify the schema
 SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE
@@ -49,11 +55,15 @@ WHERE TABLE_NAME IN ('orders', 'order_items')
 -- Optional: Rollback commands (if needed)
 -- ALTER TABLE order_items DROP FOREIGN KEY fk_order_items_employee_id;
 -- ALTER TABLE order_items DROP COLUMN status;
+-- ALTER TABLE order_items DROP COLUMN amount_before_tax;
 -- ALTER TABLE order_items DROP COLUMN tax_percentage;
 -- ALTER TABLE order_items DROP COLUMN tax_amount;
+-- ALTER TABLE order_items DROP COLUMN commission_rate;
+-- ALTER TABLE order_items DROP COLUMN commission_amount;
 -- ALTER TABLE order_items DROP COLUMN assigned_employee_id;
 -- ALTER TABLE order_items DROP COLUMN completed_at;
 -- ALTER TABLE orders DROP COLUMN discount_amount;
 -- ALTER TABLE orders DROP COLUMN tax_percentage;
 -- ALTER TABLE orders DROP COLUMN tax_amount;
+-- ALTER TABLE orders DROP COLUMN commission_amount;
 

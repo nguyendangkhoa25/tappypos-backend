@@ -51,14 +51,6 @@ public class OrderController {
         return ResponseEntity.ok(ApiResponse.success(order, "Order updated successfully"));
     }
 
-    @PutMapping("/{id}/assign")
-    public ResponseEntity<ApiResponse<OrderDTO>> assignOrderToEmployee(
-            @PathVariable Long id,
-            @RequestBody AssignOrderRequest request) {
-        OrderDTO order = orderService.assignOrderToEmployee(id, request);
-        return ResponseEntity.ok(ApiResponse.success(order, "Order assigned successfully"));
-    }
-
     @PutMapping("/{orderId}/items/{itemId}/assign")
     public ResponseEntity<ApiResponse<OrderDTO>> assignItemToEmployee(
             @PathVariable Long orderId,
@@ -83,14 +75,6 @@ public class OrderController {
         return ResponseEntity.ok(ApiResponse.success(billPreview, "Bill preview retrieved successfully"));
     }
 
-    @PutMapping("/{id}/apply-discount-tax")
-    public ResponseEntity<ApiResponse<OrderDTO>> applyDiscountTax(
-            @PathVariable Long id,
-            @RequestBody ApplyDiscountTaxRequest request) {
-        OrderDTO order = orderService.applyDiscountAndTax(id, request);
-        return ResponseEntity.ok(ApiResponse.success(order, "Discount and tax applied successfully"));
-    }
-
     @PutMapping("/{id}/start")
     public ResponseEntity<ApiResponse<OrderDTO>> startOrder(@PathVariable Long id) {
         OrderDTO order = orderService.startOrder(id);
@@ -100,14 +84,6 @@ public class OrderController {
     @PutMapping("/{id}/complete")
     public ResponseEntity<ApiResponse<OrderDTO>> completeOrder(@PathVariable Long id) {
         OrderDTO order = orderService.completeOrder(id);
-        return ResponseEntity.ok(ApiResponse.success(order, "Order completed successfully"));
-    }
-
-    @PutMapping("/{id}/complete-with-modifications")
-    public ResponseEntity<ApiResponse<OrderDTO>> completeOrderWithModifications(
-            @PathVariable Long id,
-            @RequestBody CompleteOrderRequest request) {
-        OrderDTO order = orderService.completeOrderWithModifications(id, request);
         return ResponseEntity.ok(ApiResponse.success(order, "Order completed successfully"));
     }
 
@@ -139,14 +115,5 @@ public class OrderController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
-    }
-
-
-    @GetMapping("/status/{status}")
-    public ResponseEntity<ApiResponse<Page<OrderDTO>>> getOrdersByStatus(
-            @PathVariable String status,
-            Pageable pageable) {
-        Page<OrderDTO> orders = orderService.getOrdersByStatus(status, pageable);
-        return ResponseEntity.ok(ApiResponse.success(orders, "Orders retrieved successfully"));
     }
 }

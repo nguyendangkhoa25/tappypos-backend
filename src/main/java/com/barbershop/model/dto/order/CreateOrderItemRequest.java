@@ -14,7 +14,11 @@ public class CreateOrderItemRequest {
     private String productName;
     private Integer quantity;
     private BigDecimal unitPrice;
-    private BigDecimal totalPrice;
+    private BigDecimal amountBeforeTax;
+    private BigDecimal amount;
+    private BigDecimal taxPercentage;
     private BigDecimal taxAmount;
+    private BigDecimal commissionRate;
+    private BigDecimal commissionAmount;
     private Long assignedEmployeeId;
 }

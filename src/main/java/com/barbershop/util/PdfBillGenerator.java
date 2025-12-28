@@ -83,7 +83,7 @@ public class PdfBillGenerator {
             table.addCell(item.getProductName());
             table.addCell(String.valueOf(item.getQuantity()));
             table.addCell(item.getUnitPrice() + " VND");
-            table.addCell(item.getTotalPrice() + " VND");
+            table.addCell(item.getAmount() + " VND");
         }
 
         return new PdfTable(table);

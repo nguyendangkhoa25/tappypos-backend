@@ -1,7 +1,6 @@
 package com.barbershop.model.entity;
 
 import jakarta.persistence.*;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
 import lombok.*;
 
@@ -24,8 +23,7 @@ public class OrderItem extends BaseEntity {
     @Column(name = "product_id")
     private Long productId;
 
-    @NotBlank(message = "Service/Product name is required")
-    @Column(nullable = false)
+    @Column(name = "product_name")
     private String productName;
 
     @Positive(message = "Quantity must be positive")
@@ -36,8 +34,11 @@ public class OrderItem extends BaseEntity {
     @Column(name = "unit_price", nullable = false, precision = 10, scale = 2)
     private BigDecimal unitPrice;
 
-    @Column(name = "total_price", nullable = false, precision = 10, scale = 2)
-    private BigDecimal totalPrice;
+    @Column(name = "amount", nullable = false, precision = 10, scale = 2)
+    private BigDecimal amount;
+
+    @Column(name = "amount_before_tax", precision = 10, scale = 2, columnDefinition = "DECIMAL(10,2) DEFAULT 0")
+    private BigDecimal amountBeforeTax = BigDecimal.ZERO;
 
     @Column(name = "tax_percentage", precision = 5, scale = 2, columnDefinition = "DECIMAL(5,2) DEFAULT 0")
     private BigDecimal taxPercentage = BigDecimal.ZERO;
@@ -45,9 +46,15 @@ public class OrderItem extends BaseEntity {
     @Column(name = "tax_amount", precision = 10, scale = 2)
     private BigDecimal taxAmount = BigDecimal.ZERO;
 
+    @Column(name = "commission_rate", precision = 5, scale = 2, columnDefinition = "DECIMAL(5,2) DEFAULT 0")
+    private BigDecimal commissionRate = BigDecimal.ZERO;
+
+    @Column(name = "commission_amount", precision = 10, scale = 2, columnDefinition = "DECIMAL(10,2) DEFAULT 0")
+    private BigDecimal commissionAmount = BigDecimal.ZERO;
+
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
-    private ItemStatus status = ItemStatus.READY;
+    private ItemStatus status = ItemStatus.PENDING;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "assigned_employee_id")
@@ -57,16 +64,16 @@ public class OrderItem extends BaseEntity {
     private LocalDateTime completedAt;
 
     public enum ItemStatus {
-        READY,
+        PENDING,
         IN_PROGRESS,
         COMPLETED
     }
 
     @PrePersist
     @PreUpdate
-    private void calculateTotalPrice() {
+    private void calculateTotalAmount() {
         if (this.unitPrice != null && this.quantity != null) {
-            this.totalPrice = this.unitPrice.multiply(new BigDecimal(this.quantity));
+            this.amount = this.unitPrice.multiply(new BigDecimal(this.quantity));
         }
     }
 }

@@ -38,9 +38,20 @@ public class OrderService {
         // Get or create customer
         Customer customer = getOrCreateCustomer(request);
 
-        // Calculate financial totals
-        FinancialTotals totals = calculateFinancialTotals(request.getOrderItems(),
-                request.getDiscountAmount(), request.getTaxPercentage());
+        // Use values from request (calculated on frontend)
+        BigDecimal taxAmount = request.getTaxAmount() != null ? request.getTaxAmount() : BigDecimal.ZERO;
+        BigDecimal discountAmount = request.getDiscountAmount() != null ? request.getDiscountAmount() : BigDecimal.ZERO;
+        BigDecimal commissionAmount = request.getCommissionAmount() != null ? request.getCommissionAmount() : BigDecimal.ZERO;
+
+        // Calculate total from items (items already have tax calculated)
+        BigDecimal totalAmount = request.getOrderItems() != null && !request.getOrderItems().isEmpty()
+                ? request.getOrderItems().stream()
+                .map(item -> item.getAmount() != null ? item.getAmount() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                : BigDecimal.ZERO;
+
+        // Apply discount and add tax (values from frontend)
+        totalAmount = totalAmount.subtract(discountAmount).add(taxAmount);
 
         // Determine initial status based on startImmediately flag
         Order.OrderStatus initialStatus = (request.getStartImmediately() != null && request.getStartImmediately())
@@ -50,19 +61,20 @@ public class OrderService {
         Order order = Order.builder()
                 .customer(customer)
                 .status(initialStatus)
-                .totalAmount(totals.totalAmount)
-                .discountAmount(totals.discountAmount)
-                .taxPercentage(totals.taxPercentage)
-                .taxAmount(totals.taxAmount)
+                .totalAmount(totalAmount)
+                .discountAmount(discountAmount)
+                .taxPercentage(request.getTaxPercentage())
+                .taxAmount(taxAmount)
+                .commissionAmount(commissionAmount)
                 .notes(request.getNotes())
                 .build();
 
         Order savedOrder = orderRepository.save(order);
         log.info("Order saved with ID: {} in status: {}", savedOrder.getId(), initialStatus);
 
-        // Add order items with tax calculation
+        // Add order items with tax and commission information
         if (request.getOrderItems() != null && !request.getOrderItems().isEmpty()) {
-            List<OrderItem> orderItems = processOrderItems(request.getOrderItems(), savedOrder, totals.taxPercentage);
+            List<OrderItem> orderItems = processOrderItems(request.getOrderItems(), savedOrder);
             savedOrder.setOrderItems(orderItems);
         }
 
@@ -79,20 +91,6 @@ public class OrderService {
         Order order = orderRepository.findByIdActive(id)
                 .orElseThrow(() -> new RuntimeException("Order not found with id: " + id));
         return mapToDTO(order);
-    }
-
-    public OrderDTO assignOrderToEmployee(Long orderId, AssignOrderRequest request) {
-        log.info("Assigning order ID {} to employee ID {}", orderId, request.getEmployeeId());
-        Order order = orderRepository.findByIdActive(orderId)
-                .orElseThrow(() -> new RuntimeException("Order not found with id: " + orderId));
-
-        Employee employee = employeeRepository.findByIdActive(request.getEmployeeId())
-                .orElseThrow(() -> new RuntimeException("Employee not found"));
-
-        order.setAssignedEmployee(employee);
-        order.setStatus(Order.OrderStatus.IN_PROGRESS);
-        Order updated = orderRepository.save(order);
-        return mapToDTO(updated);
     }
 
     public OrderDTO updateOrder(Long id, UpdateOrderRequest request) {
@@ -121,12 +119,12 @@ public class OrderService {
 
         // Update order items if provided
         if (request.getOrderItems() != null && !request.getOrderItems().isEmpty()) {
-            updateOrderItems(order, request.getOrderItems(), request.getTaxPercentage());
-            // Recalculate totals
-            updateOrderTotals(order, request.getDiscountAmount(), request.getTaxPercentage());
-        } else if (request.getDiscountAmount() != null || request.getTaxPercentage() != null) {
-            // Recalculate totals if only discount or tax changed
-            updateOrderTotals(order, request.getDiscountAmount(), request.getTaxPercentage());
+            updateOrderItems(order, request.getOrderItems());
+            // Recalculate totals using values from frontend
+            updateOrderTotals(order, request.getDiscountAmount(), request.getTaxAmount(), request.getCommissionAmount());
+        } else if (request.getDiscountAmount() != null || request.getTaxAmount() != null || request.getCommissionAmount() != null) {
+            // Update totals if only discount, tax, or commission changed
+            updateOrderTotals(order, request.getDiscountAmount(), request.getTaxAmount(), request.getCommissionAmount());
         }
 
         Order updated = orderRepository.save(order);
@@ -192,11 +190,11 @@ public class OrderService {
                     .productName(item.getProductName())
                     .quantity(item.getQuantity())
                     .unitPrice(item.getUnitPrice())
-                    .totalPrice(item.getTotalPrice())
+                    .totalPrice(item.getAmount())
                     .taxPercentage(item.getTaxPercentage())
                     .taxAmount(item.getTaxAmount())
                     .build());
-            subtotal = subtotal.add(item.getTotalPrice());
+            subtotal = subtotal.add(item.getAmount());
         }
 
         return BillPreviewDTO.builder()
@@ -230,94 +228,6 @@ public class OrderService {
         return mapToDTO(updated);
     }
 
-    public OrderDTO completeOrderWithModifications(Long orderId, CompleteOrderRequest request) {
-        log.info("Completing order ID {} with modifications: {}", orderId, request);
-        Order order = orderRepository.findByIdActive(orderId)
-                .orElseThrow(() -> new RuntimeException("Order not found with id: " + orderId));
-
-        // Check if order can be completed
-        if (order.getStatus() == Order.OrderStatus.COMPLETED || order.getStatus() == Order.OrderStatus.CANCELLED) {
-            throw new RuntimeException("This order is already completed or cancelled");
-        }
-
-        BigDecimal totalAmount = BigDecimal.ZERO;
-
-        // Update items with modifications if provided
-        if (request.getItemUpdates() != null && !request.getItemUpdates().isEmpty()) {
-            for (CompleteOrderRequest.OrderItemUpdate itemUpdate : request.getItemUpdates()) {
-                OrderItem item = order.getOrderItems().stream()
-                        .filter(oi -> oi.getId().equals(itemUpdate.getItemId()))
-                        .findFirst()
-                        .orElseThrow(() -> new RuntimeException("Item not found: " + itemUpdate.getItemId()));
-
-                if (itemUpdate.getQuantity() != null) {
-                    item.setQuantity(itemUpdate.getQuantity());
-                }
-                if (itemUpdate.getUnitPrice() != null) {
-                    item.setUnitPrice(itemUpdate.getUnitPrice());
-                }
-
-                // Recalculate total price
-                item.setTotalPrice(item.getUnitPrice().multiply(new BigDecimal(item.getQuantity())));
-                item.setStatus(OrderItem.ItemStatus.COMPLETED);
-                item.setCompletedAt(java.time.LocalDateTime.now());
-
-                totalAmount = totalAmount.add(item.getTotalPrice());
-            }
-        } else {
-            // If no item updates, calculate total from all items
-            totalAmount = order.getOrderItems().stream()
-                    .map(OrderItem::getTotalPrice)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-        }
-
-        // Mark all remaining items as completed if not already updated
-        for (OrderItem item : order.getOrderItems()) {
-            if (item.getStatus() != OrderItem.ItemStatus.COMPLETED) {
-                item.setStatus(OrderItem.ItemStatus.COMPLETED);
-                item.setCompletedAt(java.time.LocalDateTime.now());
-            }
-        }
-
-        // Apply discount if provided
-        BigDecimal discountAmount = request.getDiscountAmount() != null ? request.getDiscountAmount() : order.getDiscountAmount();
-        BigDecimal afterDiscount = totalAmount.subtract(discountAmount);
-
-        // Apply tax if provided
-        BigDecimal taxPercentage = request.getTaxPercentage() != null ? request.getTaxPercentage() : order.getTaxPercentage();
-        BigDecimal taxAmount = afterDiscount.multiply(taxPercentage != null ? taxPercentage : BigDecimal.ZERO)
-                .divide(new BigDecimal(100), 2, BigDecimal.ROUND_HALF_UP);
-
-        // Update order totals
-        order.setTotalAmount(afterDiscount.add(taxAmount));
-        order.setDiscountAmount(discountAmount);
-        order.setTaxPercentage(taxPercentage != null ? taxPercentage : BigDecimal.ZERO);
-        order.setTaxAmount(taxAmount);
-
-        // Update order notes if provided
-        if (request.getNotes() != null) {
-            order.setNotes(request.getNotes());
-        }
-
-        // Mark order as completed
-        order.complete();
-
-        // Update employee earnings
-        for (OrderItem item : order.getOrderItems()) {
-            if (item.getAssignedEmployee() != null) {
-                Employee employee = item.getAssignedEmployee();
-                if (employee.getTotalEarned() == null) {
-                    employee.setTotalEarned(BigDecimal.ZERO);
-                }
-                employee.setTotalEarned(employee.getTotalEarned().add(item.getTotalPrice()));
-                employeeRepository.save(employee);
-            }
-        }
-
-        Order updated = orderRepository.save(order);
-        return mapToDTO(updated);
-    }
-
     public OrderDTO completeOrder(Long orderId) {
         log.info("Completing order ID {}", orderId);
         Order order = orderRepository.findByIdActive(orderId)
@@ -332,7 +242,7 @@ public class OrderService {
                 if (employee.getTotalEarned() == null) {
                     employee.setTotalEarned(BigDecimal.ZERO);
                 }
-                employee.setTotalEarned(employee.getTotalEarned().add(item.getTotalPrice()));
+                employee.setTotalEarned(employee.getTotalEarned().add(item.getAmount()));
                 employeeRepository.save(employee);
             }
             item.setStatus(OrderItem.ItemStatus.COMPLETED);
@@ -365,50 +275,6 @@ public class OrderService {
         return mapToDTO(updated);
     }
 
-
-    public Page<OrderDTO> getOrdersByStatus(String status, Pageable pageable) {
-        Page<Order> orders = orderRepository.findByStatus(status, pageable);
-        return orders.map(this::mapToDTO);
-    }
-
-    public OrderDTO applyDiscountAndTax(Long id, ApplyDiscountTaxRequest request) {
-        log.info("Applying discount and tax to order ID {}: {}", id, request);
-        Order order = orderRepository.findByIdActive(id)
-                .orElseThrow(() -> new RuntimeException("Order not found with id: " + id));
-
-        // Check if order can be modified (not completed or cancelled)
-        if (order.getStatus() == Order.OrderStatus.COMPLETED || order.getStatus() == Order.OrderStatus.CANCELLED) {
-            throw new RuntimeException("Cannot modify a completed or cancelled order");
-        }
-
-        // Calculate subtotal from items
-        BigDecimal subtotal = order.getOrderItems().stream()
-                .map(OrderItem::getTotalPrice)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        // Apply discount and tax
-        BigDecimal discountAmount = request.getDiscountAmount() != null ? request.getDiscountAmount() : BigDecimal.ZERO;
-        BigDecimal afterDiscount = subtotal.subtract(discountAmount);
-
-        BigDecimal taxPercentage = request.getTaxPercentage() != null ? request.getTaxPercentage() : BigDecimal.ZERO;
-        BigDecimal taxAmount = afterDiscount.multiply(taxPercentage).divide(new BigDecimal(100), 2, BigDecimal.ROUND_HALF_UP);
-
-        // Update order with discount and tax
-        order.setDiscountAmount(discountAmount);
-        order.setTaxPercentage(taxPercentage);
-        order.setTaxAmount(taxAmount);
-        order.setTotalAmount(afterDiscount.add(taxAmount));
-
-        // Update each item with tax information
-        for (OrderItem item : order.getOrderItems()) {
-            item.setTaxPercentage(taxPercentage);
-            item.setTaxAmount(item.getTotalPrice().multiply(taxPercentage).divide(new BigDecimal(100), 2, BigDecimal.ROUND_HALF_UP));
-        }
-
-        Order updated = orderRepository.save(order);
-        return mapToDTO(updated);
-    }
-
     /**
      * Get or create a customer for the order
      */
@@ -433,74 +299,35 @@ public class OrderService {
         return customer;
     }
 
-    /**
-     * Calculate financial totals (subtotal, discount, tax, and final total)
-     */
-    private FinancialTotals calculateFinancialTotals(List<CreateOrderItemRequest> items,
-                                                     BigDecimal requestDiscountAmount,
-                                                     BigDecimal requestTaxPercentage) {
-        // Calculate subtotal
-        BigDecimal subtotal = items != null && !items.isEmpty()
-                ? items.stream()
-                    .map(item -> item.getUnitPrice().multiply(new BigDecimal(item.getQuantity())))
-                    .reduce(BigDecimal.ZERO, BigDecimal::add)
-                : BigDecimal.ZERO;
-
-        // Apply discount
-        BigDecimal discountAmount = requestDiscountAmount != null ? requestDiscountAmount : BigDecimal.ZERO;
-        BigDecimal afterDiscount = subtotal.subtract(discountAmount);
-
-        // Calculate tax
-        BigDecimal taxPercentage = requestTaxPercentage != null ? requestTaxPercentage : BigDecimal.ZERO;
-        BigDecimal taxAmount = afterDiscount.multiply(taxPercentage)
-                .divide(new BigDecimal(100), 2, BigDecimal.ROUND_HALF_UP);
-
-        // Calculate total
-        BigDecimal totalAmount = afterDiscount.add(taxAmount);
-
-        return new FinancialTotals(subtotal, discountAmount, taxPercentage, taxAmount, totalAmount);
-    }
 
     /**
      * Process order items and create OrderItem entities
      */
     private List<OrderItem> processOrderItems(List<CreateOrderItemRequest> itemRequests,
-                                             Order order,
-                                             BigDecimal taxPercentage) {
+                                              Order order) {
         return itemRequests.stream()
-                .map(itemRequest -> createOrderItem(itemRequest, order, taxPercentage))
+                .map(itemRequest -> createOrderItem(itemRequest, order))
                 .collect(Collectors.toList());
     }
 
     /**
      * Create a single OrderItem entity from request
+     * Values are calculated on frontend, backend just stores them
      */
-    private OrderItem createOrderItem(CreateOrderItemRequest itemRequest, Order order, BigDecimal taxPercentage) {
-        // Ensure taxPercentage is not null
-        if (taxPercentage == null) {
-            taxPercentage = BigDecimal.ZERO;
-        }
-
-        // Calculate item total
-        BigDecimal itemTotal = itemRequest.getTotalPrice() != null
-                ? itemRequest.getTotalPrice()
-                : itemRequest.getUnitPrice().multiply(new BigDecimal(itemRequest.getQuantity()));
-
-        // Calculate item tax
-        BigDecimal itemTax = itemRequest.getTaxAmount() != null
-                ? itemRequest.getTaxAmount()
-                : itemTotal.multiply(taxPercentage).divide(new BigDecimal(100), 2, BigDecimal.ROUND_HALF_UP);
-
+    private OrderItem createOrderItem(CreateOrderItemRequest itemRequest, Order order) {
         OrderItem.OrderItemBuilder builder = OrderItem.builder()
                 .order(order)
                 .productId(itemRequest.getProductId())
                 .productName(itemRequest.getProductName())
                 .quantity(itemRequest.getQuantity())
                 .unitPrice(itemRequest.getUnitPrice())
-                .totalPrice(itemTotal)
-                .taxPercentage(taxPercentage)
-                .taxAmount(itemTax)
-                .status(OrderItem.ItemStatus.READY);
+                .amount(itemRequest.getAmount() != null ? itemRequest.getAmount() : BigDecimal.ZERO)
+                .amountBeforeTax(itemRequest.getAmountBeforeTax() != null ? itemRequest.getAmountBeforeTax() : BigDecimal.ZERO)
+                .taxPercentage(itemRequest.getTaxPercentage() != null ? itemRequest.getTaxPercentage() : BigDecimal.ZERO)
+                .taxAmount(itemRequest.getTaxAmount() != null ? itemRequest.getTaxAmount() : BigDecimal.ZERO)
+                .commissionRate(itemRequest.getCommissionRate() != null ? itemRequest.getCommissionRate() : BigDecimal.ZERO)
+                .commissionAmount(itemRequest.getCommissionAmount() != null ? itemRequest.getCommissionAmount() : BigDecimal.ZERO)
+                .status(OrderItem.ItemStatus.PENDING);
 
         // Assign employee if provided
         if (itemRequest.getAssignedEmployeeId() != null) {
@@ -516,9 +343,7 @@ public class OrderService {
      * Update order items by updating existing ones and adding new ones
      * This avoids JPA orphan deletion issues caused by clearing and recreating the collection
      */
-    private void updateOrderItems(Order order, List<CreateOrderItemRequest> itemRequests, BigDecimal requestTaxPercentage) {
-        BigDecimal taxPercentage = requestTaxPercentage != null ? requestTaxPercentage : (order.getTaxPercentage() != null ? order.getTaxPercentage() : BigDecimal.ZERO);
-
+    private void updateOrderItems(Order order, List<CreateOrderItemRequest> itemRequests) {
         if (order.getOrderItems() == null) {
             order.setOrderItems(new java.util.ArrayList<>());
         }
@@ -539,10 +364,10 @@ public class OrderService {
             OrderItem existingItem = existingItemsMap.get(itemRequest.getProductId());
             if (existingItem != null) {
                 // Update existing item
-                updateOrderItem(existingItem, itemRequest, taxPercentage);
+                updateOrderItem(existingItem, itemRequest);
             } else {
                 // Add new item
-                OrderItem newItem = createOrderItem(itemRequest, order, taxPercentage);
+                OrderItem newItem = createOrderItem(itemRequest, order);
                 order.getOrderItems().add(newItem);
             }
         }
@@ -553,24 +378,19 @@ public class OrderService {
 
     /**
      * Update an existing OrderItem with new values
+     * Values are calculated on frontend, backend just stores them
      */
-    private void updateOrderItem(OrderItem item, CreateOrderItemRequest itemRequest, BigDecimal taxPercentage) {
-        // Calculate new totals
-        BigDecimal itemTotal = itemRequest.getTotalPrice() != null
-                ? itemRequest.getTotalPrice()
-                : itemRequest.getUnitPrice().multiply(new BigDecimal(itemRequest.getQuantity()));
-
-        BigDecimal itemTax = itemRequest.getTaxAmount() != null
-                ? itemRequest.getTaxAmount()
-                : itemTotal.multiply(taxPercentage).divide(new BigDecimal(100), 2, BigDecimal.ROUND_HALF_UP);
-
-        // Update item fields
+    private void updateOrderItem(OrderItem item, CreateOrderItemRequest itemRequest) {
+        // Update item fields with values from request (already calculated on frontend)
         item.setProductName(itemRequest.getProductName());
         item.setQuantity(itemRequest.getQuantity());
         item.setUnitPrice(itemRequest.getUnitPrice());
-        item.setTotalPrice(itemTotal);
-        item.setTaxPercentage(taxPercentage);
-        item.setTaxAmount(itemTax);
+        item.setAmount(itemRequest.getAmount() != null ? itemRequest.getAmount() : BigDecimal.ZERO);
+        item.setAmountBeforeTax(itemRequest.getAmountBeforeTax() != null ? itemRequest.getAmountBeforeTax() : BigDecimal.ZERO);
+        item.setTaxPercentage(itemRequest.getTaxPercentage() != null ? itemRequest.getTaxPercentage() : BigDecimal.ZERO);
+        item.setTaxAmount(itemRequest.getTaxAmount() != null ? itemRequest.getTaxAmount() : BigDecimal.ZERO);
+        item.setCommissionRate(itemRequest.getCommissionRate() != null ? itemRequest.getCommissionRate() : BigDecimal.ZERO);
+        item.setCommissionAmount(itemRequest.getCommissionAmount() != null ? itemRequest.getCommissionAmount() : BigDecimal.ZERO);
 
         // Update assigned employee if provided
         if (itemRequest.getAssignedEmployeeId() != null) {
@@ -584,50 +404,23 @@ public class OrderService {
 
     /**
      * Update order totals based on items, discount, and tax
+     * Values are calculated on frontend, backend just stores them
      */
-    private void updateOrderTotals(Order order, BigDecimal requestDiscountAmount, BigDecimal requestTaxPercentage) {
+    private void updateOrderTotals(Order order, BigDecimal requestDiscountAmount, BigDecimal requestTaxAmount, BigDecimal requestCommissionAmount) {
         List<OrderItem> items = order.getOrderItems() != null ? order.getOrderItems() : new java.util.ArrayList<>();
 
         BigDecimal subtotal = items.stream()
-                .map(OrderItem::getTotalPrice)
+                .map(OrderItem::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         BigDecimal discountAmount = requestDiscountAmount != null ? requestDiscountAmount : (order.getDiscountAmount() != null ? order.getDiscountAmount() : BigDecimal.ZERO);
-        BigDecimal afterDiscount = subtotal.subtract(discountAmount);
-        BigDecimal taxPercentage = requestTaxPercentage != null ? requestTaxPercentage : (order.getTaxPercentage() != null ? order.getTaxPercentage() : BigDecimal.ZERO);
-        BigDecimal taxAmount = afterDiscount.multiply(taxPercentage)
-                .divide(new BigDecimal(100), 2, BigDecimal.ROUND_HALF_UP);
-        BigDecimal totalAmount = afterDiscount.add(taxAmount);
+        BigDecimal taxAmount = requestTaxAmount != null ? requestTaxAmount : (order.getTaxAmount() != null ? order.getTaxAmount() : BigDecimal.ZERO);
+
+        BigDecimal totalAmount = subtotal.subtract(discountAmount).add(taxAmount);
 
         order.setDiscountAmount(discountAmount);
-        order.setTaxPercentage(taxPercentage);
         order.setTaxAmount(taxAmount);
         order.setTotalAmount(totalAmount);
-
-        // Update item tax amounts if tax percentage changed
-        if (requestTaxPercentage != null) {
-            for (OrderItem item : items) {
-                item.setTaxPercentage(taxPercentage);
-                item.setTaxAmount(item.getTotalPrice().multiply(taxPercentage)
-                        .divide(new BigDecimal(100), 2, BigDecimal.ROUND_HALF_UP));
-            }
-        }
-    }
-    private static class FinancialTotals {
-        final BigDecimal subtotal;
-        final BigDecimal discountAmount;
-        final BigDecimal taxPercentage;
-        final BigDecimal taxAmount;
-        final BigDecimal totalAmount;
-
-        FinancialTotals(BigDecimal subtotal, BigDecimal discountAmount, BigDecimal taxPercentage,
-                       BigDecimal taxAmount, BigDecimal totalAmount) {
-            this.subtotal = subtotal;
-            this.discountAmount = discountAmount;
-            this.taxPercentage = taxPercentage;
-            this.taxAmount = taxAmount;
-            this.totalAmount = totalAmount;
-        }
     }
 
 
@@ -636,6 +429,12 @@ public class OrderService {
                 .id(order.getId())
                 .customerId(order.getCustomer().getId())
                 .customerName(order.getCustomer().getName())
+                .customerPhone(order.getCustomer().getPhone())
+                .customerEmail(order.getCustomer().getEmail())
+                .customerNotes(order.getCustomer().getNotes())
+                .customerHairType(order.getCustomer().getHairType())
+                .customerPreferredServices(order.getCustomer().getPreferredServices())
+                .customerSpecialRequests(order.getCustomer().getSpecialRequests())
                 .assignedEmployeeId(order.getAssignedEmployee() != null ? order.getAssignedEmployee().getId() : null)
                 .assignedEmployeeName(order.getAssignedEmployee() != null ? order.getAssignedEmployee().getName() : null)
                 .status(order.getStatus().name())
@@ -653,7 +452,7 @@ public class OrderService {
                                 .productName(item.getProductName())
                                 .quantity(item.getQuantity())
                                 .unitPrice(item.getUnitPrice())
-                                .totalPrice(item.getTotalPrice())
+                                .totalPrice(item.getAmount())
                                 .taxPercentage(item.getTaxPercentage())
                                 .taxAmount(item.getTaxAmount())
                                 .status(item.getStatus().name())
@@ -665,8 +464,3 @@ public class OrderService {
                 .build();
     }
 }
-
-
-
-
-
