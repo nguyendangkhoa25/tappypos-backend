@@ -42,9 +42,14 @@ public class OrderService {
         FinancialTotals totals = calculateFinancialTotals(request.getOrderItems(),
                 request.getDiscountAmount(), request.getTaxPercentage());
 
+        // Determine initial status based on startImmediately flag
+        Order.OrderStatus initialStatus = (request.getStartImmediately() != null && request.getStartImmediately())
+                ? Order.OrderStatus.IN_PROGRESS
+                : Order.OrderStatus.PENDING;
+
         Order order = Order.builder()
                 .customer(customer)
-                .status(Order.OrderStatus.PENDING)
+                .status(initialStatus)
                 .totalAmount(totals.totalAmount)
                 .discountAmount(totals.discountAmount)
                 .taxPercentage(totals.taxPercentage)
@@ -53,7 +58,7 @@ public class OrderService {
                 .build();
 
         Order savedOrder = orderRepository.save(order);
-        log.info("Order saved with ID: {}", savedOrder.getId());
+        log.info("Order saved with ID: {} in status: {}", savedOrder.getId(), initialStatus);
 
         // Add order items with tax calculation
         if (request.getOrderItems() != null && !request.getOrderItems().isEmpty()) {
@@ -208,6 +213,23 @@ public class OrderService {
                 .build();
     }
 
+    public OrderDTO startOrder(Long orderId) {
+        log.info("Starting order ID {}", orderId);
+        Order order = orderRepository.findByIdActive(orderId)
+                .orElseThrow(() -> new RuntimeException("Order not found with id: " + orderId));
+
+        // Check if order is in PENDING status
+        if (order.getStatus() != Order.OrderStatus.PENDING) {
+            throw new RuntimeException("Only pending orders can be started. Current status: " + order.getStatus());
+        }
+
+        // Change status to IN_PROGRESS
+        order.setStatus(Order.OrderStatus.IN_PROGRESS);
+
+        Order updated = orderRepository.save(order);
+        return mapToDTO(updated);
+    }
+
     public OrderDTO completeOrderWithModifications(Long orderId, CompleteOrderRequest request) {
         log.info("Completing order ID {} with modifications: {}", orderId, request);
         Order order = orderRepository.findByIdActive(orderId)
@@ -218,10 +240,10 @@ public class OrderService {
             throw new RuntimeException("This order is already completed or cancelled");
         }
 
+        BigDecimal totalAmount = BigDecimal.ZERO;
+
         // Update items with modifications if provided
         if (request.getItemUpdates() != null && !request.getItemUpdates().isEmpty()) {
-            BigDecimal totalAmount = BigDecimal.ZERO;
-
             for (CompleteOrderRequest.OrderItemUpdate itemUpdate : request.getItemUpdates()) {
                 OrderItem item = order.getOrderItems().stream()
                         .filter(oi -> oi.getId().equals(itemUpdate.getItemId()))
@@ -242,9 +264,35 @@ public class OrderService {
 
                 totalAmount = totalAmount.add(item.getTotalPrice());
             }
-
-            order.setTotalAmount(totalAmount);
+        } else {
+            // If no item updates, calculate total from all items
+            totalAmount = order.getOrderItems().stream()
+                    .map(OrderItem::getTotalPrice)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
         }
+
+        // Mark all remaining items as completed if not already updated
+        for (OrderItem item : order.getOrderItems()) {
+            if (item.getStatus() != OrderItem.ItemStatus.COMPLETED) {
+                item.setStatus(OrderItem.ItemStatus.COMPLETED);
+                item.setCompletedAt(java.time.LocalDateTime.now());
+            }
+        }
+
+        // Apply discount if provided
+        BigDecimal discountAmount = request.getDiscountAmount() != null ? request.getDiscountAmount() : order.getDiscountAmount();
+        BigDecimal afterDiscount = totalAmount.subtract(discountAmount);
+
+        // Apply tax if provided
+        BigDecimal taxPercentage = request.getTaxPercentage() != null ? request.getTaxPercentage() : order.getTaxPercentage();
+        BigDecimal taxAmount = afterDiscount.multiply(taxPercentage != null ? taxPercentage : BigDecimal.ZERO)
+                .divide(new BigDecimal(100), 2, BigDecimal.ROUND_HALF_UP);
+
+        // Update order totals
+        order.setTotalAmount(afterDiscount.add(taxAmount));
+        order.setDiscountAmount(discountAmount);
+        order.setTaxPercentage(taxPercentage != null ? taxPercentage : BigDecimal.ZERO);
+        order.setTaxAmount(taxAmount);
 
         // Update order notes if provided
         if (request.getNotes() != null) {

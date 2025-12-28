@@ -12,6 +12,8 @@ import java.util.List;
 @Builder
 public class CompleteOrderRequest {
     private List<OrderItemUpdate> itemUpdates;
+    private BigDecimal discountAmount;
+    private BigDecimal taxPercentage;
     private String notes;
 
     @Getter

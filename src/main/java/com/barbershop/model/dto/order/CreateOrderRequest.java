@@ -20,4 +20,5 @@ public class CreateOrderRequest {
     private String notes;
     private BigDecimal discountAmount;
     private BigDecimal taxPercentage;
+    private Boolean startImmediately; // If true, order will be created in IN_PROGRESS status
 }

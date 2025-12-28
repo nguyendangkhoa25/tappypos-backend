@@ -91,6 +91,12 @@ public class OrderController {
         return ResponseEntity.ok(ApiResponse.success(order, "Discount and tax applied successfully"));
     }
 
+    @PutMapping("/{id}/start")
+    public ResponseEntity<ApiResponse<OrderDTO>> startOrder(@PathVariable Long id) {
+        OrderDTO order = orderService.startOrder(id);
+        return ResponseEntity.ok(ApiResponse.success(order, "Order started successfully"));
+    }
+
     @PutMapping("/{id}/complete")
     public ResponseEntity<ApiResponse<OrderDTO>> completeOrder(@PathVariable Long id) {
         OrderDTO order = orderService.completeOrder(id);
