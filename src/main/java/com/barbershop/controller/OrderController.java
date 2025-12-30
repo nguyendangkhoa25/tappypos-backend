@@ -101,6 +101,29 @@ public class OrderController {
         return ResponseEntity.ok(ApiResponse.success(null, "Order deleted successfully"));
     }
 
+    // Work Queue endpoints
+    @GetMapping("/work-queue/available")
+    public ResponseEntity<ApiResponse<Page<OrderItemDTO>>> getAvailableWorkItems(
+            @RequestParam(required = false) Long employeeId,
+            Pageable pageable) {
+        Page<OrderItemDTO> items = orderService.getAvailableWorkItems(employeeId, pageable);
+        return ResponseEntity.ok(ApiResponse.success(items, "Available work items retrieved successfully"));
+    }
+
+    @PutMapping("/work-queue/items/{itemId}/pickup")
+    public ResponseEntity<ApiResponse<OrderItemDTO>> pickupWorkItem(
+            @PathVariable Long itemId,
+            @RequestParam Long employeeId) {
+        OrderItemDTO item = orderService.pickupWorkItem(itemId, employeeId);
+        return ResponseEntity.ok(ApiResponse.success(item, "Work item picked up successfully"));
+    }
+
+    @PutMapping("/work-queue/items/{itemId}/release")
+    public ResponseEntity<ApiResponse<OrderItemDTO>> releaseWorkItem(@PathVariable Long itemId) {
+        OrderItemDTO item = orderService.releaseWorkItem(itemId);
+        return ResponseEntity.ok(ApiResponse.success(item, "Work item released successfully"));
+    }
+
     @GetMapping("/{id}/bill")
     public ResponseEntity<byte[]> downloadBill(@PathVariable Long id) {
         try {

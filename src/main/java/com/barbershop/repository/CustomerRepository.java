@@ -13,19 +13,19 @@ import java.util.Optional;
 @Repository
 public interface CustomerRepository extends JpaRepository<Customer, Long> {
 
-    @Query("SELECT c FROM Customer c WHERE c.deletedAt IS NULL")
+    @Query("SELECT c FROM Customer c WHERE c.deleted = false")
     Page<Customer> findAllActive(Pageable pageable);
 
-    @Query("SELECT c FROM Customer c WHERE c.deletedAt IS NULL AND c.id = :id")
+    @Query("SELECT c FROM Customer c WHERE c.deleted = false AND c.id = :id")
     Optional<Customer> findByIdActive(Long id);
 
-    @Query("SELECT c FROM Customer c WHERE c.deletedAt IS NULL AND c.phone = :phone")
+    @Query("SELECT c FROM Customer c WHERE c.deleted = false AND c.phone = :phone")
     Optional<Customer> findByPhone(String phone);
 
-    @Query("SELECT c FROM Customer c WHERE c.deletedAt IS NULL AND c.email = :email")
+    @Query("SELECT c FROM Customer c WHERE c.deleted = false AND c.email = :email")
     Optional<Customer> findByEmail(String email);
 
-    @Query("SELECT c FROM Customer c WHERE c.deletedAt IS NULL AND " +
+    @Query("SELECT c FROM Customer c WHERE c.deleted = false AND " +
            "(LOWER(c.name) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
            "LOWER(c.phone) LIKE LOWER(CONCAT('%', :keyword, '%')))")
     Page<Customer> searchByKeyword(@Param("keyword") String keyword, Pageable pageable);

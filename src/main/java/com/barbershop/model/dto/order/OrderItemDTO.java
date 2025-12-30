@@ -12,6 +12,8 @@ import java.time.LocalDateTime;
 @Builder
 public class OrderItemDTO {
     private Long id;
+    private Long orderId;
+    private String orderCustomerName;
     private Long productId;
     private String productName;
     private Integer quantity;

@@ -17,6 +17,7 @@ public class AuthResponse {
     private Long expiresIn;
     private String tokenType;
     private String username;
+    private Long employeeId;
     private String requiredAction;
 
     public static AuthResponse requiredAction(String username, String requiredAction, String accessToken, Long expiresIn) {
@@ -29,13 +30,14 @@ public class AuthResponse {
                 .build();
     }
 
-    public static AuthResponse of(String accessToken, String refreshToken, Long expiresIn, String username) {
+    public static AuthResponse of(String accessToken, String refreshToken, Long expiresIn, String username, Long employeeId) {
         return AuthResponse.builder()
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
                 .expiresIn(expiresIn)
                 .tokenType(TOKEN_TYPE)
                 .username(username)
+                .employeeId(employeeId)
                 .build();
     }
 }

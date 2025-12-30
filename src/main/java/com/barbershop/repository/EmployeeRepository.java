@@ -14,28 +14,28 @@ import java.util.Optional;
 @Repository
 public interface EmployeeRepository extends JpaRepository<Employee, Long> {
 
-    @Query("SELECT e FROM Employee e WHERE e.deletedAt IS NULL")
+    @Query("SELECT e FROM Employee e WHERE e.deleted = false")
     Page<Employee> findAllActive(Pageable pageable);
 
-    @Query("SELECT e FROM Employee e WHERE e.deletedAt IS NULL AND e.id = :id")
+    @Query("SELECT e FROM Employee e WHERE e.deleted = false AND e.id = :id")
     Optional<Employee> findByIdActive(Long id);
 
-    @Query("SELECT e FROM Employee e WHERE e.deletedAt IS NULL AND e.phone = :phone")
+    @Query("SELECT e FROM Employee e WHERE e.deleted = false AND e.phone = :phone")
     Optional<Employee> findByPhone(String phone);
 
-    @Query("SELECT e FROM Employee e WHERE e.deletedAt IS NULL AND e.user.id = :userId")
+    @Query("SELECT e FROM Employee e WHERE e.deleted = false AND e.user.id = :userId")
     Optional<Employee> findByUserId(Long userId);
 
-    @Query("SELECT e FROM Employee e WHERE e.deletedAt IS NULL AND e.user IS NULL")
+    @Query("SELECT e FROM Employee e WHERE e.deleted = false AND e.user IS NULL")
     Page<Employee> findByUserIdIsNull(Pageable pageable);
 
-    @Query("SELECT e FROM Employee e WHERE e.deletedAt IS NULL AND e.status = :status")
+    @Query("SELECT e FROM Employee e WHERE e.deleted = false AND e.status = :status")
     List<Employee> findByStatus(String status);
 
-    @Query("SELECT e FROM Employee e WHERE e.deletedAt IS NULL AND e.status = :status")
+    @Query("SELECT e FROM Employee e WHERE e.deleted = false AND e.status = :status")
     Page<Employee> findByStatus(Employee.EmployeeStatus status, Pageable pageable);
 
-    @Query("SELECT e FROM Employee e WHERE e.deletedAt IS NULL AND " +
+    @Query("SELECT e FROM Employee e WHERE e.deleted = false AND " +
            "(LOWER(e.name) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
            "LOWER(e.phone) LIKE LOWER(CONCAT('%', :keyword, '%')))")
     Page<Employee> searchByKeyword(@Param("keyword") String keyword, Pageable pageable);

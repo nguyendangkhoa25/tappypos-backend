@@ -4,9 +4,11 @@ import com.barbershop.config.JwtTokenProvider;
 import com.barbershop.model.dto.auth.AuthResponse;
 import com.barbershop.model.dto.auth.LoginRequest;
 import com.barbershop.model.dto.auth.UserDTO;
+import com.barbershop.model.entity.Employee;
 import com.barbershop.model.entity.RefreshToken;
 import com.barbershop.model.entity.User;
 import com.barbershop.multitenant.TenantContext;
+import com.barbershop.repository.EmployeeRepository;
 import com.barbershop.repository.RefreshTokenRepository;
 import com.barbershop.repository.UserRepository;
 import jakarta.servlet.http.Cookie;
@@ -20,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * AuthService - Authentication and token management business logic
@@ -31,6 +34,7 @@ import java.util.List;
 public class AuthService {
 
     private final UserRepository userRepository;
+    private final EmployeeRepository employeeRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final JwtTokenProvider jwtTokenProvider;
     private final PasswordEncoder passwordEncoder;
@@ -84,11 +88,20 @@ public class AuthService {
             log.info("Refresh token generated for user: {}", loginRequest.getUsername());
         }
 
+        // Get employee ID if user has an associated employee
+        Long employeeId = null;
+        Optional<Employee> employeeOpt = employeeRepository.findByUserId(user.getId());
+        if (employeeOpt.isPresent()) {
+            employeeId = employeeOpt.get().getId();
+            log.info("Employee ID {} found for user: {}", employeeId, loginRequest.getUsername());
+        }
+
         return AuthResponse.of(
                 accessToken,
                 refreshToken,
                 jwtTokenProvider.getTokenExpirationMs(),
-                user.getUsername()
+                user.getUsername(),
+                employeeId
         );
     }
 
@@ -155,11 +168,20 @@ public class AuthService {
         String accessToken = jwtTokenProvider.generateToken(username);
         log.info("New access token generated for user: {}", username);
 
+        // Get employee ID if user has an associated employee
+        Long employeeId = null;
+        Optional<Employee> employeeOpt = employeeRepository.findByUserId(user.getId());
+        if (employeeOpt.isPresent()) {
+            employeeId = employeeOpt.get().getId();
+            log.info("Employee ID {} found for user during token refresh: {}", employeeId, username);
+        }
+
         return AuthResponse.of(
                 accessToken,
                 refreshToken,
                 jwtTokenProvider.getTokenExpirationMs(),
-                user.getUsername()
+                user.getUsername(),
+                employeeId
         );
     }
 
