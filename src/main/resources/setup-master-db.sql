@@ -47,17 +47,19 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Insert test tenant 'phuc-barber'
-INSERT INTO tenants (tenant_id, name, db_name, db_url, db_username, db_password, active, created_at)
+INSERT INTO tenants (tenant_id, name, db_name, db_url, db_username, db_password, active, created_at, updated_at)
 VALUES (
-    'phuc-barber',
-    'Phuc Barber Shop',
-    'phuc_barber_db',
-    'jdbc:mysql://localhost:3306/phuc_barber_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC',
-    'root',
-    'root',
-    true,
-    UNIX_TIMESTAMP() * 1000
-) ON DUPLICATE KEY UPDATE
+           'phuc-barber',
+           'Phuc Barber Shop',
+           'phuc_barber_db',
+           'jdbc:mysql://localhost:3306/phuc_barber_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC',
+           'root',
+           'Root@123',
+           true,
+           UNIX_TIMESTAMP() * 1000,
+           UNIX_TIMESTAMP() * 1000
+       ) ON DUPLICATE KEY UPDATE
     name = VALUES(name),
     db_url = VALUES(db_url),
     updated_at = UNIX_TIMESTAMP() * 1000;
+

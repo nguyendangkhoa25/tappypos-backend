@@ -276,34 +276,39 @@ public class OrderService {
     }
 
     // Work Queue methods
-    public Page<OrderItemDTO> getAvailableWorkItems(Long employeeId, Pageable pageable) {
-        log.info("Getting available work items for employeeId: {}", employeeId);
-        // Get all IN_PROGRESS orders
-        Page<Order> inProgressOrders = orderRepository.findByStatusActive(
-                Order.OrderStatus.IN_PROGRESS, pageable);
+    public Page<OrderItemDTO> findAllWorkItems(Long employeeId, Pageable pageable) {
+        log.info("Finding all work items for employeeId: {}", employeeId);
 
-        // Flatten all items and filter based on employeeId
-        List<OrderItemDTO> availableItems = inProgressOrders.stream()
-                .flatMap(order -> order.getOrderItems().stream()
-                        .filter(item -> {
-                            // If employeeId is provided, only show items assigned to that employee or unassigned
-                            if (employeeId != null) {
-                                return item.getAssignedEmployee() == null ||
-                                       item.getAssignedEmployee().getId().equals(employeeId);
-                            }
-                            // If no employeeId, show all items (original behavior)
-                            return true;
-                        })
-                        .map(item -> mapOrderItemToDTO(item, order)))
-                .collect(Collectors.toList());
+        List<OrderItemDTO> filteredItems = new java.util.ArrayList<>();
+
+        if (employeeId != null) {
+            // If employeeId is provided, get items assigned to that employee from IN_PROGRESS orders
+            Page<Order> inProgressOrders = orderRepository.findByStatusActive(
+                    Order.OrderStatus.IN_PROGRESS, pageable);
+
+            filteredItems = inProgressOrders.stream()
+                    .flatMap(order -> order.getOrderItems().stream()
+                            .filter(item -> item.getAssignedEmployee() != null &&
+                                   item.getAssignedEmployee().getId().equals(employeeId))
+                            .map(item -> mapOrderItemToDTO(item, order)))
+                    .collect(Collectors.toList());
+        } else {
+            // If no employeeId, get ALL items from ALL orders with all statuses
+            java.util.List<Order> allOrders = orderRepository.findAll();
+
+            filteredItems = allOrders.stream()
+                    .flatMap(order -> order.getOrderItems().stream()
+                            .map(item -> mapOrderItemToDTO(item, order)))
+                    .collect(Collectors.toList());
+        }
 
         // Convert to Page
         int start = (int) pageable.getOffset();
-        int end = Math.min((start + pageable.getPageSize()), availableItems.size());
-        List<OrderItemDTO> pageContent = availableItems.subList(start, end);
+        int end = Math.min((start + pageable.getPageSize()), filteredItems.size());
+        List<OrderItemDTO> pageContent = filteredItems.subList(start, end);
 
         return new org.springframework.data.domain.PageImpl<>(
-                pageContent, pageable, availableItems.size());
+                pageContent, pageable, filteredItems.size());
     }
 
     @Transactional
@@ -350,14 +355,44 @@ public class OrderService {
                 .findFirst()
                 .orElseThrow(() -> new RuntimeException("Order item not found with id: " + itemId));
 
-        // Verify item is in IN_PROGRESS status
-        if (item.getStatus() != OrderItem.ItemStatus.IN_PROGRESS) {
-            throw new RuntimeException("Only in-progress items can be released. Current status: " + item.getStatus());
+        // Verify item is assigned (either PENDING assigned or IN_PROGRESS)
+        if (item.getAssignedEmployee() == null) {
+            throw new RuntimeException("Only assigned items can be released");
         }
 
-        // Release item - remove employee assignment and set back to READY
+        // Release item - remove employee assignment and set status back to PENDING
         item.setAssignedEmployee(null);
         item.setStatus(OrderItem.ItemStatus.PENDING);
+
+        Order order = item.getOrder();
+        orderRepository.save(order);
+
+        return mapOrderItemToDTO(item, order);
+    }
+
+    @Transactional
+    public OrderItemDTO completeWorkItem(Long itemId, Long employeeId) {
+        log.info("Completing work item ID {} by employee ID {}", itemId, employeeId);
+
+        // Find the order item
+        OrderItem item = orderRepository.findAll().stream()
+                .flatMap(order -> order.getOrderItems().stream())
+                .filter(i -> i.getId().equals(itemId))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Order item not found with id: " + itemId));
+
+        // Verify item is assigned to the requesting employee
+        if (item.getAssignedEmployee() == null) {
+            throw new RuntimeException("Only assigned items can be completed");
+        }
+
+        if (!item.getAssignedEmployee().getId().equals(employeeId)) {
+            throw new RuntimeException("You can only complete items assigned to you");
+        }
+
+        // Mark item as completed
+        item.setStatus(OrderItem.ItemStatus.COMPLETED);
+        item.setCompletedAt(java.time.LocalDateTime.now());
 
         Order order = item.getOrder();
         orderRepository.save(order);
@@ -370,6 +405,8 @@ public class OrderService {
                 .id(item.getId())
                 .orderId(order.getId())
                 .orderCustomerName(order.getCustomer().getName())
+                .orderCustomerPhone(order.getCustomer().getPhone())
+                .orderCustomerEmail(order.getCustomer().getEmail())
                 .productId(item.getProductId())
                 .productName(item.getProductName())
                 .quantity(item.getQuantity())

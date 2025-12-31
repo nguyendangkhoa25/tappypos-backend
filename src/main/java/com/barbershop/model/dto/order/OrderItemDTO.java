@@ -14,6 +14,8 @@ public class OrderItemDTO {
     private Long id;
     private Long orderId;
     private String orderCustomerName;
+    private String orderCustomerPhone;
+    private String orderCustomerEmail;
     private Long productId;
     private String productName;
     private Integer quantity;

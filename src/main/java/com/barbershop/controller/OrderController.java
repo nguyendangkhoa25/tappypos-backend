@@ -102,12 +102,12 @@ public class OrderController {
     }
 
     // Work Queue endpoints
-    @GetMapping("/work-queue/available")
-    public ResponseEntity<ApiResponse<Page<OrderItemDTO>>> getAvailableWorkItems(
+    @GetMapping("/work-queue/find-all")
+    public ResponseEntity<ApiResponse<Page<OrderItemDTO>>> findAllWorkItems(
             @RequestParam(required = false) Long employeeId,
             Pageable pageable) {
-        Page<OrderItemDTO> items = orderService.getAvailableWorkItems(employeeId, pageable);
-        return ResponseEntity.ok(ApiResponse.success(items, "Available work items retrieved successfully"));
+        Page<OrderItemDTO> items = orderService.findAllWorkItems(employeeId, pageable);
+        return ResponseEntity.ok(ApiResponse.success(items, "Work items retrieved successfully"));
     }
 
     @PutMapping("/work-queue/items/{itemId}/pickup")
@@ -122,6 +122,14 @@ public class OrderController {
     public ResponseEntity<ApiResponse<OrderItemDTO>> releaseWorkItem(@PathVariable Long itemId) {
         OrderItemDTO item = orderService.releaseWorkItem(itemId);
         return ResponseEntity.ok(ApiResponse.success(item, "Work item released successfully"));
+    }
+
+    @PutMapping("/work-queue/items/{itemId}/complete")
+    public ResponseEntity<ApiResponse<OrderItemDTO>> completeWorkItem(
+            @PathVariable Long itemId,
+            @RequestParam Long employeeId) {
+        OrderItemDTO item = orderService.completeWorkItem(itemId, employeeId);
+        return ResponseEntity.ok(ApiResponse.success(item, "Work item completed successfully"));
     }
 
     @GetMapping("/{id}/bill")

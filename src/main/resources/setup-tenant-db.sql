@@ -133,7 +133,7 @@ CREATE TABLE IF NOT EXISTS users (
     deleted BOOLEAN NOT NULL DEFAULT FALSE,
     deleted_at TIMESTAMP NULL,
     INDEX idx_username (username),
-    INDEX idx_active (active),
+    INDEX idx_active (active)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=36202600001;
 
 CREATE TABLE IF NOT EXISTS refresh_tokens (
