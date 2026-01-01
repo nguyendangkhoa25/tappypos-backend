@@ -19,13 +19,12 @@ public class SalaryDetailDTO {
     private Integer month;
     private Integer year;
     private BigDecimal baseSalary;
-    private BigDecimal totalEarning;
+    private BigDecimal netSalary;
     private BigDecimal commissionAmount;
     private BigDecimal deductionAmount;
     private BigDecimal overtimeAmount;
     private BigDecimal bonusAmount;
     private BigDecimal allowanceAmount;
-    private BigDecimal netSalary;
     private String notes;
     private String status;
     private LocalDateTime approvedAt;

@@ -78,15 +78,15 @@ public class SalaryService {
         Employee employee = employeeRepository.findById(request.getEmployeeId())
                 .orElseThrow(() -> new RuntimeException("Employee not found"));
 
-        // Use totalEarning from UI request instead of recalculating
-        BigDecimal totalEarning = request.getTotalEarning() != null ? request.getTotalEarning() : BigDecimal.ZERO;
+        // Use netSalary from UI request instead of recalculating
+        BigDecimal netSalary = request.getNetSalary() != null ? request.getNetSalary() : BigDecimal.ZERO;
 
         // Create salary record
         Salary salary = Salary.builder()
                 .employee(employee)
                 .month(request.getMonth())
                 .year(request.getYear())
-                .totalEarning(totalEarning)
+                .netSalary(netSalary)
                 .commissionAmount(request.getCommissionAmount() != null ? request.getCommissionAmount() : BigDecimal.ZERO)
                 .deductionAmount(request.getDeductionAmount() != null ? request.getDeductionAmount() : BigDecimal.ZERO)
                 .overtimeAmount(request.getOvertimeAmount() != null ? request.getOvertimeAmount() : BigDecimal.ZERO)
@@ -115,7 +115,7 @@ public class SalaryService {
     }
 
     /**
-     * Update salary adjustments (deductions, overtime, bonus, allowance, totalEarnings)
+     * Update salary adjustments (deductions, overtime, bonus, allowance, netSalary)
      */
     public SalaryDTO updateSalary(Long salaryId, UpdateSalaryRequest request) {
         log.info("Updating salary with id: {}", salaryId);
@@ -123,8 +123,8 @@ public class SalaryService {
         Salary salary = salaryRepository.findById(salaryId)
                 .orElseThrow(() -> new RuntimeException("Salary not found"));
 
-        if (request.getTotalEarning() != null) {
-            salary.setTotalEarning(request.getTotalEarning());
+        if (request.getNetSalary() != null) {
+            salary.setNetSalary(request.getNetSalary());
         }
         if (request.getCommissionAmount() != null) {
             salary.setCommissionAmount(request.getCommissionAmount());
@@ -250,13 +250,12 @@ public class SalaryService {
                 .month(salary.getMonth())
                 .year(salary.getYear())
                 .baseSalary(employee.getBaseSalary())
-                .totalEarning(salary.getTotalEarning())
+                .netSalary(salary.getNetSalary())
                 .commissionAmount(salary.getCommissionAmount())
                 .deductionAmount(salary.getDeductionAmount())
                 .overtimeAmount(salary.getOvertimeAmount())
                 .bonusAmount(salary.getBonusAmount())
                 .allowanceAmount(salary.getAllowanceAmount())
-                .netSalary(salary.getNetSalary())
                 .notes(salary.getNotes())
                 .status(salary.getStatus().toString())
                 .approvedAt(salary.getApprovedAt())
@@ -411,13 +410,12 @@ public class SalaryService {
                 .employeeName(salary.getEmployee().getName())
                 .month(salary.getMonth())
                 .year(salary.getYear())
-                .totalEarning(salary.getTotalEarning())
+                .netSalary(salary.getNetSalary())
                 .commissionAmount(salary.getCommissionAmount())
                 .deductionAmount(salary.getDeductionAmount())
                 .overtimeAmount(salary.getOvertimeAmount())
                 .bonusAmount(salary.getBonusAmount())
                 .allowanceAmount(salary.getAllowanceAmount())
-                .netSalary(salary.getNetSalary())
                 .notes(salary.getNotes())
                 .status(salary.getStatus().toString())
                 .approvedAt(salary.getApprovedAt())

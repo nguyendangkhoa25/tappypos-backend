@@ -13,7 +13,7 @@ public class CreateSalaryRequest {
     private Long employeeId;
     private Integer month;
     private Integer year;
-    private BigDecimal totalEarning;
+    private BigDecimal netSalary;
     private BigDecimal commissionAmount;
     private BigDecimal deductionAmount;
     private BigDecimal overtimeAmount;

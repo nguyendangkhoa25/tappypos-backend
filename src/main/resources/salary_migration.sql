@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS salaries (
     employee_id BIGINT NOT NULL,
     month INT NOT NULL,
     year INT NOT NULL,
-    total_earning DECIMAL(12, 2) NOT NULL DEFAULT 0,
+    net_salary DECIMAL(12, 2) NOT NULL DEFAULT 0,
     commission_amount DECIMAL(12, 2) NOT NULL DEFAULT 0,
     deduction_amount DECIMAL(12, 2) NOT NULL DEFAULT 0,
     overtime_amount DECIMAL(12, 2) NOT NULL DEFAULT 0,
@@ -24,9 +24,6 @@ CREATE TABLE IF NOT EXISTS salaries (
 
     FOREIGN KEY (employee_id) REFERENCES employees(id),
     FOREIGN KEY (approved_by_user_id) REFERENCES users(id),
-
-    -- Unique constraint to ensure only one salary per employee per month/year (when not deleted)
-    UNIQUE KEY unique_employee_month_year (employee_id, month, year, deleted),
 
     -- Indexes for common queries
     INDEX idx_employee_id (employee_id),

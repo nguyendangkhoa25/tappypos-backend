@@ -30,8 +30,8 @@ public class Salary extends BaseEntity {
     @Column(nullable = false)
     private Integer year;
 
-    @Column(name = "total_earning", nullable = false, precision = 12, scale = 2)
-    private BigDecimal totalEarning = BigDecimal.ZERO;
+    @Column(name = "net_salary", nullable = false, precision = 12, scale = 2)
+    private BigDecimal netSalary = BigDecimal.ZERO;
 
     @Column(name = "commission_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal commissionAmount = BigDecimal.ZERO;
@@ -69,10 +69,10 @@ public class Salary extends BaseEntity {
     }
 
     /**
-     * Get net salary - totalEarning is now the net salary value
+     * Get net salary
      */
     public BigDecimal getNetSalary() {
-        return this.totalEarning != null ? this.totalEarning : BigDecimal.ZERO;
+        return this.netSalary != null ? this.netSalary : BigDecimal.ZERO;
     }
 }
 
