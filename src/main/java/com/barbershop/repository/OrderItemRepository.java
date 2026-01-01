@@ -114,5 +114,16 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
 
     @Query("SELECT oi FROM OrderItem oi WHERE oi.includedInSalary.id = :salaryId")
     List<OrderItem> findItemsBySalaryId(@Param("salaryId") Long salaryId);
+
+    @Query("SELECT oi FROM OrderItem oi " +
+           "WHERE oi.assignedEmployee.id = :employeeId " +
+           "AND oi.status = 'COMPLETED' " +
+           "AND oi.salaryCalculated = :salaryCalculated " +
+           "AND oi.completedAt IS NOT NULL " +
+           "ORDER BY oi.completedAt DESC")
+    Page<OrderItem> findOrderItemsByEmployeeAndCalculatedStatus(
+            @Param("employeeId") Long employeeId,
+            @Param("salaryCalculated") Boolean salaryCalculated,
+            Pageable pageable);
 }
 

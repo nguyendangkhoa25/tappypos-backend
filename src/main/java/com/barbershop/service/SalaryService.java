@@ -401,6 +401,33 @@ public class SalaryService {
     }
 
     /**
+     * Get order items for an employee with optional filtering by calculated status
+     * @param employeeId Employee ID
+     * @param salaryCalculated true for calculated items, false for uncalculated items
+     * @param pageable Pagination info
+     * @return Page of OrderItemEarningDTO
+     */
+    public Page<OrderItemEarningDTO> getOrderItemsByEmployeeAndCalculatedStatus(
+            Long employeeId, Boolean salaryCalculated, Pageable pageable) {
+        log.info("Fetching order items for employee {} with salaryCalculated={}", employeeId, salaryCalculated);
+
+        Page<OrderItem> items = orderItemRepository.findOrderItemsByEmployeeAndCalculatedStatus(
+                employeeId, salaryCalculated, pageable);
+
+        return items.map(item -> OrderItemEarningDTO.builder()
+                .orderItemId(item.getId())
+                .orderId(item.getOrder().getId())
+                .serviceName(item.getProductName())
+                .amount(item.getAmount())
+                .commissionAmount(item.getCommissionAmount() != null ?
+                        item.getCommissionAmount() : item.getAmount())
+                .completedAt(item.getCompletedAt())
+                .salaryCalculated(item.getSalaryCalculated() != null ? item.getSalaryCalculated() : false)
+                .includedInSalaryId(item.getIncludedInSalary() != null ? item.getIncludedInSalary().getId() : null)
+                .build());
+    }
+
+    /**
      * Map Salary entity to DTO
      */
     private SalaryDTO mapToDTO(Salary salary) {

@@ -197,23 +197,26 @@ public class SalaryController {
     }
 
     /**
-     * GET /api/salaries/items/uncalculated/{employeeId}
-     * Get uncalculated order items for an employee
-     * Returns only items that haven't been included in any salary yet
+     * GET /api/salaries/items/{employeeId}
+     * Get order items for an employee with optional filter by calculated status
+     * Returns items that are completed and optionally filtered by calculation status
      * Sorted by completed date in descending order (newest first)
      * Query Parameters:
      * - page: Page number (0-based, default: 0)
      * - size: Page size (default: 20)
+     * - calculated: Filter by calculated status (true for calculated, false/missing for uncalculated, default: false)
      */
-    @GetMapping("/items/uncalculated/{employeeId}")
-    public ResponseEntity<ApiResponse<Page<OrderItemEarningDTO>>> getUncalculatedOrderItems(
+    @GetMapping("/items/{employeeId}")
+    public ResponseEntity<ApiResponse<Page<OrderItemEarningDTO>>> getOrderItems(
             @PathVariable Long employeeId,
+            @RequestParam(value = "calculated", required = false, defaultValue = "false") Boolean calculated,
             Pageable pageable) {
-        log.info("Endpoint: GET /salaries/items/uncalculated/{} - Get uncalculated order items for employee", employeeId);
+        log.info("Endpoint: GET /salaries/items/{} - Get order items for employee with calculated={}",
+                employeeId, calculated);
+        Page<OrderItemEarningDTO> items = salaryService.getOrderItemsByEmployeeAndCalculatedStatus(
+                employeeId, calculated, pageable);
 
-        Page<OrderItemEarningDTO> items = salaryService.getUncalculatedOrderItemsPaginated(employeeId, pageable);
-
-        return ResponseEntity.ok(ApiResponse.success(items, "Uncalculated order items retrieved successfully"));
+        return ResponseEntity.ok(ApiResponse.success(items, "Order items retrieved successfully"));
     }
 }
 
