@@ -10,9 +10,12 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 @Builder
 public class UpdateSalaryRequest {
-    private BigDecimal deductions;
-    private BigDecimal overtime;
-    private BigDecimal bonus;
+    private BigDecimal totalEarning;
+    private BigDecimal commissionAmount;
+    private BigDecimal deductionAmount;
+    private BigDecimal overtimeAmount;
+    private BigDecimal bonusAmount;
+    private BigDecimal allowanceAmount;
     private String notes;
     private String status;
 }

@@ -13,9 +13,12 @@ public class CreateSalaryRequest {
     private Long employeeId;
     private Integer month;
     private Integer year;
-    private BigDecimal deductions;
-    private BigDecimal overtime;
-    private BigDecimal bonus;
+    private BigDecimal totalEarning;
+    private BigDecimal commissionAmount;
+    private BigDecimal deductionAmount;
+    private BigDecimal overtimeAmount;
+    private BigDecimal bonusAmount;
+    private BigDecimal allowanceAmount;
     private String notes;
 }
 

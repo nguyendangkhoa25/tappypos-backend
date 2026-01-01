@@ -30,20 +30,24 @@ public class Salary extends BaseEntity {
     @Column(nullable = false)
     private Integer year;
 
-    @Column(name = "total_earnings", nullable = false, precision = 12, scale = 2)
-    private BigDecimal totalEarnings = BigDecimal.ZERO;
+    @Column(name = "total_earning", nullable = false, precision = 12, scale = 2)
+    private BigDecimal totalEarning = BigDecimal.ZERO;
 
-    @Column(name = "deductions", nullable = false, precision = 12, scale = 2)
-    private BigDecimal deductions = BigDecimal.ZERO;
+    @Column(name = "commission_amount", nullable = false, precision = 12, scale = 2)
+    private BigDecimal commissionAmount = BigDecimal.ZERO;
 
-    @Column(name = "overtime", nullable = false, precision = 12, scale = 2)
-    private BigDecimal overtime = BigDecimal.ZERO;
+    @Column(name = "deduction_amount", nullable = false, precision = 12, scale = 2)
+    private BigDecimal deductionAmount = BigDecimal.ZERO;
 
-    @Column(name = "bonus", nullable = false, precision = 12, scale = 2)
-    private BigDecimal bonus = BigDecimal.ZERO;
+    @Column(name = "overtime_amount", nullable = false, precision = 12, scale = 2)
+    private BigDecimal overtimeAmount = BigDecimal.ZERO;
 
-    @Column(name = "net_salary", nullable = false, precision = 12, scale = 2)
-    private BigDecimal netSalary = BigDecimal.ZERO;
+    @Column(name = "bonus_amount", nullable = false, precision = 12, scale = 2)
+    private BigDecimal bonusAmount = BigDecimal.ZERO;
+
+    @Column(name = "allowance_amount", nullable = false, precision = 12, scale = 2)
+    private BigDecimal allowanceAmount = BigDecimal.ZERO;
+
 
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
@@ -56,24 +60,19 @@ public class Salary extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
-    private SalaryStatus status = SalaryStatus.DRAFT;
+    private SalaryStatus status = SalaryStatus.SUBMITTED;
 
     public enum SalaryStatus {
-        DRAFT,
         SUBMITTED,
         APPROVED,
         REJECTED
     }
 
-    @PrePersist
-    @PreUpdate
-    private void calculateNetSalary() {
-        if (this.totalEarnings != null) {
-            this.netSalary = this.totalEarnings
-                    .subtract(this.deductions != null ? this.deductions : BigDecimal.ZERO)
-                    .add(this.overtime != null ? this.overtime : BigDecimal.ZERO)
-                    .add(this.bonus != null ? this.bonus : BigDecimal.ZERO);
-        }
+    /**
+     * Get net salary - totalEarning is now the net salary value
+     */
+    public BigDecimal getNetSalary() {
+        return this.totalEarning != null ? this.totalEarning : BigDecimal.ZERO;
     }
 }
 

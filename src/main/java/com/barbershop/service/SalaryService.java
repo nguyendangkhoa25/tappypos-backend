@@ -78,20 +78,22 @@ public class SalaryService {
         Employee employee = employeeRepository.findById(request.getEmployeeId())
                 .orElseThrow(() -> new RuntimeException("Employee not found"));
 
-        // Calculate total earnings
-        BigDecimal totalEarnings = calculateEmployeeEarnings(request.getEmployeeId(), request.getMonth(), request.getYear());
+        // Use totalEarning from UI request instead of recalculating
+        BigDecimal totalEarning = request.getTotalEarning() != null ? request.getTotalEarning() : BigDecimal.ZERO;
 
         // Create salary record
         Salary salary = Salary.builder()
                 .employee(employee)
                 .month(request.getMonth())
                 .year(request.getYear())
-                .totalEarnings(totalEarnings)
-                .deductions(request.getDeductions() != null ? request.getDeductions() : BigDecimal.ZERO)
-                .overtime(request.getOvertime() != null ? request.getOvertime() : BigDecimal.ZERO)
-                .bonus(request.getBonus() != null ? request.getBonus() : BigDecimal.ZERO)
+                .totalEarning(totalEarning)
+                .commissionAmount(request.getCommissionAmount() != null ? request.getCommissionAmount() : BigDecimal.ZERO)
+                .deductionAmount(request.getDeductionAmount() != null ? request.getDeductionAmount() : BigDecimal.ZERO)
+                .overtimeAmount(request.getOvertimeAmount() != null ? request.getOvertimeAmount() : BigDecimal.ZERO)
+                .bonusAmount(request.getBonusAmount() != null ? request.getBonusAmount() : BigDecimal.ZERO)
+                .allowanceAmount(request.getAllowanceAmount() != null ? request.getAllowanceAmount() : BigDecimal.ZERO)
                 .notes(request.getNotes())
-                .status(Salary.SalaryStatus.DRAFT)
+                .status(Salary.SalaryStatus.SUBMITTED)
                 .build();
 
         Salary savedSalary = salaryRepository.save(salary);
@@ -113,7 +115,7 @@ public class SalaryService {
     }
 
     /**
-     * Update salary adjustments (deductions, overtime, bonus)
+     * Update salary adjustments (deductions, overtime, bonus, allowance, totalEarnings)
      */
     public SalaryDTO updateSalary(Long salaryId, UpdateSalaryRequest request) {
         log.info("Updating salary with id: {}", salaryId);
@@ -121,14 +123,23 @@ public class SalaryService {
         Salary salary = salaryRepository.findById(salaryId)
                 .orElseThrow(() -> new RuntimeException("Salary not found"));
 
-        if (request.getDeductions() != null) {
-            salary.setDeductions(request.getDeductions());
+        if (request.getTotalEarning() != null) {
+            salary.setTotalEarning(request.getTotalEarning());
         }
-        if (request.getOvertime() != null) {
-            salary.setOvertime(request.getOvertime());
+        if (request.getCommissionAmount() != null) {
+            salary.setCommissionAmount(request.getCommissionAmount());
         }
-        if (request.getBonus() != null) {
-            salary.setBonus(request.getBonus());
+        if (request.getDeductionAmount() != null) {
+            salary.setDeductionAmount(request.getDeductionAmount());
+        }
+        if (request.getOvertimeAmount() != null) {
+            salary.setOvertimeAmount(request.getOvertimeAmount());
+        }
+        if (request.getBonusAmount() != null) {
+            salary.setBonusAmount(request.getBonusAmount());
+        }
+        if (request.getAllowanceAmount() != null) {
+            salary.setAllowanceAmount(request.getAllowanceAmount());
         }
         if (request.getNotes() != null) {
             salary.setNotes(request.getNotes());
@@ -239,10 +250,12 @@ public class SalaryService {
                 .month(salary.getMonth())
                 .year(salary.getYear())
                 .baseSalary(employee.getBaseSalary())
-                .totalEarnings(salary.getTotalEarnings())
-                .deductions(salary.getDeductions())
-                .overtime(salary.getOvertime())
-                .bonus(salary.getBonus())
+                .totalEarning(salary.getTotalEarning())
+                .commissionAmount(salary.getCommissionAmount())
+                .deductionAmount(salary.getDeductionAmount())
+                .overtimeAmount(salary.getOvertimeAmount())
+                .bonusAmount(salary.getBonusAmount())
+                .allowanceAmount(salary.getAllowanceAmount())
                 .netSalary(salary.getNetSalary())
                 .notes(salary.getNotes())
                 .status(salary.getStatus().toString())
@@ -262,6 +275,19 @@ public class SalaryService {
         Salary salary = salaryRepository.findById(salaryId)
                 .orElseThrow(() -> new RuntimeException("Salary not found"));
 
+        // Get all order items included in this salary before deleting
+        List<OrderItem> itemsInSalary = orderItemRepository.findItemsBySalaryId(salaryId);
+
+        // Unmark order items as calculated
+        itemsInSalary.forEach(item -> {
+            item.setSalaryCalculated(false);
+            item.setIncludedInSalary(null);
+        });
+
+        orderItemRepository.saveAll(itemsInSalary);
+        log.info("Unmarked {} order items as calculated for deleted salary {}", itemsInSalary.size(), salaryId);
+
+        // Soft delete the salary
         salary.softDelete();
         salaryRepository.save(salary);
         log.info("Salary deleted successfully");
@@ -385,10 +411,12 @@ public class SalaryService {
                 .employeeName(salary.getEmployee().getName())
                 .month(salary.getMonth())
                 .year(salary.getYear())
-                .totalEarnings(salary.getTotalEarnings())
-                .deductions(salary.getDeductions())
-                .overtime(salary.getOvertime())
-                .bonus(salary.getBonus())
+                .totalEarning(salary.getTotalEarning())
+                .commissionAmount(salary.getCommissionAmount())
+                .deductionAmount(salary.getDeductionAmount())
+                .overtimeAmount(salary.getOvertimeAmount())
+                .bonusAmount(salary.getBonusAmount())
+                .allowanceAmount(salary.getAllowanceAmount())
                 .netSalary(salary.getNetSalary())
                 .notes(salary.getNotes())
                 .status(salary.getStatus().toString())

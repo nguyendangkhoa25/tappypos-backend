@@ -12,8 +12,8 @@ ADD CONSTRAINT fk_order_items_salary_id
     FOREIGN KEY (included_in_salary_id) REFERENCES salaries(id);
 
 -- Create indexes for better query performance
-CREATE INDEX IF NOT EXISTS idx_order_items_salary_calculated ON order_items(is_salary_calculated);
-CREATE INDEX IF NOT EXISTS idx_order_items_included_in_salary ON order_items(included_in_salary_id);
+CREATE INDEX idx_order_items_salary_calculated ON order_items(is_salary_calculated);
+CREATE INDEX idx_order_items_included_in_salary ON order_items(included_in_salary_id);
 
 -- Create a composite index for the salary query
 CREATE INDEX idx_order_items_employee_status_calculated
