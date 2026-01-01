@@ -451,5 +451,42 @@ public class SalaryService {
                 .updatedAt(salary.getUpdatedAt())
                 .build();
     }
+
+    /**
+     * Approve a salary
+     */
+    public SalaryDTO approveSalary(Long salaryId) {
+        log.info("Approving salary with id: {}", salaryId);
+
+        Salary salary = salaryRepository.findById(salaryId)
+                .orElseThrow(() -> new RuntimeException("Salary not found"));
+
+        salary.setStatus(Salary.SalaryStatus.APPROVED);
+        salary.setApprovedAt(java.time.LocalDateTime.now());
+
+        Salary savedSalary = salaryRepository.save(salary);
+        log.info("Salary approved successfully");
+
+        return mapToDTO(savedSalary);
+    }
+
+    /**
+     * Reject a salary
+     */
+    public SalaryDTO rejectSalary(Long salaryId, String reason) {
+        log.info("Rejecting salary with id: {} - Reason: {}", salaryId, reason);
+
+        Salary salary = salaryRepository.findById(salaryId)
+                .orElseThrow(() -> new RuntimeException("Salary not found"));
+
+        salary.setStatus(Salary.SalaryStatus.REJECTED);
+        salary.setNotes((salary.getNotes() != null ? salary.getNotes() + "\n" : "") +
+                        "Rejected: " + (reason != null ? reason : "No reason provided"));
+
+        Salary savedSalary = salaryRepository.save(salary);
+        log.info("Salary rejected successfully");
+
+        return mapToDTO(savedSalary);
+    }
 }
 

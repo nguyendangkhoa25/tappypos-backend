@@ -13,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @RestController
@@ -217,6 +218,35 @@ public class SalaryController {
                 employeeId, calculated, pageable);
 
         return ResponseEntity.ok(ApiResponse.success(items, "Order items retrieved successfully"));
+    }
+
+    /**
+     * POST /api/salaries/{id}/approve
+     * Approve a salary
+     */
+    @PostMapping("/{id}/approve")
+    public ResponseEntity<ApiResponse<SalaryDTO>> approveSalary(@PathVariable Long id) {
+        log.info("Endpoint: POST /salaries/{}/approve - Approve salary", id);
+
+        SalaryDTO salary = salaryService.approveSalary(id);
+        return ResponseEntity.ok(ApiResponse.success(salary, "Salary approved successfully"));
+    }
+
+    /**
+     * POST /api/salaries/{id}/reject
+     * Reject a salary
+     * Request Body:
+     * - reason: Reason for rejection (optional)
+     */
+    @PostMapping("/{id}/reject")
+    public ResponseEntity<ApiResponse<SalaryDTO>> rejectSalary(
+            @PathVariable Long id,
+            @RequestBody(required = false) Map<String, String> body) {
+        log.info("Endpoint: POST /salaries/{}/reject - Reject salary", id);
+
+        String reason = body != null ? body.get("reason") : null;
+        SalaryDTO salary = salaryService.rejectSalary(id, reason);
+        return ResponseEntity.ok(ApiResponse.success(salary, "Salary rejected successfully"));
     }
 }
 
