@@ -67,7 +67,7 @@ public class OrderItem extends BaseEntity {
     @JoinColumn(name = "included_in_salary_id")
     private Salary includedInSalary;
 
-    @Column(name = "is_salary_calculated", columnDefinition = "BOOLEAN DEFAULT false")
+    @Column(name = "is_salary_calculated", nullable = false, columnDefinition = "BOOLEAN DEFAULT false")
     private Boolean salaryCalculated = false;
 
     public enum ItemStatus {

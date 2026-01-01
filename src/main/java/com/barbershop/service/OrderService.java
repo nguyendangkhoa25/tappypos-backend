@@ -511,7 +511,8 @@ public class OrderService {
                 .taxAmount(itemRequest.getTaxAmount() != null ? itemRequest.getTaxAmount() : BigDecimal.ZERO)
                 .commissionRate(itemRequest.getCommissionRate() != null ? itemRequest.getCommissionRate() : BigDecimal.ZERO)
                 .commissionAmount(itemRequest.getCommissionAmount() != null ? itemRequest.getCommissionAmount() : BigDecimal.ZERO)
-                .status(OrderItem.ItemStatus.PENDING);
+                .status(OrderItem.ItemStatus.PENDING)
+                .salaryCalculated(false);
 
         // Assign employee if provided
         if (itemRequest.getAssignedEmployeeId() != null) {
