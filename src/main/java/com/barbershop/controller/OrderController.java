@@ -124,12 +124,30 @@ public class OrderController {
         return ResponseEntity.ok(ApiResponse.success(item, "Work item released successfully"));
     }
 
+    @PutMapping("/work-queue/items/{itemId}/start")
+    public ResponseEntity<ApiResponse<OrderItemDTO>> startWorkItem(
+            @PathVariable Long itemId,
+            @RequestParam Long employeeId) {
+        OrderItemDTO item = orderService.startWorkItem(itemId, employeeId);
+        return ResponseEntity.ok(ApiResponse.success(item, "Work item started successfully"));
+    }
+
     @PutMapping("/work-queue/items/{itemId}/complete")
     public ResponseEntity<ApiResponse<OrderItemDTO>> completeWorkItem(
             @PathVariable Long itemId,
             @RequestParam Long employeeId) {
         OrderItemDTO item = orderService.completeWorkItem(itemId, employeeId);
         return ResponseEntity.ok(ApiResponse.success(item, "Work item completed successfully"));
+    }
+
+    // Order Items endpoints
+    @GetMapping("/items")
+    public ResponseEntity<ApiResponse<Page<OrderItemDTO>>> getOrderItems(
+            @RequestParam(required = false) Long employeeId,
+            @RequestParam(required = false) String status,
+            Pageable pageable) {
+        Page<OrderItemDTO> items = orderService.getOrderItems(employeeId, status, pageable);
+        return ResponseEntity.ok(ApiResponse.success(items, "Order items retrieved successfully"));
     }
 
     @GetMapping("/{id}/bill")

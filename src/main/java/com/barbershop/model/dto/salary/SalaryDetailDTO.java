@@ -1,0 +1,48 @@
+package com.barbershop.model.dto.salary;
+
+import lombok.*;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class SalaryDetailDTO {
+    private Long salaryId;
+    private Long employeeId;
+    private String employeeName;
+    private String employeePosition;
+    private Integer month;
+    private Integer year;
+    private BigDecimal baseSalary;
+    private BigDecimal totalEarnings;
+    private BigDecimal deductions;
+    private BigDecimal overtime;
+    private BigDecimal bonus;
+    private BigDecimal netSalary;
+    private String notes;
+    private String status;
+    private LocalDateTime approvedAt;
+    private Long approvedByUserId;
+    private LocalDateTime createdAt;
+    private List<OrderItemEarningDTO> orderItems;
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class OrderItemEarningDTO {
+        private Long orderId;
+        private Long orderItemId;
+        private String serviceName;
+        private BigDecimal amount;
+        private BigDecimal commissionAmount;
+        private LocalDateTime completedAt;
+    }
+}
+
