@@ -47,6 +47,12 @@ public interface SalaryRepository extends JpaRepository<Salary, Long> {
     Page<Salary> findAllActive(Pageable pageable);
 
     /**
+     * Find all salaries for a specific month and year
+     */
+    @Query("SELECT s FROM Salary s WHERE s.deleted = false AND s.month = :month AND s.year = :year")
+    List<Salary> findByYearAndMonthAndDeletedFalse(@Param("year") Integer year, @Param("month") Integer month);
+
+    /**
      * Find salaries by status with pagination
      */
     @Query("SELECT s FROM Salary s WHERE s.deleted = false AND s.status = :status ORDER BY s.year DESC, s.month DESC")

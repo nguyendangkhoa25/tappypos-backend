@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.time.LocalDateTime;
 
 @Repository
 public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecificationExecutor<Order> {
@@ -41,5 +42,15 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
            "(LOWER(o.customer.name) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
            "LOWER(o.customer.phone) LIKE LOWER(CONCAT('%', :keyword, '%')))")
     Page<Order> searchByCustomerKeyword(@Param("keyword") String keyword, Pageable pageable);
+
+    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.status = 'COMPLETED' AND " +
+           "o.completedAt >= :startDate AND o.completedAt <= :endDate")
+    List<Order> findByCompletedAtBetweenAndStatus(@Param("startDate") LocalDateTime startDate,
+                                                   @Param("endDate") LocalDateTime endDate,
+                                                   @Param("status") String status);
+
+    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.status = 'COMPLETED' AND " +
+           "YEAR(o.completedAt) = :year AND MONTH(o.completedAt) = :month")
+    List<Order> findCompletedOrdersByYearAndMonth(@Param("year") Integer year, @Param("month") Integer month);
 }
 
