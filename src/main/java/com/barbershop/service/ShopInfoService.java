@@ -98,9 +98,9 @@ public class ShopInfoService {
             shopInfo.setEmail(shopInfoDTO.getEmail());
         }
 
-        if (shopInfoDTO.getTaxCode() != null) {
-            log.debug("Updating tax ID");
-            shopInfo.setTaxCode(shopInfoDTO.getTaxCode());
+        if (shopInfoDTO.getSupplierTaxCode() != null) {
+            log.debug("Updating supplier tax code");
+            shopInfo.setSupplierTaxCode(shopInfoDTO.getSupplierTaxCode());
         }
 
         if (shopInfoDTO.getWebsite() != null) {
@@ -110,6 +110,22 @@ public class ShopInfoService {
 
         if (shopInfoDTO.getInvoiceVendor() != null) {
             shopInfo.setInvoiceVendor(shopInfoDTO.getInvoiceVendor());
+        }
+
+        if (shopInfoDTO.getTemplateCode() != null) {
+            log.debug("Updating template code");
+            shopInfo.setTemplateCode(shopInfoDTO.getTemplateCode());
+        }
+
+        if (shopInfoDTO.getInvoiceSeries() != null) {
+            log.debug("Updating invoice series");
+            shopInfo.setInvoiceSeries(shopInfoDTO.getInvoiceSeries());
+        }
+
+        if (shopInfoDTO.getInvoiceSystem() != null) {
+            log.debug("Updating invoice system - old: {}, new: {}",
+                    shopInfo.getInvoiceSystem(), shopInfoDTO.getInvoiceSystem());
+            shopInfo.setInvoiceSystem(shopInfoDTO.getInvoiceSystem());
         }
 
         ShopInfo updatedShopInfo = shopInfoRepository.save(shopInfo);
@@ -170,8 +186,12 @@ public class ShopInfoService {
                 .eInvoiceKey(shopInfo.getEInvoiceKey())
                 .phone(shopInfo.getPhone())
                 .email(shopInfo.getEmail())
-                .taxCode(shopInfo.getTaxCode())
+                .supplierTaxCode(shopInfo.getSupplierTaxCode())
                 .website(shopInfo.getWebsite())
+                .invoiceVendor(shopInfo.getInvoiceVendor())
+                .templateCode(shopInfo.getTemplateCode())
+                .invoiceSeries(shopInfo.getInvoiceSeries())
+                .invoiceSystem(shopInfo.getInvoiceSystem())
                 .createdAt(shopInfo.getCreatedAt())
                 .updatedAt(shopInfo.getUpdatedAt())
                 .build();
@@ -193,7 +213,7 @@ public class ShopInfoService {
                 .defaultTaxRate(shopInfo.getDefaultTaxRate())
                 .phone(shopInfo.getPhone())
                 .email(shopInfo.getEmail())
-                .taxCode(shopInfo.getTaxCode())
+                .supplierTaxCode(shopInfo.getSupplierTaxCode())
                 .website(shopInfo.getWebsite())
                 .createdAt(shopInfo.getCreatedAt())
                 .updatedAt(shopInfo.getUpdatedAt())

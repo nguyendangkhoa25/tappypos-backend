@@ -627,6 +627,7 @@ public class OrderService {
                 .discountAmount(order.getDiscountAmount())
                 .taxPercentage(order.getTaxPercentage())
                 .taxAmount(order.getTaxAmount())
+                .invoiceId(order.getInvoiceId())
                 .notes(order.getNotes())
                 .createdAt(order.getCreatedAt())
                 .completedAt(order.getCompletedAt())

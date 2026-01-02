@@ -2,8 +2,6 @@ package com.barbershop.model.dto.invoice;
 
 import lombok.*;
 
-import java.math.BigDecimal;
-
 @Getter
 @Setter
 @NoArgsConstructor
@@ -11,6 +9,8 @@ import java.math.BigDecimal;
 @Builder
 public class UpdateInvoiceRequest {
     private String status;
-    private BigDecimal tax;
+    private String paymentType;
     private String notes;
 }
+
+

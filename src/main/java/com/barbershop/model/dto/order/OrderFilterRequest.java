@@ -19,5 +19,6 @@ public class OrderFilterRequest {
     private LocalDateTime fromDate; // Filter by start date
     private LocalDateTime toDate; // Filter by end date
     private Long customerId; // Filter by specific customer
+    private Boolean withoutInvoice; // Filter orders without invoice (true = only orders without invoice)
 }
 

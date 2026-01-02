@@ -21,7 +21,7 @@ public class PublicShopInfoDTO {
     private Double defaultTaxRate;
     private String phone;
     private String email;
-    private String taxCode;
+    private String supplierTaxCode;
     private String website;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

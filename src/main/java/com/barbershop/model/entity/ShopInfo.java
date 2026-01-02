@@ -49,10 +49,22 @@ public class ShopInfo extends BaseEntity {
 
     // Tax ID / Company registration number
     @Column(length = 150)
-    private String taxCode;
+    private String supplierTaxCode;
 
     @Column(length = 150)
     private String invoiceVendor;
+
+    // Template code for S-Invoice
+    @Column(length = 50)
+    private String templateCode;
+
+    // Invoice series for S-Invoice
+    @Column(name = "invoice_series", length = 50)
+    private String invoiceSeries;
+
+    // Invoice system type: S-INVOICE, M-INVOICE, MOCK
+    @Column(name = "invoice_system", length = 20)
+    private String invoiceSystem;
 
     // Website
     @Column(length = 200)

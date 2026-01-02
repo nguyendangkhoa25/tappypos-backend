@@ -44,6 +44,9 @@ public class Order extends BaseEntity {
     @Column(name = "commission_amount", precision = 10, scale = 2, columnDefinition = "DECIMAL(10,2) DEFAULT 0")
     private BigDecimal commissionAmount = BigDecimal.ZERO;
 
+    @Column(name = "invoice_id")
+    private Long invoiceId;
+
     @Column(length = 500)
     private String notes;
 

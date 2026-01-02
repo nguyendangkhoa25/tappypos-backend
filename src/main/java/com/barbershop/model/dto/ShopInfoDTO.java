@@ -20,9 +20,12 @@ public class ShopInfoDTO {
     private String eInvoiceKey;
     private String phone;
     private String email;
-    private String taxCode;
+    private String supplierTaxCode;
     private String website;
     private String invoiceVendor;
+    private String templateCode;
+    private String invoiceSeries;
+    private String invoiceSystem;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

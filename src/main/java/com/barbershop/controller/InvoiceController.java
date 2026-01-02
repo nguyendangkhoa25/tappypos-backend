@@ -3,7 +3,6 @@ package com.barbershop.controller;
 import com.barbershop.model.dto.*;
 import com.barbershop.model.dto.invoice.CreateInvoiceRequest;
 import com.barbershop.model.dto.invoice.InvoiceDTO;
-import com.barbershop.model.dto.invoice.SyncInvoiceRequest;
 import com.barbershop.model.dto.invoice.UpdateInvoiceRequest;
 import com.barbershop.service.InvoiceService;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +17,6 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/invoices")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:3000")
 public class InvoiceController {
 
     private final InvoiceService invoiceService;
@@ -63,11 +61,41 @@ public class InvoiceController {
     }
 
     @PostMapping("/{id}/sync-external")
-    public ResponseEntity<ApiResponse<InvoiceDTO>> syncWithExternalSystem(
-            @PathVariable Long id,
-            @RequestBody SyncInvoiceRequest request) {
-        InvoiceDTO invoice = invoiceService.syncWithExternalSystem(id, request);
+    public ResponseEntity<ApiResponse<InvoiceDTO>> syncWithExternalSystem(@PathVariable Long id) {
+        InvoiceDTO invoice = invoiceService.syncInvoiceWithExternalSystem(id);
         return ResponseEntity.ok(ApiResponse.success(invoice, "Invoice synced successfully"));
+    }
+
+    @PostMapping("/{id}/send-email")
+    public ResponseEntity<ApiResponse<InvoiceDTO>> sendInvoiceEmail(@PathVariable Long id) {
+        InvoiceDTO invoice = invoiceService.sendInvoiceEmail(id);
+        return ResponseEntity.ok(ApiResponse.success(invoice, "Invoice email sent successfully"));
+    }
+
+    @GetMapping("/{id}/download")
+    public ResponseEntity<byte[]> downloadInvoice(@PathVariable Long id) {
+        try {
+            byte[] pdfBytes = invoiceService.downloadInvoicePdf(id);
+            InvoiceDTO invoiceDTO = invoiceService.getInvoiceById(id);
+
+            return ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                           "attachment; filename=\"invoice_" + invoiceDTO.getInvoiceNumber() + ".pdf\"")
+                    .body(pdfBytes);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(null);
+        }
+    }
+
+    @PutMapping("/{id}/cancel")
+    public ResponseEntity<ApiResponse<InvoiceDTO>> cancelInvoice(
+            @PathVariable Long id,
+            @RequestBody(required = false) CancelInvoiceRequest request) {
+        String reason = request != null && request.getReason() != null ? request.getReason() : "No reason provided";
+        InvoiceDTO invoice = invoiceService.cancelInvoice(id, reason);
+        return ResponseEntity.ok(ApiResponse.success(invoice, "Invoice cancelled successfully"));
     }
 
     @DeleteMapping("/{id}")
@@ -76,28 +104,29 @@ public class InvoiceController {
         return ResponseEntity.ok(ApiResponse.success(null, "Invoice deleted successfully"));
     }
 
-    @GetMapping("/{id}/download")
-    public ResponseEntity<byte[]> downloadInvoice(@PathVariable Long id) {
-        try {
-            InvoiceDTO invoiceDTO = invoiceService.getInvoiceById(id);
-            // In production, generate PDF invoice here
-            byte[] pdfBytes = new byte[0]; // Placeholder
-
-            return ResponseEntity.ok()
-                    .contentType(MediaType.APPLICATION_PDF)
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"invoice_" + invoiceDTO.getInvoiceNumber() + ".pdf\"")
-                    .body(pdfBytes);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-
     @GetMapping("/status/{status}")
     public ResponseEntity<ApiResponse<Page<InvoiceDTO>>> searchInvoicesByStatus(
             @PathVariable String status,
             Pageable pageable) {
         Page<InvoiceDTO> invoices = invoiceService.searchInvoicesByStatus(status, pageable);
         return ResponseEntity.ok(ApiResponse.success(invoices, "Invoices retrieved successfully"));
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<ApiResponse<Page<InvoiceDTO>>> searchInvoices(
+            @RequestParam String query,
+            Pageable pageable) {
+        Page<InvoiceDTO> invoices = invoiceService.searchInvoices(query, pageable);
+        return ResponseEntity.ok(ApiResponse.success(invoices, "Invoices found successfully"));
+    }
+
+    // Helper DTO for cancel request
+    @lombok.Getter
+    @lombok.Setter
+    @lombok.NoArgsConstructor
+    @lombok.AllArgsConstructor
+    public static class CancelInvoiceRequest {
+        private String reason;
     }
 }
 

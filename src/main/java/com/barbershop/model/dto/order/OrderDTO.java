@@ -28,6 +28,7 @@ public class OrderDTO {
     private BigDecimal discountAmount;
     private BigDecimal taxPercentage;
     private BigDecimal taxAmount;
+    private Long invoiceId;
     private String notes;
     private LocalDateTime createdAt;
     private LocalDateTime completedAt;

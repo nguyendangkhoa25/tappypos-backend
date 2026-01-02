@@ -18,21 +18,24 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     Page<Invoice> findAllActive(Pageable pageable);
 
     @Query("SELECT i FROM Invoice i WHERE i.deletedAt IS NULL AND i.id = :id")
-    Optional<Invoice> findByIdActive(Long id);
+    Optional<Invoice> findByIdActive(@Param("id") Long id);
 
     @Query("SELECT i FROM Invoice i WHERE i.deletedAt IS NULL AND i.order.id = :orderId")
-    Optional<Invoice> findByOrderId(Long orderId);
+    Optional<Invoice> findByOrderId(@Param("orderId") Long orderId);
 
     @Query("SELECT i FROM Invoice i WHERE i.deletedAt IS NULL AND i.invoiceNumber = :invoiceNumber")
-    Optional<Invoice> findByInvoiceNumber(String invoiceNumber);
+    Optional<Invoice> findByInvoiceNumber(@Param("invoiceNumber") String invoiceNumber);
 
-    @Query("SELECT i FROM Invoice i WHERE i.deletedAt IS NULL AND i.status = :status")
+    @Query("SELECT i FROM Invoice i WHERE i.deletedAt IS NULL AND i.status = :status ORDER BY i.issuedDate DESC")
     Page<Invoice> findByStatus(@Param("status") String status, Pageable pageable);
 
     @Query("SELECT i FROM Invoice i WHERE i.deletedAt IS NULL AND i.externalInvoiceId IS NOT NULL")
     List<Invoice> findAllSyncedWithExternal();
 
-    @Query("SELECT i FROM Invoice i WHERE i.deletedAt IS NULL AND i.status = 'SYNCED_WITH_EXTERNAL'")
+    @Query("SELECT i FROM Invoice i WHERE i.deletedAt IS NULL AND i.externalInvoiceId IS NOT NULL")
     Page<Invoice> findAllSyncedWithExternal(Pageable pageable);
+
+    @Query("SELECT i FROM Invoice i WHERE i.deletedAt IS NULL AND (i.invoiceNumber LIKE %:query% OR i.order.customer.name LIKE %:query%)")
+    Page<Invoice> searchByInvoiceNumberOrCustomerName(@Param("query") String query, Pageable pageable);
 }
 
