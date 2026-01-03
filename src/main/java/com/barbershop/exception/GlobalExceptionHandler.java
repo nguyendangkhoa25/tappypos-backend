@@ -1,6 +1,8 @@
 package com.barbershop.exception;
 
 import com.barbershop.model.dto.ApiResponse;
+import com.barbershop.service.MessageService;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -19,7 +21,10 @@ import java.util.NoSuchElementException;
 
 @Slf4j
 @RestControllerAdvice
+@RequiredArgsConstructor
 public class GlobalExceptionHandler {
+
+    private final MessageService messageService;
 
     /**
      * Handle ResourceNotFoundException - 404 Not Found
@@ -29,8 +34,9 @@ public class GlobalExceptionHandler {
             ResourceNotFoundException ex,
             WebRequest request) {
         log.error("Resource not found: {}", ex.getMessage());
+        String message = ex.getMessage() != null ? ex.getMessage() : messageService.getMessage("error.resource.not.found");
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(ApiResponse.error("RESOURCE_NOT_FOUND", ex.getMessage()));
+                .body(ApiResponse.error("RESOURCE_NOT_FOUND", message));
     }
 
     /**
@@ -41,8 +47,9 @@ public class GlobalExceptionHandler {
             NoSuchElementException ex,
             WebRequest request) {
         log.error("Element not found: {}", ex.getMessage());
+        String message = ex.getMessage() != null ? ex.getMessage() : messageService.getMessage("error.resource.not.found");
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(ApiResponse.error("NOT_FOUND", ex.getMessage()));
+                .body(ApiResponse.error("NOT_FOUND", message));
     }
 
     /**
@@ -53,8 +60,9 @@ public class GlobalExceptionHandler {
             BadRequestException ex,
             WebRequest request) {
         log.error("Bad request: {}", ex.getMessage());
+        String message = ex.getMessage() != null ? ex.getMessage() : messageService.getMessage("error.bad.request");
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponse.error("BAD_REQUEST", ex.getMessage()));
+                .body(ApiResponse.error("BAD_REQUEST", message));
     }
 
     /**
@@ -65,8 +73,9 @@ public class GlobalExceptionHandler {
             IllegalArgumentException ex,
             WebRequest request) {
         log.error("Illegal argument: {}", ex.getMessage());
+        String message = ex.getMessage() != null ? ex.getMessage() : messageService.getMessage("error.invalid.argument");
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponse.error("INVALID_ARGUMENT", ex.getMessage()));
+                .body(ApiResponse.error("INVALID_ARGUMENT", message));
     }
 
     /**
@@ -77,8 +86,9 @@ public class GlobalExceptionHandler {
             DuplicateResourceException ex,
             WebRequest request) {
         log.error("Duplicate resource: {}", ex.getMessage());
+        String message = ex.getMessage() != null ? ex.getMessage() : messageService.getMessage("error.duplicate.resource");
         return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(ApiResponse.error("DUPLICATE_RESOURCE", ex.getMessage()));
+                .body(ApiResponse.error("DUPLICATE_RESOURCE", message));
     }
 
     /**
@@ -89,8 +99,9 @@ public class GlobalExceptionHandler {
             UnauthorizedException ex,
             WebRequest request) {
         log.error("Unauthorized: {}", ex.getMessage());
+        String message = ex.getMessage() != null ? ex.getMessage() : messageService.getMessage("error.unauthorized");
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(ApiResponse.error("UNAUTHORIZED", ex.getMessage()));
+                .body(ApiResponse.error("UNAUTHORIZED", message));
     }
 
     /**
@@ -102,7 +113,7 @@ public class GlobalExceptionHandler {
             WebRequest request) {
         log.error("Bad credentials: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(ApiResponse.error("INVALID_CREDENTIALS", "Invalid username or password"));
+                .body(ApiResponse.error("INVALID_CREDENTIALS", messageService.getMessage("error.invalid.credentials")));
     }
 
     /**
@@ -113,8 +124,9 @@ public class GlobalExceptionHandler {
             IllegalStateException ex,
             WebRequest request) {
         log.error("Illegal state: {}", ex.getMessage());
+        String message = ex.getMessage() != null ? ex.getMessage() : messageService.getMessage("error.illegal.state");
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponse.error("ILLEGAL_STATE", ex.getMessage()));
+                .body(ApiResponse.error("ILLEGAL_STATE", message));
     }
 
     /**
@@ -125,8 +137,9 @@ public class GlobalExceptionHandler {
             BusinessException ex,
             WebRequest request) {
         log.error("Business rule violation: {}", ex.getMessage());
+        String message = ex.getMessage() != null ? ex.getMessage() : messageService.getMessage("error.business.rule.violation");
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
-                .body(ApiResponse.error("BUSINESS_RULE_VIOLATION", ex.getMessage()));
+                .body(ApiResponse.error("BUSINESS_RULE_VIOLATION", message));
     }
 
     /**
@@ -138,7 +151,7 @@ public class GlobalExceptionHandler {
             WebRequest request) {
         log.error("Access denied: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .body(ApiResponse.error("ACCESS_DENIED", "You don't have permission to access this resource"));
+                .body(ApiResponse.error("ACCESS_DENIED", messageService.getMessage("error.access.denied")));
     }
 
     /**
@@ -158,7 +171,7 @@ public class GlobalExceptionHandler {
         ApiResponse<Map<String, String>> response = ApiResponse.<Map<String, String>>builder()
                 .success(false)
                 .error("VALIDATION_ERROR")
-                .message("Validation failed")
+                .message(messageService.getMessage("error.validation.failed"))
                 .data(errors)
                 .build();
 
@@ -173,8 +186,8 @@ public class GlobalExceptionHandler {
             MethodArgumentTypeMismatchException ex,
             WebRequest request) {
         log.error("Type mismatch: {}", ex.getMessage());
-        String error = String.format("Parameter '%s' should be of type %s",
-                ex.getName(), ex.getRequiredType().getSimpleName());
+        String typeName = ex.getRequiredType() != null ? ex.getRequiredType().getSimpleName() : "unknown";
+        String error = messageService.getMessage("error.type.mismatch", ex.getName(), typeName);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error("TYPE_MISMATCH", error));
     }
@@ -187,8 +200,9 @@ public class GlobalExceptionHandler {
             RuntimeException ex,
             WebRequest request) {
         log.error("Runtime exception: ", ex);
+        String message = ex.getMessage() != null ? ex.getMessage() : messageService.getMessage("error.unexpected");
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error("INTERNAL_SERVER_ERROR", ex.getMessage()));
+                .body(ApiResponse.error("INTERNAL_SERVER_ERROR", message));
     }
 
     /**
@@ -200,7 +214,7 @@ public class GlobalExceptionHandler {
             WebRequest request) {
         log.error("Unexpected exception: ", ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error("INTERNAL_SERVER_ERROR", "An unexpected error occurred. Please contact support."));
+                .body(ApiResponse.error("INTERNAL_SERVER_ERROR", messageService.getMessage("error.internal.server")));
     }
 }
 

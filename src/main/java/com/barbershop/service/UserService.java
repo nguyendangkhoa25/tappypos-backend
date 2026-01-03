@@ -1,6 +1,7 @@
 package com.barbershop.service;
 
 import com.barbershop.exception.BadRequestException;
+import com.barbershop.exception.DuplicateResourceException;
 import com.barbershop.exception.ResourceNotFoundException;
 import com.barbershop.exception.UnauthorizedException;
 import com.barbershop.model.dto.*;
@@ -38,6 +39,7 @@ public class UserService {
     private final RoleRepository roleRepository;
     private final EmployeeRepository employeeRepository;
     private final PasswordEncoder passwordEncoder;
+    private final MessageService messageService;
 
     /**
      * Create a new user
@@ -47,12 +49,12 @@ public class UserService {
 
         // Check if username already exists
         if (userRepository.existsByUsername(request.getUsername())) {
-            throw new IllegalArgumentException("Username already exists: " + request.getUsername());
+            throw new DuplicateResourceException(messageService.getMessage("error.user.duplicate.username", request.getUsername()));
         }
 
         // Check if email already exists
         if (StringUtils.isNoneEmpty(request.getEmail()) && userRepository.existsByEmail(request.getEmail())) {
-            throw new IllegalArgumentException("Email already exists: " + request.getEmail());
+            throw new DuplicateResourceException(messageService.getMessage("error.user.duplicate.email", request.getEmail()));
         }
 
         // Create user
