@@ -1,6 +1,7 @@
 package com.barbershop.multitenant;
 
 import com.barbershop.model.entity.Tenant;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Component;
 import lombok.extern.slf4j.Slf4j;
 
@@ -13,13 +14,15 @@ import lombok.extern.slf4j.Slf4j;
 public class TenantContext {
 
     private static final ThreadLocal<Tenant> currentTenant = new ThreadLocal<>();
+    private static final String MDC_TENANT_KEY = "tenantId";
 
     /**
      * Set the current tenant for this thread/request
      */
     public void setCurrentTenant(Tenant tenant) {
-        log.debug("Setting tenant context: {}", tenant.getTenantId());
+        String tenantId = tenant.getTenantId();
         currentTenant.set(tenant);
+        MDC.put(MDC_TENANT_KEY, tenantId);
     }
 
     /**
@@ -43,6 +46,7 @@ public class TenantContext {
     public void clear() {
         log.debug("Clearing tenant context");
         currentTenant.remove();
+        MDC.remove(MDC_TENANT_KEY);
     }
 }
 

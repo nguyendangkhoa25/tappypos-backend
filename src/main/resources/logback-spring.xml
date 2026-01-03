@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Property for log file location -->
+    <property name="LOG_PATH" value="./logs"/>
+
+    <!-- Property for log pattern -->
+    <property name="LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{tenantId}] %-5level %logger{36} - %msg%n"/>
+
+    <!-- Console Appender -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- Sifting Appender - Tenant-Specific Logs with Daily Rotation -->
+    <appender name="TENANT_SIFT" class="ch.qos.logback.classic.sift.SiftingAppender">
+        <!-- Filter: Only accept logs with tenant ID -->
+        <filter class="com.barbershop.config.TenantLogFilter"/>
+        <discriminator class="com.barbershop.config.TenantDiscriminator">
+            <key>tenantId</key>
+            <defaultValue>unknown-tenant</defaultValue> <!-- Updated default value to avoid confusion -->
+        </discriminator>
+        <sift>
+            <appender name="TENANT-${tenantId}" class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <file>${LOG_PATH}/tenant-${tenantId}/app.log</file>
+                <encoder>
+                    <pattern>${LOG_PATTERN}</pattern>
+                    <charset>UTF-8</charset>
+                </encoder>
+                <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                    <!-- Daily rollover - archived logs in same folder -->
+                    <fileNamePattern>${LOG_PATH}/tenant-${tenantId}/app-%d{yyyy-MM-dd}.log</fileNamePattern>
+                    <!-- Keep 30 days of history -->
+                    <maxHistory>30</maxHistory>
+                    <!-- Total size cap per tenant -->
+                    <totalSizeCap>1GB</totalSizeCap>
+                </rollingPolicy>
+            </appender>
+        </sift>
+    </appender>
+
+    <!-- Rolling File Appender - Application Logs (for non-tenant requests) -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <!-- Filter: Only accept logs without tenant ID -->
+        <filter class="com.barbershop.config.NonTenantLogFilter"/>
+        <file>${LOG_PATH}/app.log</file>
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- Daily rollover -->
+            <fileNamePattern>${LOG_PATH}/app-%d{yyyy-MM-dd}.log</fileNamePattern>
+            <!-- Keep 30 days of history -->
+            <maxHistory>30</maxHistory>
+            <!-- Total size cap -->
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+
+    <!-- Async Appender for better performance -->
+    <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="FILE"/>
+        <queueSize>512</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+    </appender>
+
+    <!-- Async Appender for Tenant-Specific Logs -->
+    <appender name="ASYNC_TENANT_SIFT" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="TENANT_SIFT"/>
+        <queueSize>512</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+    </appender>
+
+    <!-- Logger for application packages -->
+    <logger name="com.barbershop" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ASYNC_FILE"/>
+        <appender-ref ref="ASYNC_TENANT_SIFT"/>
+    </logger>
+
+    <!-- Logger for Spring Framework -->
+    <logger name="org.springframework" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ASYNC_FILE"/>
+        <appender-ref ref="ASYNC_TENANT_SIFT"/>
+    </logger>
+
+    <!-- Logger for Hibernate -->
+    <logger name="org.hibernate" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ASYNC_FILE"/>
+        <appender-ref ref="ASYNC_TENANT_SIFT"/>
+    </logger>
+
+    <!-- Production profile - less verbose logging -->
+    <springProfile name="prod">
+        <root level="INFO">
+            <appender-ref ref="ASYNC_FILE"/>
+            <appender-ref ref="ASYNC_TENANT_SIFT"/>
+        </root>
+    </springProfile>
+
+    <!-- Development profile - verbose logging -->
+    <springProfile name="dev">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="ASYNC_FILE"/>
+            <appender-ref ref="ASYNC_TENANT_SIFT"/>
+        </root>
+    </springProfile>
+
+    <!-- Default profile -->
+    <springProfile name="!prod &amp; !dev">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="ASYNC_FILE"/>
+            <appender-ref ref="ASYNC_TENANT_SIFT"/>
+        </root>
+    </springProfile>
+</configuration>
+
