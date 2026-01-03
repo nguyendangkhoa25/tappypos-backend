@@ -45,6 +45,43 @@ public class InvoiceDTO {
         private Long id;
         private String invoiceNumber;
         private CustomerInfo customer;
+        private String customerName;
+        private String customerPhone;
+        private String customerEmail;
+        private BigDecimal totalAmount;
+        private BigDecimal discountAmount;
+        private BigDecimal taxAmount;
+        private BigDecimal taxPercentage;
+        private String status;
+        private List<OrderItemInfo> orderItems;
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class OrderItemInfo {
+        private Long id;
+        private Long orderId;
+        private String orderCustomerName;
+        private String orderCustomerPhone;
+        private String orderCustomerEmail;
+        private Long productId;
+        private String productName;
+        private String serviceName;
+        private Integer quantity;
+        private BigDecimal unitPrice;
+        private BigDecimal price;
+        private BigDecimal totalPrice;
+        private BigDecimal taxPercentage;
+        private BigDecimal taxAmount;
+        private String status;
+        private Long assignedEmployeeId;
+        private String assignedEmployeeName;
+        private String employeeName;
+        private LocalDateTime completedAt;
+        private Integer ordinalNumber;
     }
 
     @Getter
@@ -56,6 +93,12 @@ public class InvoiceDTO {
         private Long id;
         private String name;
         private String phone;
+        private String email;
+        private String identityNumber;
+        private String companyName;
+        private String companyTaxCode;
+        private String fax;
+        private String address;
     }
 
     @Getter

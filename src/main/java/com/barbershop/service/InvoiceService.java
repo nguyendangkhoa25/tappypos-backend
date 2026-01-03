@@ -226,20 +226,61 @@ public class InvoiceService {
     }
 
     public InvoiceDTO updateInvoice(Long id, UpdateInvoiceRequest request) {
+        log.info("Updating invoice {} with request: {}", id, request);
         Invoice invoice = invoiceRepository.findByIdActive(id)
                 .orElseThrow(() -> new RuntimeException("Invoice not found with id: " + id));
 
+        // Update basic fields
         if (request.getStatus() != null) {
+            log.debug("Updating status from {} to {}", invoice.getStatus(), request.getStatus());
             invoice.setStatus(Invoice.InvoiceStatus.valueOf(request.getStatus()));
         }
         if (request.getPaymentType() != null) {
+            log.debug("Updating paymentType from {} to {}", invoice.getPaymentType(), request.getPaymentType());
             invoice.setPaymentType(Invoice.PaymentType.valueOf(request.getPaymentType()));
         }
+        if (request.getInvoiceType() != null) {
+            log.debug("Updating invoiceType from {} to {}", invoice.getInvoiceType(), request.getInvoiceType());
+            invoice.setInvoiceType(Invoice.InvoiceType.valueOf(request.getInvoiceType()));
+        }
+
+        // Update invoice series - handle both null and empty string
+        if (request.getInvoiceSeries() != null) {
+            log.debug("Updating invoiceSeries from '{}' to '{}'", invoice.getInvoiceSeries(), request.getInvoiceSeries());
+            invoice.setInvoiceSeries(request.getInvoiceSeries());
+        }
+
         if (request.getNotes() != null) {
+            log.debug("Updating notes");
             invoice.setNotes(request.getNotes());
         }
 
+        // Update buyer info if provided
+        if (request.getBuyerInfo() != null) {
+            log.debug("Updating buyer info");
+            InvoiceBuyer buyer = invoice.getBuyer();
+            if (buyer == null) {
+                log.debug("Creating new buyer");
+                buyer = new InvoiceBuyer();
+            }
+
+            UpdateInvoiceRequest.BuyerInfoRequest buyerInfo = request.getBuyerInfo();
+            buyer.setBuyerName(buyerInfo.getBuyerName());
+            buyer.setBuyerLegalName(buyerInfo.getBuyerLegalName());
+            buyer.setBuyerTaxCode(buyerInfo.getBuyerTaxCode());
+            buyer.setBuyerAddressLine(buyerInfo.getBuyerAddressLine());
+            buyer.setBuyerPhoneNumber(buyerInfo.getBuyerPhoneNumber());
+            buyer.setBuyerEmail(buyerInfo.getBuyerEmail());
+            buyer.setBuyerBankName(buyerInfo.getBuyerBankName());
+            buyer.setBuyerBankAccount(buyerInfo.getBuyerBankAccount());
+            buyer.setBuyerIdNumber(buyerInfo.getBuyerIdNumber());
+            buyer.setVisitingGuest(buyerInfo.getVisitingGuest() != null ? buyerInfo.getVisitingGuest() : false);
+
+            invoice.setBuyer(buyer);
+        }
+
         Invoice updated = invoiceRepository.save(invoice);
+        log.info("Invoice {} updated successfully", id);
         return mapToDTO(updated);
     }
 
@@ -253,23 +294,6 @@ public class InvoiceService {
         Invoice updated = invoiceRepository.save(invoice);
         log.info("Invoice completed: {}", invoice.getInvoiceNumber());
         return mapToDTO(updated);
-    }
-
-    public InvoiceDTO syncWithExternalSystem(Long id, SyncInvoiceRequest request) {
-        Invoice invoice = invoiceRepository.findByIdActive(id)
-                .orElseThrow(() -> new RuntimeException("Invoice not found with id: " + id));
-
-        try {
-            String externalId = callExternalInvoiceSystem();
-            invoice.syncWithExternal(externalId);
-            Invoice updated = invoiceRepository.save(invoice);
-            log.info("Invoice synced with external system: {}", invoice.getInvoiceNumber());
-            return mapToDTO(updated);
-        } catch (Exception e) {
-            invoice.setErrorMessage(e.getMessage());
-            invoiceRepository.save(invoice);
-            throw new RuntimeException("Failed to sync invoice with external system", e);
-        }
     }
 
     public void deleteInvoice(Long id) {
@@ -303,12 +327,6 @@ public class InvoiceService {
         String datePart = LocalDateTime.now().format(formatter);
         String randomPart = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         return "INV-" + datePart + "-" + randomPart;
-    }
-
-    private String callExternalInvoiceSystem() {
-        // Placeholder for external API integration
-        // In production, you would call the actual external system API here
-        return "EXT-" + UUID.randomUUID();
     }
 
     private InvoiceDTO mapToDTO(Invoice invoice) {
@@ -384,6 +402,34 @@ public class InvoiceService {
     private InvoiceDTO.OrderInfo mapOrderToDTO(Order order) {
         if (order == null) return null;
 
+        List<InvoiceDTO.OrderItemInfo> orderItems = null;
+        if (order.getOrderItems() != null) {
+            orderItems = order.getOrderItems().stream()
+                    .map(item -> InvoiceDTO.OrderItemInfo.builder()
+                            .id(item.getId())
+                            .orderId(item.getOrder() != null ? item.getOrder().getId() : null)
+                            .orderCustomerName(order.getCustomer() != null ? order.getCustomer().getName() : null)
+                            .orderCustomerPhone(order.getCustomer() != null ? order.getCustomer().getPhone() : null)
+                            .orderCustomerEmail(order.getCustomer() != null ? order.getCustomer().getEmail() : null)
+                            .productId(item.getProductId())
+                            .productName(item.getProductName())
+                            .serviceName(item.getProductName())
+                            .quantity(item.getQuantity())
+                            .unitPrice(item.getUnitPrice())
+                            .price(item.getUnitPrice())
+                            .totalPrice(item.getAmount())
+                            .taxPercentage(item.getTaxPercentage())
+                            .taxAmount(item.getTaxAmount())
+                            .status(item.getStatus() != null ? item.getStatus().name() : null)
+                            .assignedEmployeeId(item.getAssignedEmployee() != null ? item.getAssignedEmployee().getId() : null)
+                            .assignedEmployeeName(item.getAssignedEmployee() != null ? item.getAssignedEmployee().getName() : null)
+                            .employeeName(item.getAssignedEmployee() != null ? item.getAssignedEmployee().getName() : null)
+                            .completedAt(item.getCompletedAt())
+                            .ordinalNumber(null) // Will be set by frontend if needed
+                            .build())
+                    .collect(Collectors.toList());
+        }
+
         return InvoiceDTO.OrderInfo.builder()
                 .id(order.getId())
                 .invoiceNumber(null)
@@ -392,8 +438,23 @@ public class InvoiceService {
                                 .id(order.getCustomer().getId())
                                 .name(order.getCustomer().getName())
                                 .phone(order.getCustomer().getPhone())
+                                .email(order.getCustomer().getEmail())
+                                .identityNumber(null)
+                                .companyName(null)
+                                .companyTaxCode(null)
+                                .fax(null)
+                                .address(null)
                                 .build()
                         : null)
+                .customerName(order.getCustomer() != null ? order.getCustomer().getName() : null)
+                .customerPhone(order.getCustomer() != null ? order.getCustomer().getPhone() : null)
+                .customerEmail(order.getCustomer() != null ? order.getCustomer().getEmail() : null)
+                .totalAmount(order.getTotalAmount())
+                .discountAmount(order.getDiscountAmount())
+                .taxAmount(order.getTaxAmount())
+                .taxPercentage(order.getTaxPercentage())
+                .status(order.getStatus() != null ? order.getStatus().name() : null)
+                .orderItems(orderItems)
                 .build();
     }
 
