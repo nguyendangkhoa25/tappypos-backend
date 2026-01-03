@@ -105,11 +105,6 @@ public class OrderService {
             throw new RuntimeException("Cannot modify a completed or cancelled order");
         }
 
-        if (request.getAssignedEmployeeId() != null) {
-            Employee employee = employeeRepository.findByIdActive(request.getAssignedEmployeeId())
-                    .orElseThrow(() -> new RuntimeException("Employee not found"));
-            order.setAssignedEmployee(employee);
-        }
 
         if (request.getStatus() != null) {
             order.setStatus(Order.OrderStatus.valueOf(request.getStatus()));
@@ -620,8 +615,6 @@ public class OrderService {
                 .customerHairType(order.getCustomer().getHairType())
                 .customerPreferredServices(order.getCustomer().getPreferredServices())
                 .customerSpecialRequests(order.getCustomer().getSpecialRequests())
-                .assignedEmployeeId(order.getAssignedEmployee() != null ? order.getAssignedEmployee().getId() : null)
-                .assignedEmployeeName(order.getAssignedEmployee() != null ? order.getAssignedEmployee().getName() : null)
                 .status(order.getStatus().name())
                 .totalAmount(order.getTotalAmount())
                 .discountAmount(order.getDiscountAmount())

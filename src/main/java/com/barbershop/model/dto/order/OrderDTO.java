@@ -21,8 +21,6 @@ public class OrderDTO {
     private String customerHairType;
     private String customerPreferredServices;
     private String customerSpecialRequests;
-    private Long assignedEmployeeId;
-    private String assignedEmployeeName;
     private String status;
     private BigDecimal totalAmount;
     private BigDecimal discountAmount;

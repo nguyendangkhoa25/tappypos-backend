@@ -5,12 +5,10 @@ import com.barbershop.exception.DuplicateResourceException;
 import com.barbershop.exception.ResourceNotFoundException;
 import com.barbershop.model.dto.salary.*;
 import com.barbershop.model.entity.Employee;
-import com.barbershop.model.entity.Order;
 import com.barbershop.model.entity.OrderItem;
 import com.barbershop.model.entity.Salary;
 import com.barbershop.repository.EmployeeRepository;
 import com.barbershop.repository.OrderItemRepository;
-import com.barbershop.repository.OrderRepository;
 import com.barbershop.repository.SalaryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,7 +30,6 @@ public class SalaryService {
 
     private final SalaryRepository salaryRepository;
     private final EmployeeRepository employeeRepository;
-    private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
 
     /**
@@ -41,17 +38,20 @@ public class SalaryService {
     public BigDecimal calculateEmployeeEarnings(Long employeeId, Integer month, Integer year) {
         log.info("Calculating earnings for employee {} for {}/{}", employeeId, month, year);
 
-        List<Order> completedOrders = orderRepository.findCompletedOrdersByEmployee(employeeId);
+        // Get all completed order items for this employee
+        List<OrderItem> completedItems = orderItemRepository.findByAssignedEmployeeIdAndStatus(
+                employeeId,
+                OrderItem.ItemStatus.COMPLETED
+        );
 
-        BigDecimal totalEarnings = completedOrders.stream()
-                .filter(order -> order.getCompletedAt() != null)
-                .filter(order -> {
-                    LocalDate completedDate = order.getCompletedAt().toLocalDate();
+        BigDecimal totalEarnings = completedItems.stream()
+                .filter(item -> item.getCompletedAt() != null)
+                .filter(item -> {
+                    LocalDate completedDate = item.getCompletedAt().toLocalDate();
                     return completedDate.getMonthValue() == month && completedDate.getYear() == year;
                 })
-                .flatMap(order -> order.getOrderItems().stream())
-                .map(orderItem -> orderItem.getCommissionAmount() != null ?
-                        orderItem.getCommissionAmount() : orderItem.getAmount())
+                .map(item -> item.getCommissionAmount() != null ?
+                        item.getCommissionAmount() : item.getAmount())
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         log.info("Total earnings calculated: {}", totalEarnings);
@@ -225,24 +225,28 @@ public class SalaryService {
                 .orElseThrow(() -> new ResourceNotFoundException("Salary not found with id: " + salaryId));
 
         Employee employee = salary.getEmployee();
-        List<Order> completedOrders = orderRepository.findCompletedOrdersByEmployee(employee.getId());
 
-        List<SalaryDetailDTO.OrderItemEarningDTO> orderItems = completedOrders.stream()
-                .filter(order -> order.getCompletedAt() != null)
-                .filter(order -> {
-                    LocalDate completedDate = order.getCompletedAt().toLocalDate();
+        // Get all completed order items for this employee
+        List<OrderItem> completedItems = orderItemRepository.findByAssignedEmployeeIdAndStatus(
+                employee.getId(),
+                OrderItem.ItemStatus.COMPLETED
+        );
+
+        List<SalaryDetailDTO.OrderItemEarningDTO> orderItems = completedItems.stream()
+                .filter(item -> item.getCompletedAt() != null)
+                .filter(item -> {
+                    LocalDate completedDate = item.getCompletedAt().toLocalDate();
                     return completedDate.getMonthValue() == salary.getMonth() && completedDate.getYear() == salary.getYear();
                 })
-                .flatMap(order -> order.getOrderItems().stream()
-                        .map(item -> SalaryDetailDTO.OrderItemEarningDTO.builder()
-                                .orderId(order.getId())
-                                .orderItemId(item.getId())
-                                .serviceName(item.getProductName())
-                                .amount(item.getAmount())
-                                .commissionAmount(item.getCommissionAmount() != null ?
-                                        item.getCommissionAmount() : item.getAmount())
-                                .completedAt(item.getCompletedAt())
-                                .build()))
+                .map(item -> SalaryDetailDTO.OrderItemEarningDTO.builder()
+                        .orderId(item.getOrder().getId())
+                        .orderItemId(item.getId())
+                        .serviceName(item.getProductName())
+                        .amount(item.getAmount())
+                        .commissionAmount(item.getCommissionAmount() != null ?
+                                item.getCommissionAmount() : item.getAmount())
+                        .completedAt(item.getCompletedAt())
+                        .build())
                 .collect(Collectors.toList());
 
         return SalaryDetailDTO.builder()

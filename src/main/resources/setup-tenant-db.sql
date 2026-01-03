@@ -172,7 +172,6 @@ CREATE TABLE IF NOT EXISTS user_roles (
 CREATE TABLE IF NOT EXISTS orders (
                                       id BIGINT AUTO_INCREMENT PRIMARY KEY,
                                       customer_id BIGINT NOT NULL,
-                                      assigned_employee_id BIGINT,
                                       status ENUM('PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED') NOT NULL DEFAULT 'PENDING',
     total_amount DECIMAL(10, 2) NOT NULL,
     discount_amount DECIMAL(10, 2) DEFAULT 0.00,
@@ -186,10 +185,8 @@ CREATE TABLE IF NOT EXISTS orders (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP NULL,
     FOREIGN KEY (customer_id) REFERENCES customers(id),
-    FOREIGN KEY (assigned_employee_id) REFERENCES employees(id),
     INDEX idx_status (status),
     INDEX idx_customer_id (customer_id),
-    INDEX idx_employee_id (assigned_employee_id),
     INDEX idx_deleted_at (deleted_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=39202600001;
 

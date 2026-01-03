@@ -7,8 +7,6 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.List;
 
 @Entity
 @Table(name = "employees")
@@ -53,9 +51,6 @@ public class Employee extends BaseEntity {
 
     @Column(name = "total_earned")
     private BigDecimal totalEarned;
-
-    @OneToMany(mappedBy = "assignedEmployee", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<Order> orders = new ArrayList<>();
 
     public enum EmployeeStatus {
         ACTIVE,

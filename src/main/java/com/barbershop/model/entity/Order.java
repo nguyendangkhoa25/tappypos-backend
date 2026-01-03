@@ -21,10 +21,6 @@ public class Order extends BaseEntity {
     @JoinColumn(name = "customer_id", nullable = false)
     private Customer customer;
 
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "assigned_employee_id")
-    private Employee assignedEmployee;
-
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
     private OrderStatus status;

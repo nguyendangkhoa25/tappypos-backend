@@ -39,12 +39,6 @@ public class PdfBillGenerator {
         }
         document.add(new Paragraph("\n"));
 
-        // Service information
-        if (order.getAssignedEmployee() != null) {
-            document.add(new Paragraph("SERVICE PROVIDER: " + order.getAssignedEmployee().getName(), headerFont));
-            document.add(new Paragraph("\n"));
-        }
-
         // Items table
         document.add(new Paragraph("ORDER DETAILS", headerFont));
         PdfTable table = createOrderItemsTable(order);

@@ -5,9 +5,9 @@ import com.barbershop.model.dto.employee.EmployeeDTO;
 import com.barbershop.model.dto.employee.EmployeeEarningsDTO;
 import com.barbershop.model.dto.employee.UpdateEmployeeRequest;
 import com.barbershop.model.entity.Employee;
-import com.barbershop.model.entity.Order;
+import com.barbershop.model.entity.OrderItem;
 import com.barbershop.repository.EmployeeRepository;
-import com.barbershop.repository.OrderRepository;
+import com.barbershop.repository.OrderItemRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -28,7 +28,7 @@ import java.util.List;
 public class EmployeeService {
 
     private final EmployeeRepository employeeRepository;
-    private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
 
     public EmployeeDTO createEmployee(CreateEmployeeRequest request) {
         log.info("Request: Create new employee - name: {}, phone: {}, email: {}, position: {}",
@@ -170,21 +170,25 @@ public class EmployeeService {
                     return new RuntimeException("Employee not found with id: " + employeeId);
                 });
 
-        List<Order> completedOrders = orderRepository.findCompletedOrdersByEmployee(employeeId);
-        log.debug("Found {} completed orders for employee - id: {}", completedOrders.size(), employeeId);
+        // Get all completed order items for this employee
+        List<OrderItem> completedItems = orderItemRepository.findByAssignedEmployeeIdAndStatus(
+                employeeId,
+                OrderItem.ItemStatus.COMPLETED
+        );
+        log.debug("Found {} completed order items for employee - id: {}", completedItems.size(), employeeId);
 
-        BigDecimal totalEarned = completedOrders.stream()
-                .map(Order::getTotalAmount)
+        BigDecimal totalEarned = completedItems.stream()
+                .map(item -> item.getCommissionAmount() != null ? item.getCommissionAmount() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        log.info("Employee earnings calculated - id: {}, totalEarned: {}, completedOrderCount: {}",
-                employeeId, totalEarned, completedOrders.size());
+        log.info("Employee earnings calculated - id: {}, totalEarned: {}, completedItemCount: {}",
+                employeeId, totalEarned, completedItems.size());
 
         return EmployeeEarningsDTO.builder()
                 .employeeId(employeeId)
                 .employeeName(employee.getName())
                 .totalEarned(totalEarned)
-                .completedOrderCount(completedOrders.size())
+                .completedOrderCount(completedItems.size())
                 .build();
     }
 

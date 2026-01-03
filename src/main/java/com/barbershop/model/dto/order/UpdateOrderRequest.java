@@ -11,7 +11,6 @@ import java.util.List;
 @AllArgsConstructor
 @Builder
 public class UpdateOrderRequest {
-    private Long assignedEmployeeId;
     private String status;
     private String notes;
     private BigDecimal discountAmount;

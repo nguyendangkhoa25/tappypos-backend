@@ -43,14 +43,6 @@ public class OrderSpecification {
                 ));
             }
 
-            // Filter by employee
-            if (filter.getEmployeeId() != null) {
-                predicates.add(criteriaBuilder.equal(
-                        root.get("assignedEmployee").get("id"),
-                        filter.getEmployeeId()
-                ));
-            }
-
             // Filter by customer
             if (filter.getCustomerId() != null) {
                 predicates.add(criteriaBuilder.equal(

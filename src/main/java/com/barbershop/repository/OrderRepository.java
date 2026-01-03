@@ -25,8 +25,6 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
     @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.customer.id = :customerId")
     List<Order> findByCustomerId(Long customerId);
 
-    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.assignedEmployee.id = :employeeId")
-    List<Order> findByEmployeeId(Long employeeId);
 
     @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.status = :status")
     Page<Order> findByStatus(@Param("status") String status, Pageable pageable);
@@ -34,9 +32,6 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
     @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.status = :status")
     Page<Order> findByStatusActive(@Param("status") Order.OrderStatus status, Pageable pageable);
 
-    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.assignedEmployee.id = :employeeId " +
-           "AND o.status = 'COMPLETED'")
-    List<Order> findCompletedOrdersByEmployee(Long employeeId);
 
     @Query("SELECT o FROM Order o WHERE o.deleted = false AND " +
            "(LOWER(o.customer.name) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
