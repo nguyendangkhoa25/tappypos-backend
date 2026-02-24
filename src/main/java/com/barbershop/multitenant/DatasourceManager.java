@@ -40,7 +40,7 @@ public class DatasourceManager {
      * Reload all tenant datasources from master database
      * Called when tenants are created, deleted, or activated/deactivated
      */
-    public void reloadAllTenantDatasources() {
+    public void reloadAllTenantDatasource() {
         log.info("Reloading all tenant datasources");
         try {
             Map<Object, Object> targetDataSources = new HashMap<>();

@@ -9,10 +9,8 @@ import lombok.Getter;
 public enum SubscriptionType {
     TRIAL("Gói Dùng thử"),
     BASIC("Gói Cơ bản"),
-    STANDARD("Gói Tiêu chuẩn"),
     PREMIUM("Gói Cao cấp"),
-    ENTERPRISE("Gói Doanh nghiệp lớn"),
-    LIFETIME("Gói Trọn đời");
+    ENTERPRISE("Gói Doanh nghiệp lớn");
 
     private final String description;
 

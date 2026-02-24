@@ -150,6 +150,37 @@ public class TenantInterceptor implements HandlerInterceptor {
 
         // Set current tenant in context for use in request processing
         tenantContext.setCurrentTenant(tenant);
+
+        // Validate tenant is not expired
+        try {
+            tenantContext.validateTenantNotExpired();
+        } catch (Exception e) {
+            log.warn("Tenant {} is expired, rejecting request", tenantId);
+            response.setStatus(HttpStatus.BAD_REQUEST.value());
+            response.setContentType("application/json");
+
+            // Extract expiration date from exception if available
+            String expirationDate = null;
+            if (e instanceof com.barbershop.exception.TenantExpiredException) {
+                expirationDate = ((com.barbershop.exception.TenantExpiredException) e).getExpirationDate();
+            }
+
+            // Build error response with expiration date
+            String errorResponse;
+            if (expirationDate != null) {
+                errorResponse = "{\"success\": false, \"error\": \"TENANT_EXPIRED\", " +
+                        "\"message\": \"Tenant subscription has expired\", " +
+                        "\"field\": \"" + expirationDate + "\"}";
+            } else {
+                errorResponse = "{\"success\": false, \"error\": \"TENANT_EXPIRED\", " +
+                        "\"message\": \"Tenant subscription has expired\"}";
+            }
+
+            response.getWriter().write(errorResponse);
+            tenantContext.clear();
+            return false;
+        }
+
         log.debug("Tenant {} authorized for request to {}", tenantId, requestPath);
         return true;
     }

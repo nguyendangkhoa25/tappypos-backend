@@ -8,7 +8,9 @@ import com.barbershop.multitenant.DatasourceManager;
 import com.barbershop.repository.TenantRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Arrays;
@@ -144,12 +146,6 @@ public class TenantService {
 
         Tenant saved = tenantRepository.save(tenant);
         log.info("Tenant created successfully: {} by {}", request.getTenantId(), currentUser);
-
-        // Reload datasources to include new tenant
-        datasourceManager.addOrUpdateTenantDatasource(request.getTenantId(), request.getDbName());
-
-        //Reload
-        datasourceManager.reloadAllTenantDatasources();
         return mapToDTO(saved);
     }
 
@@ -200,7 +196,7 @@ public class TenantService {
         Tenant updated = tenantRepository.save(tenant);
 
         //Reload
-        datasourceManager.reloadAllTenantDatasources();
+        datasourceManager.reloadAllTenantDatasource();
 
         log.info("Tenant updated successfully: {} by {}", tenantId, currentUser);
         return mapToDTO(updated);
@@ -219,7 +215,7 @@ public class TenantService {
         datasourceManager.removeTenantDatasource(tenantId);
 
         //Reload
-        datasourceManager.reloadAllTenantDatasources();
+        datasourceManager.reloadAllTenantDatasource();
     }
 
     /**
@@ -255,7 +251,7 @@ public class TenantService {
         datasourceManager.removeTenantDatasource(tenantId);
 
         //Reload all data sources
-        datasourceManager.reloadAllTenantDatasources();
+        datasourceManager.reloadAllTenantDatasource();
         return mapToDTO(updated);
     }
 
@@ -278,7 +274,7 @@ public class TenantService {
         // Add datasource for activated tenant
         datasourceManager.addOrUpdateTenantDatasource(tenantId, tenant.getDbName());
         //Reload all data sources
-        datasourceManager.reloadAllTenantDatasources();
+        datasourceManager.reloadAllTenantDatasource();
         return mapToDTO(updated);
     }
 
@@ -308,6 +304,61 @@ public class TenantService {
                 .createdBy(tenant.getCreatedBy())
                 .updatedBy(tenant.getUpdatedBy())
                 .build();
+    }
+
+    /**
+     * Create datasource for tenant in separate transaction
+     * Uses REQUIRES_NEW propagation to ensure tenant is committed before datasource operations
+     */
+    @Async
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void createTenantDatasource(String tenantId, String dbName) {
+        try {
+            log.info("Creating datasource for tenant: {}", tenantId);
+            datasourceManager.addOrUpdateTenantDatasource(tenantId, dbName);
+            log.info("Datasource created for tenant: {}", tenantId);
+
+            // Reload all datasources to make new tenant available immediately
+            log.info("Reloading all tenant datasources to include newly created tenant: {}", tenantId);
+            datasourceManager.reloadAllTenantDatasource();
+            log.info("All tenant datasources reloaded successfully - tenant {} is now available", tenantId);
+        } catch (Exception e) {
+            log.error("Failed to create datasource for tenant: {}", tenantId, e);
+            throw new RuntimeException("Failed to create datasource: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Remove datasource for tenant in separate transaction
+     * Ensures tenant deletion is committed before datasource removal
+     */
+    @Async
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void removeTenantDatasource(String tenantId) {
+        try {
+            datasourceManager.removeTenantDatasource(tenantId);
+            log.info("Datasource removed for tenant: {}", tenantId);
+
+            datasourceManager.reloadAllTenantDatasource();
+        } catch (Exception e) {
+            log.error("Failed to remove datasource for tenant: {}", tenantId, e);
+        }
+    }
+
+    /**
+     * Reload all tenant datasources asynchronously in background
+     * Used when updating a tenant
+     */
+    @Async
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void reloadAllDatasource() {
+        log.info("Starting async datasource reload");
+        try {
+            datasourceManager.reloadAllTenantDatasource();
+            log.info("Async datasource reload completed successfully");
+        } catch (Exception e) {
+            log.error("Async datasource reload failed", e);
+        }
     }
 }
 

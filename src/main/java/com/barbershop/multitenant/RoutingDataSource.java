@@ -28,7 +28,6 @@ public class RoutingDataSource extends AbstractRoutingDataSource {
 
     public RoutingDataSource(TenantContext tenantContext) {
         this.tenantContext = tenantContext;
-        log.info("RoutingDataSource created with TenantContext: {}", tenantContext != null ? "SUCCESS" : "NULL");
     }
 
     /**
@@ -40,16 +39,8 @@ public class RoutingDataSource extends AbstractRoutingDataSource {
     @Override
     protected Object determineCurrentLookupKey() {
         String tenantId = tenantContext.getCurrentTenantId();
-
         log.debug("RoutingDataSource.determineCurrentLookupKey() called - tenantId: {}", tenantId);
-
         if (tenantId != null) {
-            // Special case: "master" tenant uses master database
-            if ("master".equalsIgnoreCase(tenantId)) {
-                log.info("Routing database query to master database");
-                return "master";
-            }
-
             log.info("Routing database query to tenant: {}", tenantId);
             return tenantId;
         }
@@ -70,6 +61,12 @@ public class RoutingDataSource extends AbstractRoutingDataSource {
         Map<Object, Object> targetDataSources = new HashMap<>(getResolvedDataSources());
         targetDataSources.put(tenantId, dataSource);
         setTargetDataSources(targetDataSources);
+        // CRITICAL: Reinitialize resolver cache after updating datasources
+        try {
+            afterPropertiesSet();
+        } catch (Exception e) {
+            log.error("Error reinitializing datasource resolver", e);
+        }
         log.info("Added/updated datasource for tenant: {}", tenantId);
     }
 
@@ -83,6 +80,13 @@ public class RoutingDataSource extends AbstractRoutingDataSource {
         Map<Object, Object> targetDataSources = new HashMap<>(getResolvedDataSources());
         targetDataSources.remove(tenantId);
         setTargetDataSources(targetDataSources);
+        // CRITICAL: Reinitialize resolver cache after updating datasources
+        try {
+            afterPropertiesSet();
+        } catch (Exception e) {
+            log.error("Error reinitializing datasource resolver", e);
+        }
+
         log.info("Removed datasource for tenant: {}", tenantId);
     }
 }

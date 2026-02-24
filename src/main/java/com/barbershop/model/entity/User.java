@@ -47,7 +47,16 @@ public class User extends BaseEntity {
     @Column(name = "require_action", nullable = false)
     private String requireAction;
 
-    // Many-to-many relationship with Roles
+    @Column(columnDefinition = "LONGTEXT")
+    private String avatar;
+
+    @Column(length = 50)
+    private String colorPreference;
+
+    @Column(length = 10)
+    private String lang = "vi";
+
+    // ...existing code...
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
             name = "user_roles",

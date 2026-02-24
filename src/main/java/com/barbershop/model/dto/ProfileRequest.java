@@ -1,0 +1,22 @@
+package com.barbershop.model.dto;
+
+import lombok.*;
+
+/**
+ * ProfileRequest DTO
+ * Used for profile update operations (avatar, color, password)
+ */
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class ProfileRequest {
+    private String username;
+    private String avatar;
+    private String colorPreference;
+    private String lang;
+    private String oldPassword;
+    private String newPassword;
+}
+

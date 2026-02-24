@@ -73,8 +73,12 @@ public class MultiTenantController {
         log.info("Request: Create new tenant: {}", request.getTenantId());
 
         TenantDTO tenant = tenantService.createTenant(request);
-
         log.info("Created tenant: {}", request.getTenantId());
+
+        tenantService.createTenantDatasource(
+                tenant.getTenantId(),
+                tenant.getDbName()
+        );
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(ApiResponse.success(tenant, "Tenant created successfully"));
     }
@@ -90,7 +94,10 @@ public class MultiTenantController {
             @RequestBody UpdateTenantRequest request) {
         log.info("Request: Update tenant: {}", tenantId);
         TenantDTO tenant = tenantService.updateTenant(tenantId, request);
+
         log.info("Updated tenant: {}", tenantId);
+        tenantService.reloadAllDatasource();
+
         return ResponseEntity.ok(
             ApiResponse.success(tenant, "Tenant updated successfully")
         );
@@ -106,6 +113,9 @@ public class MultiTenantController {
         log.info("Request: Delete tenant: {}", tenantId);
         tenantService.deleteTenant(tenantId);
         log.info("Deleted tenant: {}", tenantId);
+
+        // Remove datasource asynchronously in background
+        tenantService.removeTenantDatasource(tenantId);
         return ResponseEntity.ok(
             ApiResponse.success(null, "Tenant deleted successfully")
         );
@@ -121,6 +131,12 @@ public class MultiTenantController {
         log.info("Request: Activate tenant: {}", tenantId);
         TenantDTO tenant = tenantService.activateTenant(tenantId);
         log.info("Activated tenant: {}", tenantId);
+
+        tenantService.createTenantDatasource(
+                tenant.getTenantId(),
+                tenant.getDbName()
+        );
+
         return ResponseEntity.ok(
             ApiResponse.success(tenant, "Tenant activated successfully")
         );
@@ -136,6 +152,9 @@ public class MultiTenantController {
         log.info("Request: Deactivate tenant: {}", tenantId);
         TenantDTO tenant = tenantService.deactivateTenant(tenantId);
         log.info("Deactivated tenant: {}", tenantId);
+
+        tenantService.removeTenantDatasource(tenantId);
+
         return ResponseEntity.ok(
             ApiResponse.success(tenant, "Tenant deactivated successfully")
         );

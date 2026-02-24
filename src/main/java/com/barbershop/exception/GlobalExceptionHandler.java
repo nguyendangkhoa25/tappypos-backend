@@ -31,8 +31,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleResourceNotFoundException(
-            ResourceNotFoundException ex,
-            WebRequest request) {
+            ResourceNotFoundException ex) {
         log.error("Resource not found: {}", ex.getMessage());
         String message = ex.getMessage() != null ? ex.getMessage() : messageService.getMessage("error.resource.not.found");
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -44,8 +43,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(NoSuchElementException.class)
     public ResponseEntity<ApiResponse<Void>> handleNoSuchElementException(
-            NoSuchElementException ex,
-            WebRequest request) {
+            NoSuchElementException ex) {
         log.error("Element not found: {}", ex.getMessage());
         String message = ex.getMessage() != null ? ex.getMessage() : messageService.getMessage("error.resource.not.found");
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -55,14 +53,17 @@ public class GlobalExceptionHandler {
     /**
      * Handle BadRequestException - 400 Bad Request
      */
-    @ExceptionHandler(BadRequestException.class)
-    public ResponseEntity<ApiResponse<Void>> handleBadRequestException(
-            BadRequestException ex,
-            WebRequest request) {
+    @ExceptionHandler({
+            BadRequestException.class,
+            TenantExpiredException.class
+    })
+    public ResponseEntity<ApiResponse<Void>> handleBadRequestException(Exception ex) {
         log.error("Bad request: {}", ex.getMessage());
         String message = ex.getMessage() != null ? ex.getMessage() : messageService.getMessage("error.bad.request");
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponse.error("BAD_REQUEST", message));
+        if (ex instanceof TenantExpiredException tee) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error("TENANT_EXPIRED", message));
+        }
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error("BAD_REQUEST", message));
     }
 
     /**
