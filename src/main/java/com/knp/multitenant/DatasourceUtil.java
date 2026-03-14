@@ -19,7 +19,11 @@ import java.util.Map;
 @Slf4j
 public class DatasourceUtil {
 
-    private static final String DRIVER_CLASS = "com.mysql.cj.jdbc.Driver";
+    // Default driver for MySQL (production)
+    private static final String DEFAULT_DRIVER_CLASS = "com.mysql.cj.jdbc.Driver";
+    // H2 driver for testing
+    private static final String H2_DRIVER_CLASS = "org.h2.Driver";
+    
     private static final int MAX_POOL_SIZE = 10;
     private static final int MIN_IDLE = 2;
     private static final long CONNECTION_TIMEOUT = 30000;
@@ -28,6 +32,25 @@ public class DatasourceUtil {
 
     private DatasourceUtil() {
         // Utility class - no instantiation
+    }
+
+    /**
+     * Determine JDBC driver class based on the JDBC URL
+     * Automatically detects H2 or MySQL driver needed
+     */
+    private static String getDriverClass(String jdbcUrl) {
+        if (jdbcUrl != null) {
+            if (jdbcUrl.contains("h2:")) {
+                log.debug("Detected H2 database URL, using H2 driver");
+                return H2_DRIVER_CLASS;
+            } else if (jdbcUrl.contains("mysql:")) {
+                log.debug("Detected MySQL database URL, using MySQL driver");
+                return DEFAULT_DRIVER_CLASS;
+            }
+        }
+        // Default to MySQL if unable to determine
+        log.debug("Unable to determine driver from URL, defaulting to MySQL");
+        return DEFAULT_DRIVER_CLASS;
     }
 
     /**
@@ -43,7 +66,7 @@ public class DatasourceUtil {
         config.setJdbcUrl(jdbcUrl);
         config.setUsername(username);
         config.setPassword(password);
-        config.setDriverClassName(DRIVER_CLASS);
+        config.setDriverClassName(getDriverClass(jdbcUrl));
         config.setMaximumPoolSize(MAX_POOL_SIZE);
         config.setMinimumIdle(MIN_IDLE);
         config.setConnectionTimeout(CONNECTION_TIMEOUT);
@@ -65,7 +88,7 @@ public class DatasourceUtil {
         config.setJdbcUrl(jdbcUrl);
         config.setUsername(username);
         config.setPassword(password);
-        config.setDriverClassName(DRIVER_CLASS);
+        config.setDriverClassName(getDriverClass(jdbcUrl));
         config.setMaximumPoolSize(MAX_POOL_SIZE);
         config.setMinimumIdle(MIN_IDLE);
         return new HikariDataSource(config);

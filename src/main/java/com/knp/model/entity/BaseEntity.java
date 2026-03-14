@@ -2,7 +2,9 @@ package com.knp.model.entity;
 
 import jakarta.persistence.*;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
+import lombok.experimental.SuperBuilder;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -10,6 +12,8 @@ import java.time.LocalDateTime;
 
 @Getter
 @Setter
+@NoArgsConstructor
+@SuperBuilder
 @MappedSuperclass
 public abstract class BaseEntity {
 
@@ -30,6 +34,13 @@ public abstract class BaseEntity {
 
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
+
+    @PrePersist
+    protected void onPersist() {
+        if (this.deleted == null) {
+            this.deleted = false;
+        }
+    }
 
     public boolean isDeleted() {
         return deleted != null && deleted;

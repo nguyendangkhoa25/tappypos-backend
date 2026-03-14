@@ -1,0 +1,23 @@
+package com.knp.model.dto.product;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class AttributeDefinitionDTO {
+
+    private Long id;
+    private String code;
+    private String name;
+    private String dataType;
+    private Boolean required;
+    private Boolean searchable;
+    private Boolean filterable;
+    private Integer displayOrder;
+}
+

@@ -2,6 +2,8 @@ package com.knp.model.dto.customer;
 
 import lombok.*;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Getter
@@ -26,6 +28,18 @@ public class CustomerDTO {
     private String hairType;
     private String specialRequests;
 
+    // Identity Card Information
+    private String idCardNumber;
+    private LocalDate dateOfBirth;
+    private String gender;
+    private LocalDate idCardIssuedDate;
+    private String idCardIssuedPlace;
+    private String permanentAddress;
+
     private LocalDateTime createdAt;
+
+    // Loyalty summary
+    private Integer loyaltyPoints;
+    private BigDecimal totalSpent;
 }
 

@@ -44,6 +44,19 @@ public class RoleService {
     }
 
     /**
+     * Get role by ID
+     */
+    public RoleDTO getRoleById(Long id) {
+        log.info("Fetching role by id: {}", id);
+        Role role = roleRepository.findById(id)
+                .orElseThrow(() -> {
+                    String errorMessage = messageService.getMessage("error.role.not.found", id);
+                    return new ResourceNotFoundException(errorMessage);
+                });
+        return mapToDTO(role);
+    }
+
+    /**
      * Get all predefined roles
      */
     public List<RoleDTO> getAllRoles() {

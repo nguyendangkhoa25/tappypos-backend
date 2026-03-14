@@ -40,5 +40,11 @@ public class CreateTenantRequest {
     private String contactPersonEmail;
 
     private String contactPersonZaloId;
+
+    /** Username for the initial SHOP_OWNER admin account. Defaults to "admin" if blank. */
+    private String adminUsername;
+
+    /** Plain-text password for the initial admin account. Defaults to "Admin@123" if blank. */
+    private String adminPassword;
 }
 

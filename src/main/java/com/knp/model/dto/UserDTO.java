@@ -17,6 +17,7 @@ public class UserDTO {
     private String fullName;
     private Boolean active;
     private Boolean accountNonLocked;
+    private Integer failedLoginAttempts;
     private Boolean credentialsNonExpired;
     private Boolean accountNonExpired;
     private String requireAction;

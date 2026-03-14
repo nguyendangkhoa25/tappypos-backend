@@ -116,6 +116,36 @@ public class ProfileController {
     }
 
     /**
+     * PUT /profiles/info
+     * Update user basic info (fullName, email)
+     */
+    @PutMapping("/info")
+    public ResponseEntity<ApiResponse<UserProfile>> updateProfileInfo(@RequestBody ProfileRequest request) {
+        log.info("Request: Update profile info for username: {}", request.getUsername());
+        validateUsername(request.getUsername());
+        UserProfile response = profileService.updateProfileInfo(getCurrentUsername(), request);
+        log.info("Profile info updated: {}", request.getUsername());
+        return ResponseEntity.ok(
+                ApiResponse.success(response, "Profile info updated successfully")
+        );
+    }
+
+    /**
+     * PUT /profiles/lang
+     * Update user language preference
+     */
+    @PutMapping("/lang")
+    public ResponseEntity<ApiResponse<UserProfile>> updateProfileLang(@RequestBody ProfileRequest request) {
+        log.info("Request: Update language preference for username: {}", request.getUsername());
+        validateUsername(request.getUsername());
+        UserProfile response = profileService.updateProfileLang(getCurrentUsername(), request);
+        log.info("Language preference updated: {}", request.getUsername());
+        return ResponseEntity.ok(
+                ApiResponse.success(response, "Language preference updated successfully")
+        );
+    }
+
+    /**
      * Get the current authenticated username
      */
     private String getCurrentUsername() {

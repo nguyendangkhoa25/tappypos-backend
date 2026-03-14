@@ -19,7 +19,11 @@ public enum FeatureEnum {
     INVOICE("Hóa Đơn", "Quản lý hóa đơn, xuất hóa đơn điện tử"),
     REVENUE("Doanh Thu", "Xem báo cáo doanh thu, lợi nhuận, chi phí"),
     USER("Người Dùng", "Quản lý tài khoản người dùng, quyền truy cập"),
-    SHOP_INFO("Thông Tin Cửa Hàng", "Cập nhật thông tin cửa hàng, cấu hình hệ thống");
+    SHOP_INFO("Thông Tin Cửa Hàng", "Cập nhật thông tin cửa hàng, cấu hình hệ thống"),
+    VENDOR("Nhà Cung Cấp", "Quản lý nhà cung cấp, đơn đặt hàng, nhập hàng"),
+    INVENTORY("Quản Lý Kho", "Quản lý tồn kho, nhập xuất kho và kiểm kho"),
+    POS("Điểm Bán Hàng", "Bán hàng tại quầy, thanh toán và in hóa đơn"),
+    ACTIVITY_LOG("Nhật Ký Hoạt Động", "Xem nhật ký hoạt động của người dùng trong cửa hàng");
 
     private final String displayName;
     private final String description;

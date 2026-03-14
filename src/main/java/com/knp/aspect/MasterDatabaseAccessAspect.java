@@ -63,7 +63,7 @@ public class MasterDatabaseAccessAspect {
             throw new ForbiddenException("error.access.master_only");
         }
 
-        // Check 3: JWT token must have isMasterUser flag set to true
+        // Check 3: JWT token must have isMasterUser flag explicitly set to true.
         Boolean isMasterUser = jwtTokenProvider.isMasterUserFromToken(token);
         if (!Boolean.TRUE.equals(isMasterUser)) {
             log.warn("Access denied to master-only endpoint. isMasterUser flag is not true: {}", isMasterUser);

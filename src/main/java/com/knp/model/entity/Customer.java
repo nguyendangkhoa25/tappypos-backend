@@ -5,8 +5,8 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.math.BigDecimal;
+import java.time.LocalDate;
 
 @Entity
 @Table(name = "customers")
@@ -50,5 +50,31 @@ public class Customer extends BaseEntity {
 
     @Column(name = "special_requests", length = 500)
     private String specialRequests;
+
+    // Identity Card Information
+    @Column(name = "id_card_number", unique = true)
+    private String idCardNumber;
+
+    @Column(name = "date_of_birth")
+    private LocalDate dateOfBirth;
+
+    @Column(name = "gender")
+    private String gender;
+
+    @Column(name = "id_card_issued_date")
+    private LocalDate idCardIssuedDate;
+
+    @Column(name = "id_card_issued_place")
+    private String idCardIssuedPlace;
+
+    @Column(name = "permanent_address", length = 500)
+    private String permanentAddress;
+
+    // Loyalty
+    @Column(name = "loyalty_points", nullable = false)
+    private Integer loyaltyPoints = 0;
+
+    @Column(name = "total_spent", nullable = false)
+    private BigDecimal totalSpent = BigDecimal.ZERO;
 }
 

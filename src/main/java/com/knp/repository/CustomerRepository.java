@@ -30,6 +30,9 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
            "LOWER(c.phone) LIKE LOWER(CONCAT('%', :keyword, '%')))")
     Page<Customer> searchByKeyword(@Param("keyword") String keyword, Pageable pageable);
 
+    @Query("SELECT c FROM Customer c WHERE c.deleted = false AND c.name = :name")
+    Optional<Customer> findByName(@Param("name") String name);
+
     // Count query for dashboard optimization
     @Query("SELECT COUNT(c) FROM Customer c WHERE c.deleted = false")
     long countAllActive();

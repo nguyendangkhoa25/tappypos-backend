@@ -39,6 +39,12 @@ public class CustomerService {
                 .allergiesOrSensitivities(request.getAllergiesOrSensitivities())
                 .hairType(request.getHairType())
                 .specialRequests(request.getSpecialRequests())
+                .idCardNumber(request.getIdCardNumber())
+                .dateOfBirth(request.getDateOfBirth())
+                .gender(request.getGender())
+                .idCardIssuedDate(request.getIdCardIssuedDate())
+                .idCardIssuedPlace(request.getIdCardIssuedPlace())
+                .permanentAddress(request.getPermanentAddress())
                 .build();
 
         Customer saved = customerRepository.save(customer);
@@ -149,6 +155,30 @@ public class CustomerService {
             log.debug("Updating specialRequests - id: {}", id);
             customer.setSpecialRequests(request.getSpecialRequests());
         }
+        if (request.getIdCardNumber() != null) {
+            log.debug("Updating idCardNumber - id: {}", id);
+            customer.setIdCardNumber(request.getIdCardNumber());
+        }
+        if (request.getDateOfBirth() != null) {
+            log.debug("Updating dateOfBirth - id: {}", id);
+            customer.setDateOfBirth(request.getDateOfBirth());
+        }
+        if (request.getGender() != null) {
+            log.debug("Updating gender - id: {}", id);
+            customer.setGender(request.getGender());
+        }
+        if (request.getIdCardIssuedDate() != null) {
+            log.debug("Updating idCardIssuedDate - id: {}", id);
+            customer.setIdCardIssuedDate(request.getIdCardIssuedDate());
+        }
+        if (request.getIdCardIssuedPlace() != null) {
+            log.debug("Updating idCardIssuedPlace - id: {}", id);
+            customer.setIdCardIssuedPlace(request.getIdCardIssuedPlace());
+        }
+        if (request.getPermanentAddress() != null) {
+            log.debug("Updating permanentAddress - id: {}", id);
+            customer.setPermanentAddress(request.getPermanentAddress());
+        }
 
         Customer updated = customerRepository.save(customer);
         log.info("Customer updated successfully - id: {}, name: {}", updated.getId(), updated.getName());
@@ -168,6 +198,37 @@ public class CustomerService {
         log.info("Customer deleted successfully (soft delete) - id: {}, name: {}", customer.getId(), customer.getName());
     }
 
+    public Long getCustomerCount() {
+        log.info("Request: Get customer count");
+        long count = customerRepository.countAllActive();
+        log.info("Total active customers: {}", count);
+        return count;
+    }
+
+    public CustomerDTO getCustomerByPhone(String phone) {
+        log.info("Request: Get customer by phone - phone: {}", phone);
+        Customer customer = customerRepository.findByPhone(phone)
+                .orElseThrow(() -> {
+                    log.error("Customer not found - phone: {}", phone);
+                    String errorMessage = messageService.getMessage("error.customer.not.found", phone);
+                    return new ResourceNotFoundException(errorMessage);
+                });
+        log.info("Retrieved customer by phone - id: {}, name: {}", customer.getId(), customer.getName());
+        return mapToDTO(customer);
+    }
+
+    public CustomerDTO getCustomerByEmail(String email) {
+        log.info("Request: Get customer by email - email: {}", email);
+        Customer customer = customerRepository.findByEmail(email)
+                .orElseThrow(() -> {
+                    log.error("Customer not found - email: {}", email);
+                    String errorMessage = messageService.getMessage("error.customer.not.found", email);
+                    return new ResourceNotFoundException(errorMessage);
+                });
+        log.info("Retrieved customer by email - id: {}, name: {}", customer.getId(), customer.getName());
+        return mapToDTO(customer);
+    }
+
     private CustomerDTO mapToDTO(Customer customer) {
         log.debug("Converting Customer to DTO - id: {}, name: {}", customer.getId(), customer.getName());
         return CustomerDTO.builder()
@@ -182,7 +243,15 @@ public class CustomerService {
                 .allergiesOrSensitivities(customer.getAllergiesOrSensitivities())
                 .hairType(customer.getHairType())
                 .specialRequests(customer.getSpecialRequests())
+                .idCardNumber(customer.getIdCardNumber())
+                .dateOfBirth(customer.getDateOfBirth())
+                .gender(customer.getGender())
+                .idCardIssuedDate(customer.getIdCardIssuedDate())
+                .idCardIssuedPlace(customer.getIdCardIssuedPlace())
+                .permanentAddress(customer.getPermanentAddress())
                 .createdAt(customer.getCreatedAt())
+                .loyaltyPoints(customer.getLoyaltyPoints() != null ? customer.getLoyaltyPoints() : 0)
+                .totalSpent(customer.getTotalSpent())
                 .build();
     }
 }

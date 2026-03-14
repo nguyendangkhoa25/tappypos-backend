@@ -4,12 +4,15 @@ import com.knp.config.JwtTokenProvider;
 import com.knp.exception.UnauthorizedException;
 import com.knp.exception.ResourceNotFoundException;
 import com.knp.exception.BadRequestException;
+import com.knp.exception.AccountLockedException;
+import com.knp.exception.DeviceConflictException;
 import com.knp.model.dto.auth.AuthResponse;
 import com.knp.model.dto.auth.LoginRequest;
 import com.knp.model.dto.auth.UserDTO;
 import com.knp.model.entity.RefreshToken;
 import com.knp.model.entity.Role;
 import com.knp.model.entity.User;
+import com.knp.model.enums.ActivityAction;
 import com.knp.multitenant.TenantContext;
 import com.knp.repository.RefreshTokenRepository;
 import com.knp.repository.UserRepository;
@@ -23,8 +26,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * AuthService - Authentication and token management business logic
@@ -44,14 +49,27 @@ public class AuthService {
     private final RoleFeatureService roleFeatureService;
     private final TenantFeatureService tenantFeatureService;
     private final MessageService messageService;
+    private final SessionRegistry sessionRegistry;
+    private final ActivityLogService activityLogService;
     public static final String REFRESH_TOKEN_HEADER_KEY = "refresh-token";
+    private static final int MAX_FAILED_ATTEMPTS = 5;
 
     /**
-     * Authenticate user with username and password
-     * If rememberMe is true, generate refresh token
+     * Authenticate user with username and password.
+     * Throws {@link DeviceConflictException} when a session is already active on another device.
      */
-    public AuthResponse authenticateUser(LoginRequest loginRequest) {
-        // Log which database context we're using
+    public AuthResponse authenticateUser(LoginRequest loginRequest, String clientIp, String userAgent) {
+        return doAuthenticate(loginRequest, clientIp, userAgent, false);
+    }
+
+    /**
+     * Force-login: same as authenticateUser but silently kicks out the existing session first.
+     */
+    public AuthResponse forceLogin(LoginRequest loginRequest, String clientIp, String userAgent) {
+        return doAuthenticate(loginRequest, clientIp, userAgent, true);
+    }
+
+    private AuthResponse doAuthenticate(LoginRequest loginRequest, String clientIp, String userAgent, boolean force) {
         if (tenantContext.getCurrentTenant() != null) {
             log.info("Authenticating user: {} in TENANT database: {}",
                     loginRequest.getUsername(), tenantContext.getCurrentTenant().getTenantId());
@@ -59,52 +77,84 @@ public class AuthService {
             log.info("Authenticating user: {} in MASTER database", loginRequest.getUsername());
         }
 
-        // Find user by username
         User user = userRepository.findByUsername(loginRequest.getUsername())
                 .orElseThrow(() -> {
                     log.error("User not found: {}", loginRequest.getUsername());
-                    String errorMessage = messageService.getMessage("error.unauthorized");
-                    return new BadRequestException(errorMessage);
+                    return new BadRequestException(messageService.getMessage("error.unauthorized"));
                 });
 
-        // Verify password
-        if (!passwordEncoder.matches(loginRequest.getPassword(), user.getPassword())) {
-            log.warn("Invalid password for user: {}", loginRequest.getUsername());
-            String errorMessage = messageService.getMessage("error.unauthorized");
-            throw new BadRequestException(errorMessage);
+        if (Boolean.FALSE.equals(user.getAccountNonLocked())) {
+            log.warn("Login attempt on locked account: {}", loginRequest.getUsername());
+            throw new AccountLockedException(messageService.getMessage("error.account.locked"));
         }
 
         if (!user.getActive()) {
             log.warn("User account is inactive: {}", loginRequest.getUsername());
-            String errorMessage = messageService.getMessage("error.user.inactive");
-            throw new BadRequestException(errorMessage);
+            throw new BadRequestException(messageService.getMessage("error.user.inactive"));
         }
 
-        // Determine if user is from master database
-        boolean isMasterUser = tenantContext.getCurrentTenant() == null;
+        if (!passwordEncoder.matches(loginRequest.getPassword(), user.getPassword())) {
+            int attempts = (user.getFailedLoginAttempts() == null ? 0 : user.getFailedLoginAttempts()) + 1;
+            user.setFailedLoginAttempts(attempts);
 
-        // Extract role names from user's roles
+            if (attempts >= MAX_FAILED_ATTEMPTS) {
+                user.setAccountNonLocked(false);
+                userRepository.save(user);
+                log.warn("Account locked after {} failed attempts: {}", attempts, loginRequest.getUsername());
+                throw new AccountLockedException(messageService.getMessage("error.account.locked"));
+            }
+
+            userRepository.save(user);
+            int remaining = MAX_FAILED_ATTEMPTS - attempts;
+            log.warn("Invalid password for user: {}. Attempts: {}/{}.", loginRequest.getUsername(), attempts, MAX_FAILED_ATTEMPTS);
+            throw new BadRequestException(messageService.getMessage("error.invalid.credentials.remaining", remaining));
+        }
+
+        if (user.getFailedLoginAttempts() != null && user.getFailedLoginAttempts() > 0) {
+            user.setFailedLoginAttempts(0);
+            userRepository.save(user);
+        }
+
+        boolean isMasterUser = tenantContext.getCurrentTenant() == null;
+        String tenantKey = isMasterUser
+                ? SessionRegistry.MASTER_KEY
+                : tenantContext.getCurrentTenant().getTenantId();
+
+        // Single-device check
+        Optional<SessionInfo> existingSession = sessionRegistry.getSession(tenantKey, user.getUsername());
+        if (existingSession.isPresent()) {
+            if (!force) {
+                throw new DeviceConflictException(existingSession.get());
+            }
+            log.info("Force-login: evicting existing session for tenant={} user={}", tenantKey, user.getUsername());
+        }
+
         List<String> roleNames = user.getRoles().stream()
                 .map(Role::getName)
                 .toList();
 
-        // Get accessible features: intersection of tenant features and role features
-        // Step 1: Get features assigned to the tenant from master DB
-        // Step 2: Get features assigned to the role
-        // Step 3: Return matching features (intersection)
         List<String> featureNames = tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(roleNames);
         log.info("User {} has access to {} features (tenant + role intersection): {}",
                 loginRequest.getUsername(), featureNames.size(), featureNames);
 
-        // Generate access token with roles, features and master user flag
-        String accessToken = jwtTokenProvider.generateTokenWithRolesAndFeatures(
+        String sessionId = UUID.randomUUID().toString();
+        String accessToken = jwtTokenProvider.generateTokenWithSession(
                 user.getUsername(),
                 roleNames,
                 featureNames,
-                isMasterUser
+                isMasterUser,
+                sessionId
         );
         log.info("Access token generated for user: {} with roles: {}, features: {}, isMasterUser: {}",
                 loginRequest.getUsername(), roleNames, featureNames.size(), isMasterUser);
+
+        sessionRegistry.register(tenantKey, user.getUsername(),
+                new SessionInfo(sessionId, clientIp, userAgent, LocalDateTime.now()));
+
+        if (!isMasterUser) {
+            activityLogService.logAsync(tenantKey, user.getUsername(), user.getFullName(),
+                    ActivityAction.LOGIN, null, null, "Logged in", clientIp);
+        }
 
         if (StringUtils.isNotEmpty(user.getRequireAction())) {
             log.info("User {} requires action: {}", loginRequest.getUsername(), user.getRequireAction());
@@ -112,7 +162,6 @@ public class AuthService {
                     accessToken, jwtTokenProvider.getTokenExpirationMs());
         }
 
-        // Generate refresh token if rememberMe is enabled
         String refreshToken = null;
         if (loginRequest.getRememberMe() != null && loginRequest.getRememberMe()) {
             refreshToken = generateRefreshToken(user);
@@ -138,7 +187,9 @@ public class AuthService {
     }
 
     public String getRefreshToken(HttpServletRequest request) {
-        for (Cookie cookie : request.getCookies()) {
+        Cookie[] cookies = request.getCookies();
+        if (cookies == null) return StringUtils.EMPTY;
+        for (Cookie cookie : cookies) {
             if (cookie.getName().equals(REFRESH_TOKEN_HEADER_KEY)) {
                 return cookie.getValue();
             }
@@ -168,6 +219,11 @@ public class AuthService {
      */
     public AuthResponse refreshAccessToken(String username, String refreshToken) {
         log.info("Refreshing access token for user: {}", username);
+
+        if (StringUtils.isBlank(refreshToken)) {
+            log.warn("Refresh token is missing for user: {}", username);
+            throw new UnauthorizedException(messageService.getMessage("error.refresh.token.invalid"));
+        }
 
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> {
@@ -228,7 +284,7 @@ public class AuthService {
     }
 
     /**
-     * Logout user - invalidate all refresh tokens
+     * Logout user - invalidate all refresh tokens and clear session registry.
      */
     public void logoutUser(String username) {
         log.info("Logging out user: {}", username);
@@ -239,11 +295,16 @@ public class AuthService {
                     return new RuntimeException(errorMessage);
                 });
 
-        // Deactivate all refresh tokens
         refreshTokenRepository.findByUser(user).forEach(token -> {
             token.setActive(false);
             refreshTokenRepository.save(token);
         });
+
+        boolean isMasterUser = tenantContext.getCurrentTenant() == null;
+        String tenantKey = isMasterUser
+                ? SessionRegistry.MASTER_KEY
+                : tenantContext.getCurrentTenant().getTenantId();
+        sessionRegistry.remove(tenantKey, username);
 
         log.info("User logged out: {}", username);
     }

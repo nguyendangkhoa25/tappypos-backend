@@ -108,6 +108,13 @@ public class ShopInfoService {
             shopInfo.setWebsite(shopInfoDTO.getWebsite());
         }
 
+        // cashDenominations may be explicitly cleared (empty string) — allow null to clear
+        shopInfo.setCashDenominations(shopInfoDTO.getCashDenominations());
+
+        if (shopInfoDTO.getPosMode() != null) {
+            shopInfo.setPosMode(shopInfoDTO.getPosMode());
+        }
+
         if (shopInfoDTO.getInvoiceVendor() != null) {
             shopInfo.setInvoiceVendor(shopInfoDTO.getInvoiceVendor());
         }
@@ -188,10 +195,12 @@ public class ShopInfoService {
                 .email(shopInfo.getEmail())
                 .supplierTaxCode(shopInfo.getSupplierTaxCode())
                 .website(shopInfo.getWebsite())
+                .cashDenominations(shopInfo.getCashDenominations())
                 .invoiceVendor(shopInfo.getInvoiceVendor())
                 .templateCode(shopInfo.getTemplateCode())
                 .invoiceSeries(shopInfo.getInvoiceSeries())
                 .invoiceSystem(shopInfo.getInvoiceSystem())
+                .posMode(shopInfo.getPosMode() != null ? shopInfo.getPosMode() : "STANDARD")
                 .createdAt(shopInfo.getCreatedAt())
                 .updatedAt(shopInfo.getUpdatedAt())
                 .build();
@@ -215,6 +224,8 @@ public class ShopInfoService {
                 .email(shopInfo.getEmail())
                 .supplierTaxCode(shopInfo.getSupplierTaxCode())
                 .website(shopInfo.getWebsite())
+                .cashDenominations(shopInfo.getCashDenominations())
+                .posMode(shopInfo.getPosMode() != null ? shopInfo.getPosMode() : "STANDARD")
                 .createdAt(shopInfo.getCreatedAt())
                 .updatedAt(shopInfo.getUpdatedAt())
                 .build();

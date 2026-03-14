@@ -27,5 +27,15 @@ public interface ProfileService {
      * Update user profile password
      */
     UserProfile updateProfilePassword(String username, ProfileRequest request);
+
+    /**
+     * Update user basic info (fullName, email)
+     */
+    UserProfile updateProfileInfo(String username, ProfileRequest request);
+
+    /**
+     * Update user language preference
+     */
+    UserProfile updateProfileLang(String username, ProfileRequest request);
 }
 

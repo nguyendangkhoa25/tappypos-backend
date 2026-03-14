@@ -1,6 +1,8 @@
 package com.knp.model.entity;
 
+import com.knp.model.converter.EncryptedStringConverter;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotBlank;
@@ -33,10 +35,12 @@ public class ShopInfo extends BaseEntity {
     @Column(length = 100)
     private String eInvoiceUsername;
 
-    @Column(length = 500)
+    @Convert(converter = EncryptedStringConverter.class)
+    @Column(columnDefinition = "TEXT")
     private String eInvoicePassword;
 
-    @Column(length = 500)
+    @Convert(converter = EncryptedStringConverter.class)
+    @Column(columnDefinition = "TEXT")
     private String eInvoiceKey;
 
     // Phone number
@@ -69,5 +73,13 @@ public class ShopInfo extends BaseEntity {
     // Website
     @Column(length = 200)
     private String website;
+
+    // Comma-separated cash denomination values for POS checkout pad (e.g. "1000,2000,5000,10000,50000,100000,500000")
+    @Column(name = "cash_denominations", length = 500)
+    private String cashDenominations;
+
+    // POS mode: STANDARD (numbered order tabs) or TABLE (tab per table for restaurant/café)
+    @Column(name = "pos_mode", length = 20, nullable = false)
+    private String posMode = "STANDARD";
 }
 

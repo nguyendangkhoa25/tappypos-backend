@@ -4,7 +4,9 @@ import com.knp.model.dto.ApiResponse;
 import com.knp.model.dto.customer.CreateCustomerRequest;
 import com.knp.model.dto.customer.CustomerDTO;
 import com.knp.model.dto.customer.UpdateCustomerRequest;
+import com.knp.model.dto.order.OrderDTO;
 import com.knp.service.CustomerService;
+import com.knp.service.OrderService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 public class CustomerController {
 
     private final CustomerService customerService;
+    private final OrderService orderService;
 
     /**
      * POST /api/customers
@@ -161,6 +164,14 @@ public class CustomerController {
         customerService.deleteCustomer(id);
         log.info("Response: Customer deleted successfully - id: {}", id);
         return ResponseEntity.ok(ApiResponse.success(null, "Customer deleted successfully"));
+    }
+
+    @GetMapping("/{id}/orders")
+    public ResponseEntity<ApiResponse<Page<OrderDTO>>> getCustomerOrders(
+            @PathVariable Long id, Pageable pageable) {
+        log.info("Endpoint: GET /customers/{}/orders", id);
+        Page<OrderDTO> orders = orderService.getOrdersByCustomerId(id, pageable);
+        return ResponseEntity.ok(ApiResponse.success(orders, "Customer orders retrieved successfully"));
     }
 }
 

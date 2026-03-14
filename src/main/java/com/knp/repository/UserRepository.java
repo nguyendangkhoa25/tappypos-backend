@@ -55,5 +55,17 @@ public interface UserRepository extends JpaRepository<User, Long> {
      */
     @Query("SELECT u FROM User u WHERE u.username = :username AND u.active = true AND u.deletedAt IS NULL")
     Optional<User> findByUsernameActive(@Param("username") String username);
+
+    /**
+     * Get all active usernames — used for broadcast notifications
+     */
+    @Query("SELECT u.username FROM User u WHERE u.active = true AND u.deletedAt IS NULL")
+    java.util.List<String> findAllActiveUsernames();
+
+    /**
+     * Get active usernames by role name — used for targeted notifications (e.g. SHOP_OWNER)
+     */
+    @Query("SELECT u.username FROM User u JOIN u.roles r WHERE r.name = :roleName AND u.active = true AND u.deletedAt IS NULL")
+    java.util.List<String> findUsernamesByRole(@Param("roleName") String roleName);
 }
 

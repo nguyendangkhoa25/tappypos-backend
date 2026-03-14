@@ -31,8 +31,8 @@ public class InvoiceDTO {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
-    // Order and Customer info for display
-    private OrderInfo order;
+    // Orders and buyer info for display
+    private List<OrderInfo> orders;
     private BuyerInfo buyer;
     private List<InvoiceItemDTO> items;
 

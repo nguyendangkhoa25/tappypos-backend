@@ -31,33 +31,30 @@ public class SecurityConfig {
      * - JWT filter: validates token on all requests
      */
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) {
-        try {
-            http
-                    .csrf(AbstractHttpConfigurer::disable)
-                    .formLogin(AbstractHttpConfigurer::disable)
-                    .httpBasic(AbstractHttpConfigurer::disable)
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+                .csrf(AbstractHttpConfigurer::disable)
+                .formLogin(AbstractHttpConfigurer::disable)
+                .httpBasic(AbstractHttpConfigurer::disable)
 
-                    .authorizeHttpRequests(auth -> auth
-                            // Public endpoints - no authentication required
-                            .requestMatchers("/tenants/**").permitAll()
-                            .requestMatchers("/auth/login").permitAll()
-                            .requestMatchers("/auth/register").permitAll()
-                            .requestMatchers("/auth/refresh").permitAll()
-                            .requestMatchers("/auth/logout").permitAll()
-                            .requestMatchers("/auth/profile").permitAll()
-                            .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/actuator/**").permitAll()
-                            // All other endpoints require authentication
-                            .anyRequest().authenticated()
-                    )
-                    .exceptionHandling(exception -> exception
-                            .authenticationEntryPoint(jwtAuthenticationEntryPoint)
-                    )
-                    .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                    .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to configure security", e);
-        }
+                .authorizeHttpRequests(auth -> auth
+                        // Public endpoints - no authentication required
+                        .requestMatchers("/tenants/**").permitAll()
+                        .requestMatchers("/banks/**").permitAll()
+                        .requestMatchers("/auth/login").permitAll()
+                        .requestMatchers("/auth/register").permitAll()
+                        .requestMatchers("/auth/refresh").permitAll()
+                        .requestMatchers("/auth/logout").permitAll()
+                        .requestMatchers("/auth/profile").permitAll()
+                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/actuator/**").permitAll()
+                        // All other endpoints require authentication
+                        .anyRequest().authenticated()
+                )
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint(jwtAuthenticationEntryPoint)
+                )
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

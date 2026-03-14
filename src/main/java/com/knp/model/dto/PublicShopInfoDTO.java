@@ -23,6 +23,8 @@ public class PublicShopInfoDTO {
     private String email;
     private String supplierTaxCode;
     private String website;
+    private String cashDenominations;
+    private String posMode;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

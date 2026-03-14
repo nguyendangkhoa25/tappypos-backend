@@ -56,6 +56,7 @@ public class TenantContext {
     /**
      * Validate that the tenant is not expired
      * Throws TenantExpiredException if tenant has expired
+     * Note: If expiration date is today or earlier, tenant is considered expired
      */
     public void validateTenantNotExpired() {
         Tenant tenant = currentTenant.get();
@@ -70,10 +71,10 @@ public class TenantContext {
             return;
         }
 
-        // Check if expiration date has passed
+        // Check if expiration date has passed (including today)
         LocalDate now = LocalDate.now();
-        if (now.isAfter(tenant.getExpirationDate())) {
-            // Tenant has expired
+        if (!now.isBefore(tenant.getExpirationDate())) {
+            // Tenant has expired (expiration date is today or in the past)
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
             String formattedDate = tenant.getExpirationDate().format(formatter);
             log.warn("Tenant {} has expired on {}. Current time: {}",

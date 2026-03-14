@@ -2,6 +2,7 @@ package com.knp.repository;
 
 import com.knp.model.entity.Feature;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -84,12 +85,42 @@ public interface RoleFeatureRepository extends JpaRepository<Feature, Long> {
 
     /**
      * Get all active features in the system
-     *
-     * @return list of all active Feature objects
      */
     @Query(value = "SELECT DISTINCT f.* FROM features f " +
            "WHERE f.deleted = 0 AND f.active = 1 " +
            "ORDER BY f.name ASC", nativeQuery = true)
     List<Feature> findAllActiveFeatures();
+
+    /**
+     * Assign a feature to a role (idempotent — ignores duplicates)
+     */
+    @Modifying
+    @Query(value = "INSERT INTO role_features (role_id, feature_id) " +
+           "SELECT r.id, f.id FROM roles r, features f " +
+           "WHERE r.name = :roleName AND f.name = :featureName " +
+           "ON DUPLICATE KEY UPDATE role_id = role_id",
+           nativeQuery = true)
+    void assignFeatureToRole(@Param("roleName") String roleName, @Param("featureName") String featureName);
+
+    /**
+     * Remove a single feature from a role
+     */
+    @Modifying
+    @Query(value = "DELETE rf FROM role_features rf " +
+           "INNER JOIN roles r ON rf.role_id = r.id " +
+           "INNER JOIN features f ON rf.feature_id = f.id " +
+           "WHERE r.name = :roleName AND f.name = :featureName",
+           nativeQuery = true)
+    void removeFeatureFromRole(@Param("roleName") String roleName, @Param("featureName") String featureName);
+
+    /**
+     * Remove all features from a role
+     */
+    @Modifying
+    @Query(value = "DELETE rf FROM role_features rf " +
+           "INNER JOIN roles r ON rf.role_id = r.id " +
+           "WHERE r.name = :roleName",
+           nativeQuery = true)
+    void removeAllFeaturesFromRole(@Param("roleName") String roleName);
 }
 

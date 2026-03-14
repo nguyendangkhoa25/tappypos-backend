@@ -89,6 +89,25 @@ public class JwtTokenProvider {
     }
 
     /**
+     * Generate JWT token with roles, features, master user flag, and a session ID for single-device enforcement.
+     */
+    public String generateTokenWithSession(String username, java.util.List<String> roles, java.util.List<String> features, boolean isMasterUser, String sessionId) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("roles", roles);
+        claims.put("features", features);
+        claims.put("isMasterUser", isMasterUser);
+        claims.put("sid", sessionId);
+        return generateTokenWithClaims(username, claims);
+    }
+
+    /**
+     * Extract session ID from token claims. Returns null for tokens that pre-date the single-device feature.
+     */
+    public String getSessionIdFromToken(String token) {
+        return getClaimsFromToken(token).get("sid", String.class);
+    }
+
+    /**
      * Generate JWT token with additional claims
      * Allows passing extra information in the token payload
      *

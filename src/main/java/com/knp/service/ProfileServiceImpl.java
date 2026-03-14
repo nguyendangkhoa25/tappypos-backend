@@ -170,6 +170,61 @@ public class ProfileServiceImpl implements ProfileService {
     }
 
     /**
+     * Update user basic info (fullName, email)
+     */
+    @Override
+    public UserProfile updateProfileInfo(String username, ProfileRequest request) {
+        log.info("Updating profile info for user: {}", username);
+
+        if (!username.equals(request.getUsername())) {
+            throw new ForbiddenException(messageService.getMessage("error.permission.denied"));
+        }
+
+        User user = userRepository.findByUsernameActive(username)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        messageService.getMessage("error.user.not.found", username)));
+
+        if (request.getFullName() != null) {
+            user.setFullName(request.getFullName().trim());
+        }
+        if (request.getEmail() != null) {
+            String email = request.getEmail().trim();
+            if (!email.isEmpty() && !email.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")) {
+                throw new BadRequestException(messageService.getMessage("error.user.invalid.email"));
+            }
+            user.setEmail(email.isEmpty() ? null : email);
+        }
+
+        User updatedUser = userRepository.save(user);
+        log.info("Profile info updated for user: {}", username);
+        return mapToUserProfile(updatedUser);
+    }
+
+    /**
+     * Update user language preference
+     */
+    @Override
+    public UserProfile updateProfileLang(String username, ProfileRequest request) {
+        log.info("Updating language preference for user: {}", username);
+
+        if (!username.equals(request.getUsername())) {
+            throw new ForbiddenException(messageService.getMessage("error.permission.denied"));
+        }
+
+        User user = userRepository.findByUsernameActive(username)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        messageService.getMessage("error.user.not.found", username)));
+
+        if (request.getLang() != null && !request.getLang().isBlank()) {
+            user.setLang(request.getLang());
+        }
+
+        User updatedUser = userRepository.save(user);
+        log.info("Language preference updated for user: {}", username);
+        return mapToUserProfile(updatedUser);
+    }
+
+    /**
      * Map User entity to UserProfile DTO
      */
     private UserProfile mapToUserProfile(User user) {

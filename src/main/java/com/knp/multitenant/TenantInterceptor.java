@@ -2,6 +2,7 @@ package com.knp.multitenant;
 
 import com.knp.model.entity.Tenant;
 import com.knp.repository.TenantRepository;
+import com.knp.service.MessageService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +13,7 @@ import org.springframework.web.servlet.HandlerInterceptor;
 
 /**
  * TenantInterceptor - Validates X-Tenant-ID header on all protected requests
+ * Uses i18n messages for error responses
  * <p>
  * Public Paths (no header required):
  * - /api/tenants - Get available tenants
@@ -31,6 +33,7 @@ public class TenantInterceptor implements HandlerInterceptor {
     private static final String MASTER_TENANT = "master";
     private final TenantRepository tenantRepository;
     private final TenantContext tenantContext;
+    private final MessageService messageService;
 
     // Paths that don't require tenant header (always use master DB)
     private static final String[] PUBLIC_PATHS = {
@@ -45,7 +48,8 @@ public class TenantInterceptor implements HandlerInterceptor {
             "/api/auth",
             "/api/users",
             "/api/employees",
-            "/api/multi-tenants"         // Tenant management (master DB only)
+            "/api/multi-tenants",        // Tenant management (master DB only)
+            "/api/profiles"              // Profile management (works for both master and tenant users)
     };
 
     @Override
@@ -85,8 +89,11 @@ public class TenantInterceptor implements HandlerInterceptor {
             return true;
         }
 
+        // Trim tenantId for consistency
+        tenantId = tenantId.trim();
+
         // Special case: "master" tenant uses master database without validation
-        if (MASTER_TENANT.equalsIgnoreCase(tenantId.trim())) {
+        if (MASTER_TENANT.equalsIgnoreCase(tenantId)) {
             log.info("Master tenant request to {}: using master database directly", requestPath);
             return true;
         }
@@ -107,13 +114,19 @@ public class TenantInterceptor implements HandlerInterceptor {
             log.warn("Request to protected path {} without X-Tenant-ID header", requestPath);
             response.setStatus(HttpStatus.BAD_REQUEST.value());
             response.setContentType("application/json");
+            
+            // Get i18n message for missing header
+            String message = messageService.getMessage("error.tenant.header.required");
             response.getWriter().write(
                     "{\"success\": false, \"error\": \"BAD_REQUEST\", " +
-                            "\"message\": \"X-Tenant-ID header is required\"}"
+                            "\"message\": \"" + message + "\"}"
             );
             return false;
         }
 
+        // Trim tenantId for consistency
+        tenantId = tenantId.trim();
+        
         return validateTenantAndSetContext(request, response, requestPath, tenantId);
     }
 
@@ -128,11 +141,14 @@ public class TenantInterceptor implements HandlerInterceptor {
 
         if (tenant == null) {
             log.warn("Invalid tenant ID: {} in request to {}", tenantId, requestPath);
-            response.setStatus(HttpStatus.UNAUTHORIZED.value());
+            response.setStatus(HttpStatus.BAD_REQUEST.value());
             response.setContentType("application/json");
+            
+            // Get i18n message for invalid tenant
+            String message = messageService.getMessage("error.tenant.invalid");
             response.getWriter().write(
-                    "{\"success\": false, \"error\": \"UNAUTHORIZED\", " +
-                            "\"message\": \"Invalid tenant ID\"}"
+                    "{\"success\": false, \"error\": \"TENANT_NOT_FOUND\", " +
+                            "\"message\": \"" + message + "\"}"
             );
             return false;
         }
@@ -141,9 +157,12 @@ public class TenantInterceptor implements HandlerInterceptor {
             log.warn("Inactive tenant {} attempted access to {}", tenantId, requestPath);
             response.setStatus(HttpStatus.FORBIDDEN.value());
             response.setContentType("application/json");
+            
+            // Get i18n message for inactive tenant
+            String message = messageService.getMessage("error.tenant.inactive");
             response.getWriter().write(
                     "{\"success\": false, \"error\": \"FORBIDDEN\", " +
-                            "\"message\": \"Tenant is inactive\"}"
+                            "\"message\": \"" + message + "\"}"
             );
             return false;
         }
@@ -159,6 +178,9 @@ public class TenantInterceptor implements HandlerInterceptor {
             response.setStatus(HttpStatus.BAD_REQUEST.value());
             response.setContentType("application/json");
 
+            // Get i18n message for expired tenant
+            String message = messageService.getMessage("error.tenant.expired");
+            
             // Extract expiration date from exception if available
             String expirationDate = null;
             if (e instanceof com.knp.exception.TenantExpiredException) {
@@ -169,11 +191,11 @@ public class TenantInterceptor implements HandlerInterceptor {
             String errorResponse;
             if (expirationDate != null) {
                 errorResponse = "{\"success\": false, \"error\": \"TENANT_EXPIRED\", " +
-                        "\"message\": \"Tenant subscription has expired\", " +
+                        "\"message\": \"" + message + "\", " +
                         "\"field\": \"" + expirationDate + "\"}";
             } else {
                 errorResponse = "{\"success\": false, \"error\": \"TENANT_EXPIRED\", " +
-                        "\"message\": \"Tenant subscription has expired\"}";
+                        "\"message\": \"" + message + "\"}";
             }
 
             response.getWriter().write(errorResponse);

@@ -3,8 +3,14 @@ package com.knp.controller;
 import com.knp.annotation.MasterDatabaseOnly;
 import com.knp.model.dto.ApiResponse;
 import com.knp.model.dto.CreateTenantRequest;
+import com.knp.model.dto.ShopInfoDTO;
 import com.knp.model.dto.TenantDTO;
+import com.knp.model.dto.TenantStatsDTO;
 import com.knp.model.dto.UpdateTenantRequest;
+import com.knp.model.entity.Tenant;
+import com.knp.multitenant.TenantContext;
+import com.knp.service.ShopInfoService;
+import com.knp.service.TenantProvisioningService;
 import com.knp.service.TenantService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +33,20 @@ import java.util.List;
 public class MultiTenantController {
 
     private final TenantService tenantService;
+    private final ShopInfoService shopInfoService;
+    private final TenantContext tenantContext;
+    private final TenantProvisioningService tenantProvisioningService;
+
+    /**
+     * GET /api/multi-tenants/stats
+     * Returns aggregate counts for the master dashboard.
+     */
+    @GetMapping("/stats")
+    public ResponseEntity<ApiResponse<TenantStatsDTO>> getStats() {
+        log.info("Request: Get tenant stats");
+        TenantStatsDTO stats = tenantService.getStats();
+        return ResponseEntity.ok(ApiResponse.success(stats, "Stats retrieved successfully"));
+    }
 
     /**
      * GET /api/multi-tenants
@@ -69,12 +89,26 @@ public class MultiTenantController {
         log.info("Request: Create new tenant: {}", request.getTenantId());
 
         TenantDTO tenant = tenantService.createTenant(request);
-        log.info("Created tenant: {}", request.getTenantId());
+        log.info("Created tenant record: {}", request.getTenantId());
 
-        tenantService.createTenantDatasource(
-                tenant.getTenantId(),
-                tenant.getDbName()
-        );
+        // Register datasource synchronously so provisioning can use it immediately
+        tenantService.registerDatasourceSync(tenant.getTenantId(), tenant.getDbName());
+
+        // Provision default data (roles, features, admin user, shop info, walk-in customer)
+        Tenant tenantEntity = tenantService.getTenantEntity(tenant.getTenantId());
+        tenantContext.setCurrentTenant(tenantEntity);
+        try {
+            tenantProvisioningService.provision(tenantEntity,
+                    request.getAdminUsername(), request.getAdminPassword());
+        } catch (Exception e) {
+            log.error("Provisioning failed for tenant {}, tenant was still created", tenant.getTenantId(), e);
+        } finally {
+            tenantContext.clear();
+        }
+
+        // Reload all datasources async so other nodes pick up the new tenant
+        tenantService.reloadAllDatasource();
+
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(ApiResponse.success(tenant, "Tenant created successfully"));
     }
@@ -136,6 +170,44 @@ public class MultiTenantController {
         return ResponseEntity.ok(
             ApiResponse.success(tenant, "Tenant activated successfully")
         );
+    }
+
+    /**
+     * GET /api/multi-tenants/{tenantId}/shop-info
+     * Get shop info for a specific tenant (master admin view/setup).
+     * Temporarily routes to the tenant's database.
+     */
+    @GetMapping("/{tenantId}/shop-info")
+    public ResponseEntity<ApiResponse<ShopInfoDTO>> getTenantShopInfo(@PathVariable String tenantId) {
+        log.info("Request: Get shop info for tenant: {}", tenantId);
+        Tenant tenant = tenantService.getTenantEntity(tenantId);
+        try {
+            tenantContext.setCurrentTenant(tenant);
+            ShopInfoDTO shopInfo = shopInfoService.getShopInfo();
+            return ResponseEntity.ok(ApiResponse.success(shopInfo, "Shop info retrieved successfully"));
+        } finally {
+            tenantContext.clear();
+        }
+    }
+
+    /**
+     * PUT /api/multi-tenants/{tenantId}/shop-info
+     * Update shop info for a specific tenant (master admin setup).
+     * Temporarily routes to the tenant's database.
+     */
+    @PutMapping("/{tenantId}/shop-info")
+    public ResponseEntity<ApiResponse<ShopInfoDTO>> updateTenantShopInfo(
+            @PathVariable String tenantId,
+            @RequestBody ShopInfoDTO shopInfoDTO) {
+        log.info("Request: Update shop info for tenant: {}", tenantId);
+        Tenant tenant = tenantService.getTenantEntity(tenantId);
+        try {
+            tenantContext.setCurrentTenant(tenant);
+            ShopInfoDTO updated = shopInfoService.updateShopInfo(shopInfoDTO);
+            return ResponseEntity.ok(ApiResponse.success(updated, "Shop info updated successfully"));
+        } finally {
+            tenantContext.clear();
+        }
     }
 
     /**

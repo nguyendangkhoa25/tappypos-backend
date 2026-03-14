@@ -22,10 +22,12 @@ public class ShopInfoDTO {
     private String email;
     private String supplierTaxCode;
     private String website;
+    private String cashDenominations;
     private String invoiceVendor;
     private String templateCode;
     private String invoiceSeries;
     private String invoiceSystem;
+    private String posMode;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

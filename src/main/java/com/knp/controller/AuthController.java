@@ -31,48 +31,71 @@ public class AuthController {
 
     /**
      * POST /api/auth/login
-     * Login with username and password
-     * If rememberMe is true, refresh token is generated
+     * Login with username and password.
+     * Returns 409 DEVICE_CONFLICT if the user is already logged in on another device.
      */
     @PostMapping("/login")
-    public ResponseEntity<ApiResponse<AuthResponse>> login(@RequestBody LoginRequest loginRequest, HttpServletResponse response) {
+    public ResponseEntity<ApiResponse<AuthResponse>> login(
+            @RequestBody LoginRequest loginRequest,
+            HttpServletRequest request,
+            HttpServletResponse response) {
+
         log.info("Login request for user: {}", loginRequest.getUsername());
 
-        AuthResponse authResponse = authService.authenticateUser(loginRequest);
+        String clientIp = resolveClientIp(request);
+        String userAgent = request.getHeader("User-Agent");
+
+        AuthResponse authResponse = authService.authenticateUser(loginRequest, clientIp, userAgent);
 
         if (loginRequest.getRememberMe() && authResponse.getRefreshToken() != null) {
-            log.info("Remember me is enabled, refresh token generated");
             ResponseCookie cookie = authService.getRefreshTokenResponseCookie(authResponse.getRefreshToken());
             response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
         }
 
-        return ResponseEntity.ok(
-                ApiResponse.success(authResponse, "Login successful")
-        );
+        return ResponseEntity.ok(ApiResponse.success(authResponse, "Login successful"));
     }
 
+    /**
+     * POST /api/auth/login/force
+     * Force-login: kicks out any existing session and creates a new one.
+     * Called when the user confirms the "Switch Device?" dialog.
+     */
+    @PostMapping("/login/force")
+    public ResponseEntity<ApiResponse<AuthResponse>> forceLogin(
+            @RequestBody LoginRequest loginRequest,
+            HttpServletRequest request,
+            HttpServletResponse response) {
+
+        log.info("Force-login request for user: {}", loginRequest.getUsername());
+
+        String clientIp = resolveClientIp(request);
+        String userAgent = request.getHeader("User-Agent");
+
+        AuthResponse authResponse = authService.forceLogin(loginRequest, clientIp, userAgent);
+
+        if (loginRequest.getRememberMe() && authResponse.getRefreshToken() != null) {
+            ResponseCookie cookie = authService.getRefreshTokenResponseCookie(authResponse.getRefreshToken());
+            response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+        }
+
+        return ResponseEntity.ok(ApiResponse.success(authResponse, "Login successful"));
+    }
 
     /**
      * POST /api/auth/refresh
-     * Refresh access token using refresh token
-     * Used when access token expires but refresh token is still valid
+     * Refresh access token using refresh token cookie.
      */
     @PostMapping("/refresh")
     public ResponseEntity<ApiResponse<AuthResponse>> refreshToken(@RequestParam String username, HttpServletRequest request) {
-
         log.info("User {} attempt to refresh the token!", username);
         String refreshToken = authService.getRefreshToken(request);
-
         AuthResponse authResponse = authService.refreshAccessToken(username, refreshToken);
-        return ResponseEntity.ok(
-                ApiResponse.success(authResponse, "Token refreshed successfully")
-        );
+        return ResponseEntity.ok(ApiResponse.success(authResponse, "Token refreshed successfully"));
     }
 
     /**
      * POST /api/auth/logout
-     * Logout user - invalidate all refresh tokens and clear cookie
-     * Requires authentication
+     * Logout user - invalidate all refresh tokens and clear cookie.
      */
     @PostMapping("/logout")
     public ResponseEntity<ApiResponse<Void>> logout(HttpServletResponse response) {
@@ -85,19 +108,13 @@ public class AuthController {
 
         log.info("Logout request for user: {}", username);
         authService.logoutUser(username);
-
-        // Clear the refresh token cookie
         authService.clearRefreshTokenCookie(response);
 
-        return ResponseEntity.ok(
-                ApiResponse.success(null, "Logout successful")
-        );
+        return ResponseEntity.ok(ApiResponse.success(null, "Logout successful"));
     }
 
     /**
      * GET /api/auth/profile
-     * Get current user profile
-     * Requires authentication
      */
     @GetMapping("/profile")
     public ResponseEntity<ApiResponse<UserDTO>> getProfile() {
@@ -110,10 +127,14 @@ public class AuthController {
 
         log.info("Profile request for user: {}", username);
         UserDTO userProfile = authService.getUserProfile(username);
+        return ResponseEntity.ok(ApiResponse.success(userProfile, "Profile retrieved successfully"));
+    }
 
-        return ResponseEntity.ok(
-                ApiResponse.success(userProfile, "Profile retrieved successfully")
-        );
+    private String resolveClientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
     }
 }
-

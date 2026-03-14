@@ -11,7 +11,7 @@ import java.util.List;
 @AllArgsConstructor
 @Builder
 public class CreateInvoiceRequest {
-    private Long orderId;
+    private List<Long> orderIds;
     private String paymentType;
     private String invoiceType;
     private String invoiceSeries;

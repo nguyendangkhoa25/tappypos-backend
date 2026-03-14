@@ -2,6 +2,7 @@ package com.knp.exception;
 
 import com.knp.model.dto.ApiResponse;
 import com.knp.service.MessageService;
+import com.knp.service.SessionInfo;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -51,6 +52,16 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handle AccountLockedException - 403 Forbidden
+     */
+    @ExceptionHandler(AccountLockedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccountLockedException(AccountLockedException ex) {
+        log.warn("Account locked: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.error("ACCOUNT_LOCKED", ex.getMessage()));
+    }
+
+    /**
      * Handle BadRequestException - 400 Bad Request
      */
     @ExceptionHandler({
@@ -77,6 +88,26 @@ public class GlobalExceptionHandler {
         String message = ex.getMessage() != null ? ex.getMessage() : messageService.getMessage("error.invalid.argument");
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error("INVALID_ARGUMENT", message));
+    }
+
+    /**
+     * Handle DeviceConflictException - 409 Conflict (single-device login)
+     */
+    @ExceptionHandler(DeviceConflictException.class)
+    public ResponseEntity<ApiResponse<Map<String, Object>>> handleDeviceConflictException(DeviceConflictException ex) {
+        SessionInfo s = ex.getExistingSession();
+        Map<String, Object> data = Map.of(
+                "ipAddress", s.ipAddress() != null ? s.ipAddress() : "",
+                "userAgent", s.userAgent() != null ? s.userAgent() : "",
+                "loginAt", s.loginAt().toString()
+        );
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.<Map<String, Object>>builder()
+                        .success(false)
+                        .error("DEVICE_CONFLICT")
+                        .message(messageService.getMessage("error.session.device.conflict"))
+                        .data(data)
+                        .build());
     }
 
     /**

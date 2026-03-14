@@ -1,7 +1,9 @@
 package com.knp.service;
 import com.knp.config.AuthContext;
+import com.knp.exception.ResourceNotFoundException;
 import com.knp.model.dto.CreateTenantRequest;
 import com.knp.model.dto.TenantDTO;
+import com.knp.model.dto.TenantStatsDTO;
 import com.knp.model.dto.UpdateTenantRequest;
 import com.knp.model.entity.Tenant;
 import com.knp.multitenant.DatasourceManager;
@@ -13,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -100,14 +103,41 @@ public class TenantService {
     }
 
     /**
+     * Get dashboard stats for the master admin:
+     * total / active (not expired) / inactive / expiring in ≤7 days / already expired
+     */
+    public TenantStatsDTO getStats() {
+        List<Tenant> all = tenantRepository.findAll();
+        LocalDate today = LocalDate.now();
+        LocalDate soonThreshold = today.plusDays(7);
+
+        long total = all.size();
+        long inactive = all.stream().filter(t -> !t.isActive()).count();
+        long expired = all.stream()
+                .filter(t -> t.isActive()
+                        && t.getExpirationDate() != null
+                        && t.getExpirationDate().isBefore(today))
+                .count();
+        long expiringSoon = all.stream()
+                .filter(t -> t.isActive()
+                        && t.getExpirationDate() != null
+                        && !t.getExpirationDate().isBefore(today)
+                        && !t.getExpirationDate().isAfter(soonThreshold))
+                .count();
+        long active = total - inactive - expired;
+
+        return new TenantStatsDTO(total, active, inactive, expiringSoon, expired);
+    }
+
+    /**
      * Get a specific tenant by ID
      */
     public TenantDTO getTenantById(String tenantId) {
         log.info("Fetching tenant: {}", tenantId);
         Tenant tenant = tenantRepository.findByTenantId(tenantId)
                 .orElseThrow(() -> {
-                    log.error("Tenant not found: {}", tenantId);
-                    return new RuntimeException("Tenant not found: " + tenantId);
+                    log.warn("Tenant not found: {}", tenantId);
+                    return new ResourceNotFoundException("Tenant not found: " + tenantId);
                 });
         return mapToDTO(tenant);
     }
@@ -304,6 +334,16 @@ public class TenantService {
                 .createdBy(tenant.getCreatedBy())
                 .updatedBy(tenant.getUpdatedBy())
                 .build();
+    }
+
+    /**
+     * Register datasource for a new tenant synchronously.
+     * Must be called after the tenant record is committed so that provisioning
+     * can immediately use the new datasource.
+     */
+    public void registerDatasourceSync(String tenantId, String dbName) {
+        log.info("Registering datasource synchronously for tenant: {}", tenantId);
+        datasourceManager.addOrUpdateTenantDatasource(tenantId, dbName);
     }
 
     /**

@@ -37,6 +37,12 @@ public class OrderItem extends BaseEntity {
     @Column(name = "amount", nullable = false, precision = 10, scale = 2)
     private BigDecimal amount;
 
+    @Column(name = "unit_cost", nullable = false, precision = 15, scale = 2, columnDefinition = "DECIMAL(15,2) DEFAULT 0")
+    private BigDecimal unitCost = BigDecimal.ZERO;
+
+    @Column(name = "cost_amount", nullable = false, precision = 15, scale = 2, columnDefinition = "DECIMAL(15,2) DEFAULT 0")
+    private BigDecimal costAmount = BigDecimal.ZERO;
+
     @Column(name = "amount_before_tax", precision = 10, scale = 2, columnDefinition = "DECIMAL(10,2) DEFAULT 0")
     private BigDecimal amountBeforeTax = BigDecimal.ZERO;
 
@@ -73,6 +79,9 @@ public class OrderItem extends BaseEntity {
     private void calculateTotalAmount() {
         if (this.unitPrice != null && this.quantity != null) {
             this.amount = this.unitPrice.multiply(new BigDecimal(this.quantity));
+        }
+        if (this.unitCost != null && this.quantity != null) {
+            this.costAmount = this.unitCost.multiply(new BigDecimal(this.quantity));
         }
     }
 }

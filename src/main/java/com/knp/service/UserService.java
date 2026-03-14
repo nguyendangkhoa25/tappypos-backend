@@ -8,6 +8,7 @@ import com.knp.model.dto.*;
 import com.knp.model.entity.Role;
 import com.knp.model.entity.User;
 import com.knp.model.enums.RoleEnum;
+import com.knp.repository.EmployeeRepository;
 import com.knp.repository.RoleRepository;
 import com.knp.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +37,7 @@ public class UserService {
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final MessageService messageService;
+    private final EmployeeRepository employeeRepository;
 
     /**
      * Create a new user
@@ -233,8 +235,11 @@ public class UserService {
                     return new ResourceNotFoundException(errorMessage);
                 });
         user.setAccountNonLocked(!locked);
+        if (!locked) {
+            user.setFailedLoginAttempts(0);
+        }
         User updatedUser = userRepository.save(user);
-        log.info("User {} lock status updated", updatedUser.getUsername());
+        log.info("User {} lock status updated to locked={}", updatedUser.getUsername(), locked);
         return mapToDTO(updatedUser);
     }
 
@@ -310,8 +315,14 @@ public class UserService {
                         .build())
                 .collect(Collectors.toSet());
 
-        // Find employee ID by matching user ID
-        Long employeeId = 10000L;
+        Long employeeId = null;
+        try {
+            employeeId = employeeRepository.findByUserId(user.getId())
+                    .map(e -> e.getId())
+                    .orElse(null);
+        } catch (Exception ignored) {
+            // Employee table may not exist in all contexts (e.g. master DB)
+        }
         return UserDTO.builder()
                 .id(user.getId())
                 .username(user.getUsername())
@@ -319,6 +330,7 @@ public class UserService {
                 .fullName(user.getFullName())
                 .active(user.getActive())
                 .accountNonLocked(user.getAccountNonLocked())
+                .failedLoginAttempts(user.getFailedLoginAttempts() != null ? user.getFailedLoginAttempts() : 0)
                 .credentialsNonExpired(user.getCredentialsNonExpired())
                 .accountNonExpired(user.getAccountNonExpired())
                 .employeeId(employeeId)
