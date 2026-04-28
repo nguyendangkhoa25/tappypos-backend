@@ -13,5 +13,6 @@ import lombok.*;
 public class LoginRequest {
     private String username;
     private String password;
-    private Boolean rememberMe; // If true, generate refresh token
+    private Boolean rememberMe;
+    private String turnstileToken;
 }

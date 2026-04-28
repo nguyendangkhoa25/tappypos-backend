@@ -6,6 +6,7 @@ import com.knp.model.dto.auth.AuthResponse;
 import com.knp.model.dto.auth.LoginRequest;
 import com.knp.model.dto.auth.UserDTO;
 import com.knp.service.AuthService;
+import com.knp.service.TurnstileService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ public class AuthController {
 
     private final AuthService authService;
     private final AuthContext authContext;
+    private final TurnstileService turnstileService;
 
     /**
      * POST /api/auth/login
@@ -44,6 +46,11 @@ public class AuthController {
 
         String clientIp = resolveClientIp(request);
         String userAgent = request.getHeader("User-Agent");
+
+        if (!turnstileService.verify(loginRequest.getTurnstileToken(), clientIp)) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error("TURNSTILE_FAILED", "Human verification failed. Please try again."));
+        }
 
         AuthResponse authResponse = authService.authenticateUser(loginRequest, clientIp, userAgent);
 
@@ -70,6 +77,11 @@ public class AuthController {
 
         String clientIp = resolveClientIp(request);
         String userAgent = request.getHeader("User-Agent");
+
+        if (!turnstileService.verify(loginRequest.getTurnstileToken(), clientIp)) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error("TURNSTILE_FAILED", "Human verification failed. Please try again."));
+        }
 
         AuthResponse authResponse = authService.forceLogin(loginRequest, clientIp, userAgent);
 
