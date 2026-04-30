@@ -1,6 +1,6 @@
 package com.knp.model.dto.inventory;
 
-import com.knp.model.entity.Inventory;
+import com.knp.model.entity.inventory.Inventory;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;

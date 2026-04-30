@@ -2,7 +2,7 @@ package com.knp.exception;
 
 import com.knp.model.dto.ApiResponse;
 import com.knp.service.MessageService;
-import com.knp.service.SessionInfo;
+import com.knp.service.auth.SessionInfo;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;

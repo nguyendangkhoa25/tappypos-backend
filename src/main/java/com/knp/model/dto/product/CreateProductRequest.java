@@ -34,9 +34,11 @@ public class CreateProductRequest {
     @DecimalMin(value = "0", message = "Price must be greater than or equal to 0")
     private BigDecimal price;
 
+    @Builder.Default
     @DecimalMin(value = "0", message = "Cost price must be greater than or equal to 0")
     private BigDecimal costPrice = BigDecimal.ZERO;
 
+    @Builder.Default
     private String status = "ACTIVE";
 
     @Size(max = 20, message = "Unit must not exceed 20 characters")

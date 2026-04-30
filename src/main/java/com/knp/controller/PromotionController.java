@@ -4,7 +4,7 @@ import com.knp.model.dto.ApiResponse;
 import com.knp.model.dto.promotion.ApplyPromotionResponse;
 import com.knp.model.dto.promotion.PromotionDTO;
 import com.knp.model.dto.promotion.SavePromotionRequest;
-import com.knp.service.PromotionService;
+import com.knp.service.order.PromotionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,11 +15,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import com.knp.annotation.RequiresFeature;
 
 @Slf4j
 @RestController
 @RequestMapping("/promotions")
 @RequiredArgsConstructor
+@RequiresFeature("PROMOTION")
 public class PromotionController {
 
     private final PromotionService promotionService;

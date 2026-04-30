@@ -1,7 +1,7 @@
 package com.knp.multitenant;
 
 import com.knp.exception.TenantExpiredException;
-import com.knp.model.entity.Tenant;
+import com.knp.model.entity.tenant.Tenant;
 import org.slf4j.MDC;
 import org.springframework.stereotype.Component;
 import lombok.extern.slf4j.Slf4j;

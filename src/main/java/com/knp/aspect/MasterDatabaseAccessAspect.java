@@ -30,7 +30,8 @@ public class MasterDatabaseAccessAspect {
 
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String BEARER_PREFIX = "Bearer ";
-    private static final String MASTER_TENANT_ROLE = "MASTER_TENANT";
+    private static final java.util.Set<String> ALLOWED_MASTER_ROLES =
+            java.util.Set.of("MASTER_TENANT", "VENDOR_ADMIN");
 
     /**
      * Check if current request is accessing master database with proper role
@@ -56,10 +57,11 @@ public class MasterDatabaseAccessAspect {
             throw new ForbiddenException("error.access.master_only");
         }
 
-        // Check 2: User must have MASTER_TENANT role
+        // Check 2: User must have a recognised master role (MASTER_TENANT or VENDOR_ADMIN)
         List<String> roles = jwtTokenProvider.getRolesFromToken(token);
-        if (roles == null || !roles.contains(MASTER_TENANT_ROLE)) {
-            log.warn("Access denied to master-only endpoint. User does not have MASTER_TENANT role. Roles: {}", roles);
+        boolean hasMasterRole = roles != null && roles.stream().anyMatch(ALLOWED_MASTER_ROLES::contains);
+        if (!hasMasterRole) {
+            log.warn("Access denied to master-only endpoint. No allowed master role found. Roles: {}", roles);
             throw new ForbiddenException("error.access.master_only");
         }
 
@@ -70,7 +72,7 @@ public class MasterDatabaseAccessAspect {
             throw new ForbiddenException("error.access.master_only");
         }
 
-        log.debug("Access granted to master-only endpoint. User is logged into master database with MASTER_TENANT role.");
+        log.debug("Access granted to master-only endpoint for role(s): {}", roles);
         return joinPoint.proceed();
     }
 

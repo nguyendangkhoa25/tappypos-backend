@@ -46,7 +46,9 @@ public class SecurityConfig {
                         .requestMatchers("/auth/refresh").permitAll()
                         .requestMatchers("/auth/logout").permitAll()
                         .requestMatchers("/auth/profile").permitAll()
-                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/actuator/**").permitAll()
+                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                        .requestMatchers("/actuator/health").permitAll()
+                        .requestMatchers("/gold-prices/price-board").permitAll()
                         // All other endpoints require authentication
                         .anyRequest().authenticated()
                 )

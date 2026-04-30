@@ -81,10 +81,20 @@ public class JwtTokenProvider {
      * @return JWT token string
      */
     public String generateTokenWithRolesAndFeatures(String username, java.util.List<String> roles, java.util.List<String> features, boolean isMasterUser) {
+        return generateTokenWithRolesAndFeatures(username, roles, features, isMasterUser, null, null);
+    }
+
+    public String generateTokenWithRolesAndFeatures(String username, java.util.List<String> roles, java.util.List<String> features, boolean isMasterUser, String shopType) {
+        return generateTokenWithRolesAndFeatures(username, roles, features, isMasterUser, shopType, null);
+    }
+
+    public String generateTokenWithRolesAndFeatures(String username, java.util.List<String> roles, java.util.List<String> features, boolean isMasterUser, String shopType, String tenantId) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("roles", roles);
         claims.put("features", features);
         claims.put("isMasterUser", isMasterUser);
+        if (shopType != null) claims.put("shopType", shopType);
+        if (tenantId != null) claims.put("tid", java.util.List.of(tenantId));
         return generateTokenWithClaims(username, claims);
     }
 
@@ -92,11 +102,25 @@ public class JwtTokenProvider {
      * Generate JWT token with roles, features, master user flag, and a session ID for single-device enforcement.
      */
     public String generateTokenWithSession(String username, java.util.List<String> roles, java.util.List<String> features, boolean isMasterUser, String sessionId) {
+        return generateTokenWithSession(username, roles, features, isMasterUser, sessionId, null, null);
+    }
+
+    public String generateTokenWithSession(String username, java.util.List<String> roles, java.util.List<String> features, boolean isMasterUser, String sessionId, String shopType) {
+        return generateTokenWithSession(username, roles, features, isMasterUser, sessionId, shopType, null);
+    }
+
+    /**
+     * Generate JWT token including shopType and tenantId claims.
+     * tenantId is null for master users and embedded for shop users to allow cross-tenant forgery detection.
+     */
+    public String generateTokenWithSession(String username, java.util.List<String> roles, java.util.List<String> features, boolean isMasterUser, String sessionId, String shopType, String tenantId) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("roles", roles);
         claims.put("features", features);
         claims.put("isMasterUser", isMasterUser);
         claims.put("sid", sessionId);
+        if (shopType != null) claims.put("shopType", shopType);
+        if (tenantId != null) claims.put("tid", java.util.List.of(tenantId));
         return generateTokenWithClaims(username, claims);
     }
 
@@ -105,6 +129,20 @@ public class JwtTokenProvider {
      */
     public String getSessionIdFromToken(String token) {
         return getClaimsFromToken(token).get("sid", String.class);
+    }
+
+    /**
+     * Extract allowed tenant IDs from token claims.
+     * Returns empty list for tokens issued before this feature (backward compatible).
+     * Master users will have ["master"]; shop users will have their tenant ID(s).
+     */
+    @SuppressWarnings("unchecked")
+    public java.util.List<String> getTenantIdsFromToken(String token) {
+        Object tid = getClaimsFromToken(token).get("tid");
+        if (tid instanceof java.util.List) {
+            return (java.util.List<String>) tid;
+        }
+        return java.util.List.of();
     }
 
     /**

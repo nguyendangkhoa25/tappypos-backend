@@ -57,8 +57,10 @@ public class CreateInventoryRequest {
     @Size(max = 500, message = "Notes must not exceed 500 characters")
     private String notes;
 
+    @Builder.Default
     private String status = "ACTIVE"; // ACTIVE, INACTIVE, DISCONTINUED
 
+    @Builder.Default
     private String inventoryType = "RETAIL"; // RETAIL, WHOLESALE, WAREHOUSE
 }
 

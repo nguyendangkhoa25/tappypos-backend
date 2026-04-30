@@ -1,7 +1,7 @@
 package com.knp.util;
 
-import com.knp.model.entity.Order;
-import com.knp.model.entity.OrderItem;
+import com.knp.model.entity.order.Order;
+import com.knp.model.entity.order.OrderItem;
 import com.itextpdf.text.*;
 import com.itextpdf.text.pdf.PdfWriter;
 

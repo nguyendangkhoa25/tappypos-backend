@@ -1,7 +1,7 @@
 package com.knp.multitenant;
 
-import com.knp.model.entity.Tenant;
-import com.knp.repository.TenantRepository;
+import com.knp.model.entity.tenant.Tenant;
+import com.knp.repository.tenant.TenantRepository;
 import com.knp.service.MessageService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -49,7 +49,8 @@ public class TenantInterceptor implements HandlerInterceptor {
             "/api/users",
             "/api/employees",
             "/api/multi-tenants",        // Tenant management (master DB only)
-            "/api/profiles"              // Profile management (works for both master and tenant users)
+            "/api/profiles",             // Profile management (works for both master and tenant users)
+            "/api/feedback"              // Feedback (stored in master DB, accessible from any tenant)
     };
 
     @Override
@@ -114,7 +115,7 @@ public class TenantInterceptor implements HandlerInterceptor {
             log.warn("Request to protected path {} without X-Tenant-ID header", requestPath);
             response.setStatus(HttpStatus.BAD_REQUEST.value());
             response.setContentType("application/json");
-            
+
             // Get i18n message for missing header
             String message = messageService.getMessage("error.tenant.header.required");
             response.getWriter().write(
@@ -126,7 +127,13 @@ public class TenantInterceptor implements HandlerInterceptor {
 
         // Trim tenantId for consistency
         tenantId = tenantId.trim();
-        
+
+        // Special case: "master" tenant uses master database without validation
+        if (MASTER_TENANT.equalsIgnoreCase(tenantId)) {
+            log.info("Master tenant request to {}: using master database directly", requestPath);
+            return true;
+        }
+
         return validateTenantAndSetContext(request, response, requestPath, tenantId);
     }
 

@@ -25,6 +25,8 @@ public class InvoiceDTO {
     private String invoiceType;
     private String currencyCode;
     private String externalInvoiceId;
+    private String transactionUuid;
+    private String codeOfTax;
     private LocalDateTime externalSyncAt;
     private String errorMessage;
     private String notes;

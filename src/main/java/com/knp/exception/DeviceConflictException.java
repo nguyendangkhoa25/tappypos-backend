@@ -1,6 +1,6 @@
 package com.knp.exception;
 
-import com.knp.service.SessionInfo;
+import com.knp.service.auth.SessionInfo;
 
 public class DeviceConflictException extends RuntimeException {
 

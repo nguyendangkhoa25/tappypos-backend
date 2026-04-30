@@ -43,18 +43,15 @@ public class DatasourceManager {
     public void reloadAllTenantDatasource() {
         log.info("Reloading all tenant datasources");
         try {
-            Map<Object, Object> targetDataSources = new HashMap<>();
-            // Keep master datasource
-            targetDataSources.put("master", masterDataSource);
+            Map<String, DataSource> allDataSources = new HashMap<>();
+            allDataSources.put("master", masterDataSource);
 
-            // Load all active tenant databases
             Map<String, Object> tenants = DatasourceUtil.loadTenantsFromMasterDb(
                     masterDataSource, masterDbUrl, masterDbUsername, masterDbPassword);
-            targetDataSources.putAll(tenants);
+            tenants.forEach((k, v) -> allDataSources.put(k, (DataSource) v));
 
-            // Update routing datasource with new tenant datasources
-            routingDataSource.setTargetDataSources(targetDataSources);
-            log.info("Successfully reloaded all tenant datasources. Total active tenants: {}", tenants.size());
+            routingDataSource.reloadTargetDataSources(allDataSources);
+            log.info("Successfully reloaded all tenant datasources. Active tenants: {}", tenants.size());
         } catch (Exception e) {
             log.error("Failed to reload tenant datasources", e);
             throw new RuntimeException("Failed to reload tenant datasources", e);

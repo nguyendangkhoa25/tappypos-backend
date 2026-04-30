@@ -2,7 +2,7 @@ package com.knp.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.knp.model.dto.ApiResponse;
-import com.knp.service.SessionRegistry;
+import com.knp.service.auth.SessionRegistry;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.List;
 
 /**
  * JwtAuthenticationFilter - Extracts JWT token from request header and validates it.
@@ -33,6 +34,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final AuthContext authContext;
+    private final FeatureContext featureContext;
     private final SessionRegistry sessionRegistry;
     private final ObjectMapper objectMapper;
 
@@ -56,6 +58,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     return;
                 }
 
+                // Reject requests where X-Tenant-ID is not in the token's allowed tenant list.
+                // Master users carry tid=["master"] and always send X-Tenant-ID: master, so they pass naturally.
+                // Tokens without a tid claim (issued before this feature) return an empty list — skipped for backward compatibility.
+                List<String> jwtTenantIds = jwtTokenProvider.getTenantIdsFromToken(jwt);
+                String headerTenantId = request.getHeader(TENANT_HEADER);
+                if (!jwtTenantIds.isEmpty() && headerTenantId != null
+                        && jwtTenantIds.stream().noneMatch(id -> id.equalsIgnoreCase(headerTenantId.trim()))) {
+                    log.warn("Tenant mismatch: JWT tid={} but X-Tenant-ID={} for user={}", jwtTenantIds, headerTenantId, username);
+                    writeTenantMismatchResponse(response);
+                    return;
+                }
+
+                List<String> features = jwtTokenProvider.getFeaturesFromToken(jwt);
+                featureContext.set(features, Boolean.TRUE.equals(isMasterUser));
+
                 log.debug("JWT token valid for user: {}", username);
                 authContext.setCurrentUsername(username);
                 Authentication authentication = new UsernamePasswordAuthenticationToken(username, null, null);
@@ -64,7 +81,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         } catch (Exception e) {
             log.error("Error processing JWT token: {}", e.getMessage());
         }
-        filterChain.doFilter(request, response);
+        try {
+            filterChain.doFilter(request, response);
+        } finally {
+            featureContext.clear();
+        }
     }
 
     private String resolveTenantKey(HttpServletRequest request, Boolean isMasterUser) {
@@ -76,6 +97,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return SessionRegistry.MASTER_KEY;
         }
         return tenantId.trim();
+    }
+
+    private void writeTenantMismatchResponse(HttpServletResponse response) throws IOException {
+        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        ApiResponse<Void> body = ApiResponse.<Void>builder()
+                .success(false)
+                .error("TENANT_MISMATCH")
+                .message("Access denied: your session does not belong to this shop.")
+                .build();
+        objectMapper.writeValue(response.getWriter(), body);
     }
 
     private void writeDeviceSwitchedResponse(HttpServletResponse response) throws IOException {

@@ -1,10 +1,10 @@
 package com.knp.util;
 
-import com.knp.model.dto.ReceiptPreviewRequest;
-import com.knp.model.dto.ReceiptTemplateConfig;
-import com.knp.model.entity.Order;
-import com.knp.model.entity.OrderItem;
-import com.knp.model.entity.ShopInfo;
+import com.knp.model.dto.tenant.ReceiptPreviewRequest;
+import com.knp.model.dto.tenant.ReceiptTemplateConfig;
+import com.knp.model.entity.order.Order;
+import com.knp.model.entity.order.OrderItem;
+import com.knp.model.entity.tenant.ShopInfo;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;

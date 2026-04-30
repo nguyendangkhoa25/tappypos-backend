@@ -486,6 +486,53 @@ class MasterDatabaseAccessAspectTest {
         verify(jwtTokenProvider).isMasterUserFromToken(VALID_TOKEN);
         verify(joinPoint).proceed();
     }
+
+    // ============= VENDOR_ADMIN ROLE =============
+
+    @Test
+    @DisplayName("Should allow access when user has VENDOR_ADMIN role and isMasterUser true")
+    void testCheckMasterDatabaseAccess_VendorAdminAllowed() throws Throwable {
+        // Given
+        when(tenantContext.getCurrentTenantId()).thenReturn(null);
+
+        ServletRequestAttributes servletRequestAttributes = mock(ServletRequestAttributes.class);
+        when(servletRequestAttributes.getRequest()).thenReturn(httpRequest);
+        RequestContextHolder.setRequestAttributes(servletRequestAttributes);
+
+        when(httpRequest.getHeader(AUTHORIZATION_HEADER)).thenReturn(BEARER_PREFIX + VALID_TOKEN);
+        when(jwtTokenProvider.getRolesFromToken(VALID_TOKEN)).thenReturn(List.of("VENDOR_ADMIN"));
+        when(jwtTokenProvider.isMasterUserFromToken(VALID_TOKEN)).thenReturn(true);
+        when(joinPoint.proceed()).thenReturn("Success");
+
+        // When
+        Object result = aspect.checkMasterDatabaseAccess(joinPoint);
+
+        // Then
+        assertThat(result).isEqualTo("Success");
+        verify(joinPoint, times(1)).proceed();
+    }
+
+    @Test
+    @DisplayName("Should deny access when user has neither MASTER_TENANT nor VENDOR_ADMIN role")
+    void testCheckMasterDatabaseAccess_UnrecognisedRoleDenied() throws Throwable {
+        // Given
+        when(tenantContext.getCurrentTenantId()).thenReturn(null);
+
+        ServletRequestAttributes servletRequestAttributes = mock(ServletRequestAttributes.class);
+        when(servletRequestAttributes.getRequest()).thenReturn(httpRequest);
+        RequestContextHolder.setRequestAttributes(servletRequestAttributes);
+
+        when(httpRequest.getHeader(AUTHORIZATION_HEADER)).thenReturn(BEARER_PREFIX + VALID_TOKEN);
+        when(jwtTokenProvider.getRolesFromToken(VALID_TOKEN)).thenReturn(List.of("SHOP_OWNER"));
+
+        // When & Then
+        assertThatThrownBy(() -> aspect.checkMasterDatabaseAccess(joinPoint))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessage("error.access.master_only");
+
+        verify(joinPoint, never()).proceed();
+        verify(jwtTokenProvider, never()).isMasterUserFromToken(any());
+    }
 }
 
 

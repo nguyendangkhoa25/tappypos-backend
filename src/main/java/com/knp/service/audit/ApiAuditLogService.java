@@ -1,7 +1,7 @@
 package com.knp.service.audit;
 
-import com.knp.model.entity.ApiAuditLog;
-import com.knp.repository.ApiAuditLogRepository;
+import com.knp.model.entity.audit.ApiAuditLog;
+import com.knp.repository.audit.ApiAuditLogRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.*;
 import lombok.extern.slf4j.Slf4j;

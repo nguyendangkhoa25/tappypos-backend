@@ -175,6 +175,18 @@
             <artifactId>commons-lang3</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-collections4</artifactId>
+            <version>4.4</version>
+        </dependency>
+
+        <!-- FastExcel for Excel export -->
+        <dependency>
+            <groupId>org.dhatim</groupId>
+            <artifactId>fastexcel</artifactId>
+            <version>0.15.3</version>
+        </dependency>
+        <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
         </dependency>

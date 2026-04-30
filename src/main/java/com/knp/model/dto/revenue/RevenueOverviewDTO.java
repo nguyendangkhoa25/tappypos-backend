@@ -34,6 +34,15 @@ public class RevenueOverviewDTO {
     private BigDecimal yearProfit;
     private Long yearOrders;
 
+    // Operating expenses
+    private BigDecimal totalExpenses;
+    private BigDecimal monthExpenses;
+    private BigDecimal yearExpenses;
+
+    // Net profit (gross profit − operating expenses)
+    private BigDecimal monthNetProfit;
+    private BigDecimal yearNetProfit;
+
     // Context
     private Integer currentMonth;
     private Integer currentYear;

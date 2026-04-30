@@ -1,6 +1,7 @@
 package com.knp.model.entity;
 
 import jakarta.persistence.*;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -29,6 +30,7 @@ public abstract class BaseEntity {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @Builder.Default
     @Column(name = "deleted", nullable = false)
     private Boolean deleted = false;
 

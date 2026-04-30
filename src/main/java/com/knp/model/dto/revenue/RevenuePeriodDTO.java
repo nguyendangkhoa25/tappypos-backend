@@ -18,4 +18,6 @@ public class RevenuePeriodDTO {
     private BigDecimal cost;
     private BigDecimal profit;
     private Long orderCount;
+    private BigDecimal expenses;
+    private BigDecimal netProfit;
 }

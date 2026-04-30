@@ -2,8 +2,8 @@ package com.knp.service.audit;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.knp.model.entity.ApiAuditLog;
-import com.knp.repository.ApiAuditLogRepository;
+import com.knp.model.entity.audit.ApiAuditLog;
+import com.knp.repository.audit.ApiAuditLogRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

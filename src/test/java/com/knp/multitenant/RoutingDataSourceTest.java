@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import javax.sql.DataSource;
 import java.util.HashMap;
@@ -33,6 +34,11 @@ class RoutingDataSourceTest {
     @BeforeEach
     void setUp() {
         routingDataSource = new RoutingDataSource(tenantContext);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, DataSource> activeSources() {
+        return (Map<String, DataSource>) ReflectionTestUtils.getField(routingDataSource, "tenantDataSources");
     }
 
     // ==================== determineCurrentLookupKey Tests ====================
@@ -120,9 +126,7 @@ class RoutingDataSourceTest {
         routingDataSource.addTargetDataSource("tenant-new", mockDataSource);
 
         // Then
-        @SuppressWarnings("unchecked")
-        Map<Object, DataSource> targetDataSources = (Map<Object, DataSource>) (Map<?, ?>) routingDataSource.getResolvedDataSources();
-        assertThat(targetDataSources).containsKey("tenant-new");
+        assertThat(activeSources()).containsKey("tenant-new");
     }
 
     @Test
@@ -140,9 +144,7 @@ class RoutingDataSourceTest {
         routingDataSource.addTargetDataSource("tenant-001", newDataSource);
 
         // Then
-        @SuppressWarnings("unchecked")
-        Map<Object, DataSource> targetDataSources = (Map<Object, DataSource>) (Map<?, ?>) routingDataSource.getResolvedDataSources();
-        assertThat(targetDataSources.get("tenant-001")).isEqualTo(newDataSource);
+        assertThat(activeSources().get("tenant-001")).isEqualTo(newDataSource);
     }
 
     @Test
@@ -159,10 +161,8 @@ class RoutingDataSourceTest {
         routingDataSource.addTargetDataSource("tenant-002", mockDataSource);
 
         // Then
-        @SuppressWarnings("unchecked")
-        Map<Object, DataSource> targetDataSources = (Map<Object, DataSource>) (Map<?, ?>) routingDataSource.getResolvedDataSources();
-        assertThat(targetDataSources).containsKeys("tenant-001", "tenant-002");
-        assertThat(targetDataSources.get("tenant-001")).isEqualTo(tenant1DS);
+        assertThat(activeSources()).containsKeys("tenant-001", "tenant-002");
+        assertThat(activeSources().get("tenant-001")).isEqualTo(tenant1DS);
     }
 
     @Test
@@ -195,9 +195,7 @@ class RoutingDataSourceTest {
         thread2.join();
 
         // Then
-        @SuppressWarnings("unchecked")
-        Map<Object, DataSource> targetDataSources = (Map<Object, DataSource>) (Map<?, ?>) routingDataSource.getResolvedDataSources();
-        assertThat(targetDataSources).hasSize(2);
+        assertThat(activeSources()).hasSize(2);
     }
 
     // ==================== removeTargetDataSource Tests ====================
@@ -216,10 +214,8 @@ class RoutingDataSourceTest {
         routingDataSource.removeTargetDataSource("tenant-001");
 
         // Then
-        @SuppressWarnings("unchecked")
-        Map<Object, DataSource> targetDataSources = (Map<Object, DataSource>) (Map<?, ?>) routingDataSource.getResolvedDataSources();
-        assertThat(targetDataSources).doesNotContainKey("tenant-001");
-        assertThat(targetDataSources).containsKey("tenant-002");
+        assertThat(activeSources()).doesNotContainKey("tenant-001");
+        assertThat(activeSources()).containsKey("tenant-002");
     }
 
     @Test
@@ -253,11 +249,9 @@ class RoutingDataSourceTest {
         routingDataSource.removeTargetDataSource("tenant-002");
 
         // Then
-        @SuppressWarnings("unchecked")
-        Map<Object, DataSource> targetDataSources = (Map<Object, DataSource>) (Map<?, ?>) routingDataSource.getResolvedDataSources();
-        assertThat(targetDataSources).containsEntry("tenant-001", tenant1DS);
-        assertThat(targetDataSources).doesNotContainKey("tenant-002");
-        assertThat(targetDataSources).containsEntry("tenant-003", tenant3DS);
+        assertThat(activeSources()).containsEntry("tenant-001", tenant1DS);
+        assertThat(activeSources()).doesNotContainKey("tenant-002");
+        assertThat(activeSources()).containsEntry("tenant-003", tenant3DS);
     }
 
     @Test
@@ -281,10 +275,8 @@ class RoutingDataSourceTest {
         thread2.join();
 
         // Then
-        @SuppressWarnings("unchecked")
-        Map<Object, DataSource> targetDataSources = (Map<Object, DataSource>) (Map<?, ?>) routingDataSource.getResolvedDataSources();
-        assertThat(targetDataSources).doesNotContainKeys("tenant-1", "tenant-2");
-        assertThat(targetDataSources).containsKeys("tenant-3", "tenant-4", "tenant-5");
+        assertThat(activeSources()).doesNotContainKeys("tenant-1", "tenant-2");
+        assertThat(activeSources()).containsKeys("tenant-3", "tenant-4", "tenant-5");
     }
 
     @Test
@@ -301,10 +293,8 @@ class RoutingDataSourceTest {
         routingDataSource.addTargetDataSource("tenant-002", mockDataSource);
 
         // Then
-        @SuppressWarnings("unchecked")
-        Map<Object, DataSource> targetDataSources = (Map<Object, DataSource>) (Map<?, ?>) routingDataSource.getResolvedDataSources();
-        assertThat(targetDataSources).doesNotContainKey("tenant-001");
-        assertThat(targetDataSources).containsKey("tenant-002");
+        assertThat(activeSources()).doesNotContainKey("tenant-001");
+        assertThat(activeSources()).containsKey("tenant-002");
     }
 
     // ==================== Master DataSource Tests ====================
@@ -328,4 +318,3 @@ class RoutingDataSourceTest {
         assertThat(lookupKey).isEqualTo("master");
     }
 }
-

@@ -26,6 +26,32 @@ public class DashboardSummaryDTO {
     private BigDecimal totalRevenue;
     private BigDecimal monthlyRevenue;
     private BigDecimal yearlyRevenue;
+
+    // Items sold (units) from completed orders
+    private Long totalItemsSold;
+    private Long monthItemsSold;
+    private Long yearItemsSold;
+
+    // Buyback: items purchased from customers & money spent
+    private Long totalItemsBought;
+    private Long monthItemsBought;
+    private Long yearItemsBought;
+    private BigDecimal totalBuybackSpent;
+    private BigDecimal monthBuybackSpent;
+    private BigDecimal yearBuybackSpent;
+    private Long totalBuybackOrders;
+
+    // Pawn KPIs (jewelry shops)
+    private Long activePawnContracts;
+    private BigDecimal activePawnAmount;
+    private Long monthNewPawnContracts;
+    private BigDecimal monthNewPawnAmount;
+    private Long monthInterestEarned;
+
+    // Context
+    private Integer currentMonth;
+    private Integer currentYear;
+
     private List<RecentOrderDTO> recentOrders;
     private List<TopEmployeeDTO> topEmployees;
     private List<TopCustomerDTO> topCustomers;

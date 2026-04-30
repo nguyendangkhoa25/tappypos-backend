@@ -1,7 +1,7 @@
 package com.knp.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.knp.service.SessionRegistry;
+import com.knp.service.auth.SessionRegistry;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -47,17 +47,21 @@ class JwtAuthenticationFilterTest {
     @Mock
     private ObjectMapper objectMapper;
 
+    @Mock
+    private FeatureContext featureContext;
+
     private JwtAuthenticationFilter jwtAuthenticationFilter;
 
     private static final String TEST_USERNAME = "testuser@example.com";
 
     @BeforeEach
     void setUp() {
-        jwtAuthenticationFilter = new JwtAuthenticationFilter(jwtTokenProvider, authContext, sessionRegistry, objectMapper);
+        jwtAuthenticationFilter = new JwtAuthenticationFilter(jwtTokenProvider, authContext, featureContext, sessionRegistry, objectMapper);
         SecurityContextHolder.clearContext();
         // Default stubs for session validation (lenient to avoid unused-stub errors in non-token tests)
         lenient().when(jwtTokenProvider.getSessionIdFromToken(anyString())).thenReturn("test-session-id");
         lenient().when(jwtTokenProvider.isMasterUserFromToken(anyString())).thenReturn(null);
+        lenient().when(jwtTokenProvider.getFeaturesFromToken(anyString())).thenReturn(java.util.Collections.emptyList());
         lenient().when(sessionRegistry.isValid(anyString(), anyString(), anyString())).thenReturn(true);
     }
 

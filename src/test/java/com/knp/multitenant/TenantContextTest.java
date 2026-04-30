@@ -1,7 +1,7 @@
 package com.knp.multitenant;
 
 import com.knp.exception.TenantExpiredException;
-import com.knp.model.entity.Tenant;
+import com.knp.model.entity.tenant.Tenant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

@@ -5,7 +5,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -14,14 +13,13 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 /**
  * Unit tests for DatasourceManager using mocked datasource creation
  * Covers dynamic datasource management, tenant datasource operations, and error handling
  * WITHOUT relying on actual database connections
- * 
+ *
  * Uses Mockito's MockedStatic to mock DatasourceUtil.createLightweightHikariDataSource()
  * to avoid actual datasource creation while testing manager logic
  */
@@ -50,7 +48,7 @@ class DatasourceManagerTest {
         targetDataSources.put("master", masterDataSource);
         routingDataSource.setTargetDataSources(targetDataSources);
         routingDataSource.setDefaultTargetDataSource(masterDataSource);
-        
+
         // CRITICAL: Initialize AbstractRoutingDataSource's resolver cache
         // Without this, determineCurrentLookupKey() will throw "DataSources not resolved yet"
         routingDataSource.afterPropertiesSet();
@@ -64,6 +62,11 @@ class DatasourceManagerTest {
         ReflectionTestUtils.setField(datasourceManager, "masterDbPassword", "");
     }
 
+    @SuppressWarnings("unchecked")
+    private Map<String, DataSource> activeSources() {
+        return (Map<String, DataSource>) ReflectionTestUtils.getField(routingDataSource, "tenantDataSources");
+    }
+
     // ==================== addOrUpdateTenantDatasource Tests ====================
 
     @Test
@@ -73,7 +76,7 @@ class DatasourceManagerTest {
         datasourceManager.addOrUpdateTenantDatasource("tenant-001", "tenant-db-001");
 
         // Then - Verify datasource was added by checking routing datasource
-        assertThat(routingDataSource.getResolvedDataSources())
+        assertThat(activeSources())
                 .containsKey("tenant-001");
     }
 
@@ -82,14 +85,14 @@ class DatasourceManagerTest {
     void testAddOrUpdateTenantDatasource_Update() {
         // When - First add
         datasourceManager.addOrUpdateTenantDatasource("tenant-001", "tenant-db-001");
-        assertThat(routingDataSource.getResolvedDataSources())
+        assertThat(activeSources())
                 .containsKey("tenant-001");
 
         // When - Update same tenant
         datasourceManager.addOrUpdateTenantDatasource("tenant-001", "tenant-db-updated");
 
         // Then - Datasource should still be accessible
-        assertThat(routingDataSource.getResolvedDataSources())
+        assertThat(activeSources())
                 .containsKey("tenant-001");
     }
 
@@ -113,7 +116,7 @@ class DatasourceManagerTest {
         });
 
         // Then - All tenants should be registered
-        assertThat(routingDataSource.getResolvedDataSources())
+        assertThat(activeSources())
                 .containsKeys("tenant-1", "tenant-2", "tenant-3");
     }
 
@@ -127,7 +130,7 @@ class DatasourceManagerTest {
         datasourceManager.addOrUpdateTenantDatasource("tenant-001", "tenant-001-db");
 
         // Then - Verify datasource is accessible
-        assertThat(routingDataSource.getResolvedDataSources())
+        assertThat(activeSources())
                 .containsKey("tenant-001");
     }
 
@@ -143,7 +146,7 @@ class DatasourceManagerTest {
         datasourceManager.removeTenantDatasource("tenant-001");
 
         // Then - Verify datasource was removed from routing
-        assertThat(routingDataSource.getResolvedDataSources())
+        assertThat(activeSources())
                 .doesNotContainKey("tenant-001");
     }
 
@@ -161,7 +164,7 @@ class DatasourceManagerTest {
         datasourceManager.removeTenantDatasource("tenant-3");
 
         // Then
-        assertThat(routingDataSource.getResolvedDataSources())
+        assertThat(activeSources())
                 .doesNotContainKeys("tenant-1", "tenant-2", "tenant-3");
     }
 
@@ -193,7 +196,7 @@ class DatasourceManagerTest {
         datasourceManager.addOrUpdateTenantDatasource("tenant-001", "tenant-db-001");
 
         // Then - Master datasource key should still exist in routing datasource
-        assertThat(routingDataSource.getResolvedDataSources())
+        assertThat(activeSources())
                 .containsKey("master")
                 .containsKey("tenant-001");
     }
@@ -208,7 +211,7 @@ class DatasourceManagerTest {
         datasourceManager.addOrUpdateTenantDatasource("tenant-2", "db2");
 
         // Then - Both should be added successfully
-        assertThat(routingDataSource.getResolvedDataSources())
+        assertThat(activeSources())
                 .containsKeys("tenant-1", "tenant-2");
     }
 
@@ -216,14 +219,14 @@ class DatasourceManagerTest {
     @DisplayName("Should handle URL with query parameters")
     void testUrlWithQueryParameters() {
         // Given
-        ReflectionTestUtils.setField(datasourceManager, "masterDbUrl", 
+        ReflectionTestUtils.setField(datasourceManager, "masterDbUrl",
                 "jdbc:h2:mem:master/?DB_CLOSE_DELAY=-1&DB_CLOSE_ON_EXIT=FALSE");
 
         // When & Then
-        assertThatNoException().isThrownBy(() -> 
+        assertThatNoException().isThrownBy(() ->
             datasourceManager.addOrUpdateTenantDatasource("tenant-001", "tenant-db-001"));
 
-        assertThat(routingDataSource.getResolvedDataSources())
+        assertThat(activeSources())
                 .containsKey("tenant-001");
     }
 
@@ -234,12 +237,12 @@ class DatasourceManagerTest {
     void testAddThenRemoveSequence() {
         // When - Add
         datasourceManager.addOrUpdateTenantDatasource("tenant-001", "tenant-db-001");
-        assertThat(routingDataSource.getResolvedDataSources())
+        assertThat(activeSources())
                 .containsKey("tenant-001");
 
         // When - Remove
         datasourceManager.removeTenantDatasource("tenant-001");
-        assertThat(routingDataSource.getResolvedDataSources())
+        assertThat(activeSources())
                 .doesNotContainKey("tenant-001");
     }
 
@@ -248,17 +251,17 @@ class DatasourceManagerTest {
     void testAddAfterRemove() {
         // When - Add
         datasourceManager.addOrUpdateTenantDatasource("tenant-001", "tenant-db-001");
-        assertThat(routingDataSource.getResolvedDataSources())
+        assertThat(activeSources())
                 .containsKey("tenant-001");
 
         // When - Remove
         datasourceManager.removeTenantDatasource("tenant-001");
-        assertThat(routingDataSource.getResolvedDataSources())
+        assertThat(activeSources())
                 .doesNotContainKey("tenant-001");
 
         // When - Add same tenant again
         datasourceManager.addOrUpdateTenantDatasource("tenant-001", "tenant-db-001-new");
-        assertThat(routingDataSource.getResolvedDataSources())
+        assertThat(activeSources())
                 .containsKey("tenant-001");
     }
 
@@ -287,7 +290,7 @@ class DatasourceManagerTest {
         removeThread.join();
 
         // Then - tenant-1 and tenant-2 should be present
-        assertThat(routingDataSource.getResolvedDataSources())
+        assertThat(activeSources())
                 .containsKeys("tenant-1", "tenant-2");
     }
 
@@ -302,7 +305,7 @@ class DatasourceManagerTest {
         );
 
         // Then - Datasource should be available
-        assertThat(routingDataSource.getResolvedDataSources())
+        assertThat(activeSources())
                 .containsKey("tenant-001");
     }
 
@@ -322,17 +325,17 @@ class DatasourceManagerTest {
     void testCompleteLifecycle() {
         // When - Add
         datasourceManager.addOrUpdateTenantDatasource("tenant-001", "db-001");
-        assertThat(routingDataSource.getResolvedDataSources())
+        assertThat(activeSources())
                 .containsKey("tenant-001");
 
         // When - Update
         datasourceManager.addOrUpdateTenantDatasource("tenant-001", "db-001-v2");
-        assertThat(routingDataSource.getResolvedDataSources())
+        assertThat(activeSources())
                 .containsKey("tenant-001");
 
         // When - Remove
         datasourceManager.removeTenantDatasource("tenant-001");
-        assertThat(routingDataSource.getResolvedDataSources())
+        assertThat(activeSources())
                 .doesNotContainKey("tenant-001");
     }
 
@@ -345,16 +348,15 @@ class DatasourceManagerTest {
         datasourceManager.addOrUpdateTenantDatasource("tenant-3", "db-3");
 
         // Then
-        assertThat(routingDataSource.getResolvedDataSources())
+        assertThat(activeSources())
                 .containsKeys("tenant-1", "tenant-2", "tenant-3");
 
         // When
         datasourceManager.removeTenantDatasource("tenant-2");
 
         // Then
-        assertThat(routingDataSource.getResolvedDataSources())
+        assertThat(activeSources())
                 .containsKeys("tenant-1", "tenant-3")
                 .doesNotContainKey("tenant-2");
     }
 }
-

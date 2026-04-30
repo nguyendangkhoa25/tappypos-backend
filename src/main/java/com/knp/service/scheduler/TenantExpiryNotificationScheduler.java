@@ -1,9 +1,9 @@
 package com.knp.service.scheduler;
 
-import com.knp.model.entity.Tenant;
+import com.knp.model.entity.tenant.Tenant;
 import com.knp.multitenant.TenantContext;
-import com.knp.repository.TenantRepository;
-import com.knp.service.NotificationService;
+import com.knp.repository.tenant.TenantRepository;
+import com.knp.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;

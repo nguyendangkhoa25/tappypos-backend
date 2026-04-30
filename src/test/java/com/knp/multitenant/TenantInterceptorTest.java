@@ -1,8 +1,8 @@
 package com.knp.multitenant;
 
 import com.knp.exception.TenantExpiredException;
-import com.knp.model.entity.Tenant;
-import com.knp.repository.TenantRepository;
+import com.knp.model.entity.tenant.Tenant;
+import com.knp.repository.tenant.TenantRepository;
 import com.knp.service.MessageService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;

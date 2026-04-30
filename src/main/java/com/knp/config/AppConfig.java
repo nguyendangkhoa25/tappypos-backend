@@ -3,6 +3,9 @@ package com.knp.config;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.cfg.CoercionAction;
+import com.fasterxml.jackson.databind.cfg.CoercionInputShape;
+import com.fasterxml.jackson.databind.type.LogicalType;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -24,6 +27,9 @@ public class AppConfig {
         // Frontend often echoes back read-only fields (id, createdAt, sku on update, etc.)
         // that are not present on request DTOs — ignore them instead of throwing.
         mapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+        // Treat empty string as null for enums (frontend sends "" when no option is selected)
+        mapper.coercionConfigFor(LogicalType.Enum)
+              .setCoercion(CoercionInputShape.EmptyString, CoercionAction.AsNull);
         return mapper;
     }
 }
