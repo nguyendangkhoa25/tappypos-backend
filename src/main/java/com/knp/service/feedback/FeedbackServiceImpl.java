@@ -6,10 +6,14 @@ import com.knp.model.dto.feedback.CreateFeedbackRequest;
 import com.knp.model.dto.feedback.FeedbackDTO;
 import com.knp.model.dto.feedback.UpdateFeedbackRequest;
 import com.knp.model.entity.feedback.UserFeedback;
+import com.knp.model.entity.tenant.Agent;
 import com.knp.model.enums.FeedbackStatus;
 import com.knp.model.enums.FeedbackType;
 import com.knp.multitenant.TenantContext;
+import com.knp.repository.auth.UserRepository;
 import com.knp.repository.feedback.FeedbackRepository;
+import com.knp.repository.tenant.AgentRepository;
+import com.knp.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -28,11 +32,18 @@ public class FeedbackServiceImpl implements FeedbackService {
     private final FeedbackRepository feedbackRepository;
     private final TenantContext tenantContext;
     private final AuthContext authContext;
+    private final NotificationService notificationService;
+    private final AgentRepository agentRepository;
+    private final UserRepository userRepository;
 
     @Override
     @Transactional
     public FeedbackDTO create(CreateFeedbackRequest request) {
         String tenantId = tenantContext.getCurrentTenantId();
+        String tenantName = tenantContext.getCurrentTenant() != null
+                ? tenantContext.getCurrentTenant().getName() : tenantId;
+        Long agentId = tenantContext.getCurrentTenant() != null
+                ? tenantContext.getCurrentTenant().getVendorId() : null;
         String username = authContext.getCurrentUsername();
         tenantContext.clear(); // force master DB
 
@@ -45,7 +56,13 @@ public class FeedbackServiceImpl implements FeedbackService {
                 .status(FeedbackStatus.PENDING)
                 .build();
 
-        return toDTO(feedbackRepository.save(feedback));
+        UserFeedback saved = feedbackRepository.save(feedback);
+
+        if (request.getType() == FeedbackType.SUBSCRIPTION_REQUEST) {
+            notifySubscriptionRequest(tenantName, saved.getId(), agentId);
+        }
+
+        return toDTO(saved);
     }
 
     @Override
@@ -82,6 +99,34 @@ public class FeedbackServiceImpl implements FeedbackService {
             feedback.setResolvedAt(LocalDateTime.now());
         }
         return toDTO(feedbackRepository.save(feedback));
+    }
+
+    // After tenantContext.clear() — we are in master context; notifications are saved with tenant_id=null
+    // (UnifiedTenantEntity master records) so master/agent users see them regardless of context.
+    private void notifySubscriptionRequest(String shopName, Long feedbackId, Long agentId) {
+        String title = "[Yêu cầu gói] " + shopName;
+        String message = "Cửa hàng \"" + shopName + "\" vừa gửi yêu cầu thay đổi gói dịch vụ. Xem chi tiết trong mục Phản hồi.";
+
+        try {
+            notificationService.pushToMasterUsers(title, message, "FEEDBACK", feedbackId);
+        } catch (Exception e) {
+            log.warn("Failed to notify master users for subscription request {}: {}", feedbackId, e.getMessage());
+        }
+
+        if (agentId != null) {
+            try {
+                agentRepository.findById(agentId).ifPresent((Agent agent) -> {
+                    if (agent.getUserId() != null) {
+                        userRepository.findById(agent.getUserId()).ifPresent(user ->
+                            notificationService.pushSystem(
+                                    user.getUsername(), title, message, "FEEDBACK", feedbackId)
+                        );
+                    }
+                });
+            } catch (Exception e) {
+                log.warn("Failed to notify agent {} for subscription request {}: {}", agentId, feedbackId, e.getMessage());
+            }
+        }
     }
 
     private FeedbackDTO toDTO(UserFeedback f) {

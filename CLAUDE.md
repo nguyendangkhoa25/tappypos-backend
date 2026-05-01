@@ -24,7 +24,7 @@ Swagger UI: `http://localhost:6868/api/swagger-ui.html`
 
 ## Architecture Overview
 
-**Multi-tenant Spring Boot 3.3.5 / Java 21 REST API** with database-per-tenant isolation. The master database (`retail-platform-master`) stores tenants, users, roles, and features. Each tenant gets its own database (`retail-platform-{tenantId}`) for products, inventory, orders, carts, and customers.
+**Multi-tenant Spring Boot 3.3.5 / Java 21 REST API** with shared-database + Row-Level Security isolation. All tenants share a single PostgreSQL database (`retail-platform`). Master tables (tenants, users, roles, features, agents, banks) are unfiltered; tenant tables (products, inventory, orders, customers, …) have `FORCE ROW SECURITY` policies that restrict every query to rows where `tenant_id = current_setting('app.current_tenant', true)`.
 
 ### Multi-Tenancy Request Flow
 
@@ -33,14 +33,12 @@ Every request carries an `X-Tenant-ID` header:
 1. `TenantInterceptor` validates the header. Public paths (`/api/tenants`, `/api/swagger-ui`, `/api/v3/api-docs`, `/actuator`) skip validation. Flexible paths (`/api/auth`, `/api/users`, `/api/employees`, `/api/multi-tenants`, `/api/profiles`) work with or without the header.
 2. When a tenant ID is present and valid, `TenantInterceptor` calls `tenantContext.setCurrentTenant(tenant)`.
 3. `TenantContext` stores the `Tenant` entity in a `ThreadLocal` and writes `tenantId` to MDC for logging.
-4. `RoutingDataSource` (extends `AbstractRoutingDataSource`) calls `tenantContext.getCurrentTenantId()` before each DB operation to select the right connection pool from `DatasourceManager`. Returns `"master"` when no tenant is set.
+4. `TenantRlsAspect` fires at `@Transactional` boundaries and executes `SET LOCAL app.current_tenant = '<tenantId>'` on the JDBC connection so PostgreSQL RLS policies automatically scope every subsequent query in that transaction to the current tenant.
 5. `TenantInterceptor.afterCompletion` always calls `tenantContext.clear()` to prevent cross-request leakage.
 
-The `X-Tenant-ID: master` special value routes to the master database without tenant validation. Two AOP annotations enforce access:
+The `X-Tenant-ID: master` special value leaves tenant context empty, disabling RLS on tenant tables and giving access to master tables only. Two AOP annotations enforce access:
 - `@MasterDatabaseOnly` — endpoint requires no tenant context + `MASTER_TENANT` role + `isMasterUser=true` (used on master-admin controllers like `MultiTenantController`, `FeedbackController` admin endpoints).
 - `@RequiresFeature("NAME")` — endpoint requires the named feature in the caller's JWT (used on all shop and shared controllers). See Feature Access Model below.
-
-`DatasourceManager` supports **runtime add/remove** of tenant datasources without restarting — used when provisioning new tenants (`TenantProvisioningService`).
 
 ### Auth & Session Model
 
@@ -66,7 +64,7 @@ Features are enforced at three levels:
 - `JwtAuthenticationFilter` extracts the `features` claim from the JWT and stores it in `FeatureContext` (ThreadLocal). Cleared in `finally` after each request.
 - **Every shop controller must be annotated** `@RequiresFeature("FEATURE_NAME")`. No exceptions — if a controller handles shop data, it must have this annotation. Controllers without it are accessible to all authenticated users, which is wrong.
 - `FeatureAccessAspect` intercepts all annotated controllers, reads `FeatureContext`, and throws `ForbiddenException("error.access.feature_required")` → HTTP 403 if the feature is absent.
-- Master-tenant users have features `[DASHBOARD, USER, TENANT_MGMT, VENDOR_MGMT, ACTIVITY_LOG, FEEDBACK_MGMT]` — they are automatically blocked from all shop endpoints by this mechanism. No special-casing needed.
+- Master-tenant users have features `[DASHBOARD, USER, TENANT_MGMT, AGENT_MGMT, ACTIVITY_LOG, FEEDBACK_MGMT]` — they are automatically blocked from all shop endpoints by this mechanism. No special-casing needed.
 - Master-only endpoints (tenant provisioning, feedback admin) use `@MasterDatabaseOnly` instead — checks `MASTER_TENANT` role + `isMasterUser` flag, not features.
 
 **3. Frontend gating (`FeatureProtectedRoute`)**
@@ -94,6 +92,7 @@ Features are enforced at three levels:
 | `PRINT_TEMPLATE` | `PrintTemplateController` |
 | `BANK_ACCOUNT` | `BankAccountController` |
 | `ACCOUNTING` | (stub page — no controller yet) |
+| `AGENT_MGMT` | `AgentController` (master-only; manages platform agents) |
 | `VENDOR` | `VendorController`, `PurchaseOrderController` |
 | `PAWN` | `PawnController`, `BuybackOrderController`, `MarketPriceController`, `GoldPriceController` |
 | `ACTIVITY_LOG` | `ActivityLogController` |
@@ -111,7 +110,11 @@ Base `Product` holds SKU, price, cost, unit, vendor, shelf location, and status.
 
 ### Tenant Provisioning
 
-`POST /api/multi-tenants` (master-only) calls `TenantProvisioningService.provision()` with `TenantContext` set to the new tenant, which seeds roles, features, role-feature mappings, shop info, admin user, and a default walk-in customer (`phone=0000000000`, name `"Khách lẻ"`).
+`POST /api/multi-tenants` (master-only) calls `TenantProvisioningService.provision()` which:
+1. Inserts a row into the `tenants` master table.
+2. Sets `TenantContext` to the new tenant ID so RLS scopes subsequent writes to that tenant.
+3. Executes the shop-type DML file (e.g. `pawn_shop.sql`) — this uses `current_setting('app.current_tenant', true)` as the `tenant_id` value so all seed rows land in the correct tenant's partition.
+4. Seeds roles, features, role-feature mappings, shop info, admin user, a default walk-in customer (`phone=0000000000`, name `"Khách lẻ"`), and the two default shop configs (`DEFAULT_TAX_RATE`, `POS_MODE`) that are not covered by the DML file.
 
 ### Layer Conventions
 
@@ -144,20 +147,22 @@ Each shop type gets its own seed data file under `src/main/resources/db/tenant/`
 #### Required sections in every DML file
 
 ```
-1. Shop info          — INSERT INTO shop_info (shop_name, ...)
-2. Product types      — INSERT INTO product_type ... ON DUPLICATE KEY UPDATE
-3. Categories         — INSERT INTO category ... ON DUPLICATE KEY UPDATE
-4. Walk-in customer   — INSERT IGNORE INTO customers (id=790000001, phone='0000000000', ...)
+1. Shop info          — INSERT INTO shop_info (shop_name, ...) ON CONFLICT DO NOTHING
+2. Product types      — INSERT INTO product_type ... ON CONFLICT (code) DO UPDATE
+3. Categories         — INSERT INTO category ... ON CONFLICT (name, tenant_id) DO UPDATE
+4. Walk-in customer   — INSERT INTO customers (id=790000001, phone='0000000000', ...) ON CONFLICT DO NOTHING
 5. Vendors (optional) — 1–2 placeholder suppliers relevant to the shop type
 6. Sample products    — 15–40 realistic items the shop actually sells
-7. Product→category   — INSERT IGNORE INTO product_category
+7. Product→category   — INSERT INTO product_category ... ON CONFLICT DO NOTHING
 8. Inventory          — INSERT INTO inventory for every product
 9. Loyalty program    — single default program + 4 tiers
-10. Print template    — RECEIPT template with INSERT IGNORE
+10. Print template    — RECEIPT template with ON CONFLICT DO NOTHING
 11. Attribute groups  — per product type, Vietnamese names, display_order
 12. Attribute defs    — per group, Vietnamese names (see below)
-13. Banks             — INSERT IGNORE INTO banks (full Vietnamese bank list)
+13. Shop config       — cash_denominations (all shops); pawn_* keys (pawn/jewelry only)
 ```
+
+Banks are seeded globally in `V001__initial_schema.sql` — do **not** add bank INSERTs to DML files.
 
 #### Attribute definitions are the most important part
 
@@ -291,36 +296,50 @@ Groups: `Thông tin sản phẩm` · `Kích thước & Màu sắc`
 
 ```sql
 -- Group
-INSERT INTO `attribute_group` (`product_type_id`, `code`, `name`, `display_order`)
-SELECT id, 'basic_info', 'Thông tin cơ bản', 1 FROM `product_type` WHERE code = 'DRUG'
-ON DUPLICATE KEY UPDATE display_order = 1;
+INSERT INTO attribute_group (product_type_id, code, name, display_order)
+SELECT id, 'basic_info', 'Thông tin cơ bản', 1 FROM product_type WHERE code = 'DRUG'
+ON CONFLICT (product_type_id, code) DO UPDATE SET display_order = EXCLUDED.display_order;
 
 -- Definition
-INSERT INTO `attribute_definition`
-    (`product_type_id`, `attribute_group_id`, `code`, `name`, `data_type`,
-     `required`, `searchable`, `filterable`, `display_order`)
+INSERT INTO attribute_definition
+    (product_type_id, attribute_group_id, code, name, data_type,
+     required, searchable, filterable, display_order)
 SELECT pt.id, ag.id, 'drug_registration_number', 'Số đăng ký (SDK)', 'STRING', TRUE, TRUE, FALSE, 1
-FROM `product_type` pt
-JOIN `attribute_group` ag ON ag.product_type_id = pt.id AND ag.code = 'basic_info'
+FROM product_type pt
+JOIN attribute_group ag ON ag.product_type_id = pt.id AND ag.code = 'basic_info'
 WHERE pt.code = 'DRUG'
-ON DUPLICATE KEY UPDATE name = VALUES(name);
+ON CONFLICT (product_type_id, code) DO UPDATE SET name = EXCLUDED.name;
 ```
 
-Always join on `ag.code`, never on `ag.name`. Vietnamese names in `name` column.
+Always join on `ag.code`, never on `ag.name`. Vietnamese names in `name` column. Use PostgreSQL `ON CONFLICT … DO UPDATE/DO NOTHING` — never MySQL's `ON DUPLICATE KEY UPDATE`.
 
 ### Database Schema Management
 
-DDL is managed manually (`spring.jpa.hibernate.ddl-auto=none`). Flyway runs numbered migrations (`src/main/resources/db/V0XX__*.sql`) against **tenant** databases only.
+DDL is managed by Flyway (`spring.jpa.hibernate.ddl-auto=none`). There is a **single shared PostgreSQL database** (`retail-platform`) — no per-tenant databases.
 
-The master database is set up separately using two canonical files:
-- `src/main/resources/db/master/ddl.sql` — master schema (tables, indexes)
-- `src/main/resources/db/master/data.sql` — seed data: features (IDs `202601001`–`202601019`), roles (`MASTER_TENANT`, `VENDOR_ADMIN`), role-feature mappings, default admin user, bank list
+`V001__initial_schema.sql` is the canonical bootstrap migration. It runs automatically at Spring Boot startup on a fresh install and creates **everything** in one pass:
+- All master tables: `tenants`, `users`, `roles`, `features`, `role_features`, `agents`, `banks`, `active_sessions`, …
+- All tenant tables with RLS: `products`, `inventory`, `orders`, `customers`, `shop_config`, `shop_info`, …
+- All RLS policies (`CREATE POLICY … USING (tenant_id = current_setting('app.current_tenant', true))`)
+- All seed data: features (`AGENT_MGMT`, `TENANT_MGMT`, …), roles (`MASTER_TENANT`, `AGENT`), role-feature mappings, default admin user, full Vietnamese bank list (49 banks)
 
-When adding a column:
-- Tenant DB: write a new `V0XX__*.sql` Flyway migration
-- Master DB: update `db/master/ddl.sql` manually and run it
+When adding a column or table:
+- Write a new numbered `V0XX__*.sql` Flyway migration — applies to both master and tenant tables in the shared DB.
+- Never manually patch the DB without a corresponding migration file.
 
-The `db/` folder also contains ad-hoc patch scripts (prefixed `master-*`) used for one-off data fixes — these are not applied automatically.
+**`src/main/resources/db/` folder layout:**
+
+| Path | Purpose |
+|------|---------|
+| `db/migration/V001__initial_schema.sql` | Flyway bootstrap — all DDL + master seed data (runs automatically) |
+| `db/migration/V0XX__*.sql` | Subsequent Flyway migrations for schema changes |
+| `db/tenant/general.sql` | Default seed data for generic shop types (product types, categories, sample products, loyalty, print template, shop config) |
+| `db/tenant/pawn_shop.sql` | Seed data for pawn shops — includes pawn-specific product types, attributes, and pawn config keys |
+| `db/tenant/convenience_store.sql` | Seed data for convenience stores |
+| `db/tenant/jewelry.sql` | Seed data for jewelry/gold shops — includes jewelry attributes and pawn config keys |
+| `db/*.sql` (prefixed `master-*`) | Ad-hoc one-off data patches for existing deployments — not applied automatically; run manually via psql |
+
+The `db/tenant/` files are executed by `TenantProvisioningService` at shop creation time (not by Flyway). Each file uses `current_setting('app.current_tenant', true)` as the `tenant_id` so all seed rows are automatically scoped to the new tenant via RLS.
 
 ### Internationalization
 
