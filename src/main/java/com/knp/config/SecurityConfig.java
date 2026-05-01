@@ -49,6 +49,7 @@ public class SecurityConfig {
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
                         .requestMatchers("/gold-prices/price-board").permitAll()
+                        .requestMatchers("/contact").permitAll()
                         // All other endpoints require authentication
                         .anyRequest().authenticated()
                 )
