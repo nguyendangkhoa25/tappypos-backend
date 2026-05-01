@@ -1,7 +1,7 @@
 package com.knp.model.entity.buyback;
 
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import com.knp.model.entity.customer.Customer;
 import lombok.*;
 
@@ -17,7 +17,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class BuybackOrder extends BaseEntity {
+public class BuybackOrder extends TenantAwareEntity {
 
     @Column(name = "order_number", nullable = false, unique = true, length = 30)
     private String orderNumber;

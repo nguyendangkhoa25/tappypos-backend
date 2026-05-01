@@ -7,6 +7,7 @@ import com.knp.model.dto.category.UpdateCategoryRequest;
 import com.knp.model.entity.product.Category;
 import com.knp.repository.product.CategoryRepository;
 import com.knp.service.MessageService;
+import com.knp.multitenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -23,6 +24,7 @@ public class CategoryServiceImpl implements CategoryService {
 
     private final CategoryRepository categoryRepository;
     private final MessageService messageService;
+    private final TenantContext tenantContext;
 
     @Override
     @Transactional(readOnly = true)
@@ -48,6 +50,7 @@ public class CategoryServiceImpl implements CategoryService {
         log.info("Creating category: {}", request.getName());
 
         Category category = Category.builder()
+                .tenantId(tenantContext.getCurrentTenantId())
                 .name(request.getName())
                 .deleted(false)
                 .build();

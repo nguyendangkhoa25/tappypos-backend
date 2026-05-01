@@ -487,11 +487,11 @@ class MasterDatabaseAccessAspectTest {
         verify(joinPoint).proceed();
     }
 
-    // ============= VENDOR_ADMIN ROLE =============
+    // ============= AGENT ROLE =============
 
     @Test
-    @DisplayName("Should allow access when user has VENDOR_ADMIN role and isMasterUser true")
-    void testCheckMasterDatabaseAccess_VendorAdminAllowed() throws Throwable {
+    @DisplayName("Should allow access when user has AGENT role and isMasterUser true")
+    void testCheckMasterDatabaseAccess_AgentAllowed() throws Throwable {
         // Given
         when(tenantContext.getCurrentTenantId()).thenReturn(null);
 
@@ -500,7 +500,7 @@ class MasterDatabaseAccessAspectTest {
         RequestContextHolder.setRequestAttributes(servletRequestAttributes);
 
         when(httpRequest.getHeader(AUTHORIZATION_HEADER)).thenReturn(BEARER_PREFIX + VALID_TOKEN);
-        when(jwtTokenProvider.getRolesFromToken(VALID_TOKEN)).thenReturn(List.of("VENDOR_ADMIN"));
+        when(jwtTokenProvider.getRolesFromToken(VALID_TOKEN)).thenReturn(List.of("AGENT"));
         when(jwtTokenProvider.isMasterUserFromToken(VALID_TOKEN)).thenReturn(true);
         when(joinPoint.proceed()).thenReturn("Success");
 
@@ -513,7 +513,7 @@ class MasterDatabaseAccessAspectTest {
     }
 
     @Test
-    @DisplayName("Should deny access when user has neither MASTER_TENANT nor VENDOR_ADMIN role")
+    @DisplayName("Should deny access when user has neither MASTER_TENANT nor AGENT role")
     void testCheckMasterDatabaseAccess_UnrecognisedRoleDenied() throws Throwable {
         // Given
         when(tenantContext.getCurrentTenantId()).thenReturn(null);

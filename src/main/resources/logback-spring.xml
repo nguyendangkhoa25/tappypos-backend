@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
-    <!-- Property for log file location -->
-    <property name="LOG_PATH" value="/app/logs"/>
+    <!-- Property for log file location — override via app.log.path in application-{profile}.properties -->
+    <springProperty name="LOG_PATH" source="app.log.path" defaultValue="./logs"/>
 
     <!-- Property for log pattern -->
     <property name="LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{tenantId}] %-5level %logger{36} - %msg%n"/>

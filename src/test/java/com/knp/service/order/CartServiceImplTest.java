@@ -43,6 +43,7 @@ import com.knp.service.inventory.InventoryService;
 import com.knp.service.tenant.ShopInfoService;
 import com.knp.service.customer.LoyaltyService;
 import com.knp.service.product.ProductService;
+import com.knp.multitenant.TenantContext;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("Cart Service Tests")
@@ -78,6 +79,9 @@ class CartServiceImplTest {
     @Mock
     private ProductService productService;
 
+    @Mock
+    private TenantContext tenantContext;
+
     private CartServiceImpl cartService;
     private ObjectMapper objectMapper;
 
@@ -95,7 +99,8 @@ class CartServiceImplTest {
             productService,
             shopInfoService,
             promotionService,
-            loyaltyService
+            loyaltyService,
+            tenantContext
         );
     }
 

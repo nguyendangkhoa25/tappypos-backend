@@ -8,6 +8,7 @@ import com.knp.model.dto.inventory.UpdateInventoryRequest;
 import com.knp.model.entity.inventory.Inventory;
 import com.knp.model.entity.product.Product;
 import com.knp.model.entity.product.ProductType;
+import com.knp.multitenant.TenantContext;
 import com.knp.repository.inventory.InventoryRepository;
 import com.knp.repository.product.ProductRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +40,9 @@ import com.knp.service.MessageService;
 @ExtendWith(MockitoExtension.class)
 @DisplayName("InventoryService Unit Tests")
 class InventoryServiceImplTest {
+
+    @Mock
+    private TenantContext tenantContext;
 
     @Mock
     private InventoryRepository inventoryRepository;

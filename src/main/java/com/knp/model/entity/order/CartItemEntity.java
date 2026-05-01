@@ -1,7 +1,7 @@
 package com.knp.model.entity.order;
 
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import org.hibernate.annotations.Filter;
 import com.knp.model.entity.product.Product;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -30,11 +30,15 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@Filter(name = "tenantFilter", condition = "tenant_id = :tenantId")
 public class CartItemEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "tenant_id", nullable = false)
+    private String tenantId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "cart_id", nullable = false)

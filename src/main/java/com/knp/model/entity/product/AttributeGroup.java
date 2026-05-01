@@ -1,7 +1,7 @@
 package com.knp.model.entity.product;
 
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import lombok.*;
 
 import java.util.HashSet;
@@ -14,7 +14,7 @@ import java.util.Set;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class AttributeGroup extends BaseEntity {
+public class AttributeGroup extends TenantAwareEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_type_id", nullable = false)

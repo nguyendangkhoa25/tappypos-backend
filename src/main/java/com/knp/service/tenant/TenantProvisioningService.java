@@ -1,18 +1,16 @@
 package com.knp.service.tenant;
 
 import com.knp.model.dto.tenant.RoleSetupRequest;
-import com.knp.model.entity.auth.Feature;
 import com.knp.model.entity.auth.Role;
 import com.knp.model.entity.tenant.ShopInfo;
 import com.knp.model.entity.tenant.Tenant;
 import com.knp.model.entity.auth.User;
-import com.knp.model.enums.FeatureEnum;
 import com.knp.model.enums.RoleEnum;
 import com.knp.model.enums.ShopConfigKey;
-import com.knp.repository.auth.RoleFeatureRepository;
 import com.knp.repository.auth.RoleRepository;
 import com.knp.repository.tenant.ShopInfoRepository;
 import com.knp.repository.auth.UserRepository;
+import com.knp.service.auth.RoleFeatureService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -22,7 +20,6 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Seeds roles, features, role-feature mappings, shop info, and admin user
@@ -38,7 +35,7 @@ import java.util.Set;
 public class TenantProvisioningService {
 
     private final RoleRepository roleRepository;
-    private final RoleFeatureRepository roleFeatureRepository;
+    private final RoleFeatureService roleFeatureService;
     private final UserRepository userRepository;
     private final ShopInfoRepository shopInfoRepository;
     private final ShopConfigService shopConfigService;
@@ -98,29 +95,25 @@ public class TenantProvisioningService {
                           List<RoleSetupRequest> roleSetups, String shopAddress) {
         log.info("Provisioning default data for tenant: {}", tenant.getTenantId());
 
-        Set<String> allowedFeatures = parseFeatures(tenant.getFeatures());
+        String tenantId = tenant.getTenantId();
         Map<String, List<String>> effectiveRoleFeatures = buildEffectiveRoleFeatures(roleSetups);
 
-        try { seedRoles(effectiveRoleFeatures.keySet().stream().toList()); }
-        catch (Exception e) { log.warn("seedRoles failed for tenant {}: {}", tenant.getTenantId(), e.getMessage()); }
-
-        try { seedFeatures(allowedFeatures); }
-        catch (Exception e) { log.warn("seedFeatures failed for tenant {}: {}", tenant.getTenantId(), e.getMessage()); }
+        try { seedRoles(effectiveRoleFeatures.keySet().stream().toList(), tenantId); }
+        catch (Exception e) { log.warn("seedRoles failed for tenant {}: {}", tenantId, e.getMessage()); }
 
         try { seedRoleFeatureMappings(effectiveRoleFeatures); }
-        catch (Exception e) { log.warn("seedRoleFeatureMappings failed for tenant {}: {}", tenant.getTenantId(), e.getMessage()); }
+        catch (Exception e) { log.warn("seedRoleFeatureMappings failed for tenant {}: {}", tenantId, e.getMessage()); }
 
-        try { seedShopInfo(tenant, shopAddress); }
-        catch (Exception e) { log.warn("seedShopInfo failed for tenant {}: {}", tenant.getTenantId(), e.getMessage()); }
+        try { seedShopInfo(tenant, shopAddress, tenantId); }
+        catch (Exception e) { log.warn("seedShopInfo failed for tenant {}: {}", tenantId, e.getMessage()); }
 
-        //TODO later will have default config base on shop type at the create shop steps
         try { seedDefaultConfig(); }
-        catch (Exception e) { log.warn("seedDefaultConfig failed for tenant {}: {}", tenant.getTenantId(), e.getMessage()); }
+        catch (Exception e) { log.warn("seedDefaultConfig failed for tenant {}: {}", tenantId, e.getMessage()); }
 
         // Admin user must succeed — propagate failures to the caller.
-        seedShopOwnerUser(tenant, adminUsername, adminPassword);
+        seedShopOwnerUser(tenant, adminUsername, adminPassword, tenantId);
 
-        log.info("Provisioning complete for tenant: {}", tenant.getTenantId());
+        log.info("Provisioning complete for tenant: {}", tenantId);
     }
 
     /**
@@ -137,7 +130,7 @@ public class TenantProvisioningService {
             if (roleName == null || roleName.isBlank()) continue;
             // Skip master-only roles
             if (RoleEnum.MASTER_TENANT.getCode().equals(roleName) ||
-                    RoleEnum.VENDOR_ADMIN.getCode().equals(roleName)) continue;
+                    RoleEnum.AGENT.getCode().equals(roleName)) continue;
             List<String> features = setup.getFeatures() != null ? setup.getFeatures()
                     : ROLE_FEATURES.getOrDefault(roleName, List.of());
             effective.put(roleName, features);
@@ -148,57 +141,36 @@ public class TenantProvisioningService {
         return effective;
     }
 
-    private void seedRoles(List<String> roleNames) {
+    private void seedRoles(List<String> roleNames, String tenantId) {
         for (String roleName : roleNames) {
             RoleEnum roleEnum;
             try { roleEnum = RoleEnum.valueOf(roleName); }
             catch (IllegalArgumentException e) { continue; }
             if (!roleRepository.existsByName(roleEnum.getCode())) {
-                roleRepository.save(new Role(roleEnum.getCode(), roleEnum.getDescription()));
+                Role role = new Role(roleEnum.getCode(), roleEnum.getDescription());
+                role.setTenantId(tenantId);
+                roleRepository.save(role);
                 log.debug("Seeded role: {}", roleEnum.getCode());
             }
         }
     }
 
-    private void seedFeatures(Set<String> allowedFeatures) {
-        for (FeatureEnum featureEnum : FeatureEnum.values()) {
-            if (!allowedFeatures.contains(featureEnum.getKey())) continue;
-            boolean exists = roleFeatureRepository.findAll().stream()
-                    .anyMatch(f -> featureEnum.getKey().equals(f.getName()));
-            if (!exists) {
-                roleFeatureRepository.save(new Feature(
-                        featureEnum.getKey(),
-                        featureEnum.getDisplayName(),
-                        featureEnum.getDescription()
-                ));
-                log.debug("Seeded feature: {}", featureEnum.getKey());
-            }
-        }
-    }
-
-    private Set<String> parseFeatures(String featuresStr) {
-        if (featuresStr == null || featuresStr.isBlank()) return Set.of();
-        return Arrays.stream(featuresStr.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .collect(java.util.stream.Collectors.toSet());
-    }
-
     private void seedRoleFeatureMappings(Map<String, List<String>> roleFeatures) {
-        roleFeatures.forEach((roleName, features) ->
-            features.forEach(featureName -> {
-                try {
-                    roleFeatureRepository.assignFeatureToRole(roleName, featureName);
-                } catch (Exception e) {
-                    log.warn("Could not assign feature {} to role {}: {}", featureName, roleName, e.getMessage());
-                }
-            })
-        );
+        roleFeatures.forEach((roleName, features) -> {
+            try {
+                // Call through RoleFeatureService so TenantRlsAspect fires on the
+                // service's @Transactional boundary and sets app.current_tenant before
+                // the repository native query executes.
+                roleFeatureService.setRoleFeatures(roleName, features);
+            } catch (Exception e) {
+                log.warn("Could not set features for role {}: {}", roleName, e.getMessage());
+            }
+        });
     }
 
-    private void seedShopInfo(Tenant tenant, String shopAddress) {
+    private void seedShopInfo(Tenant tenant, String shopAddress, String tenantId) {
         ShopInfo shopInfo = shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc()
-                .orElse(ShopInfo.builder().build());
+                .orElse(ShopInfo.builder().tenantId(tenantId).build());
         shopInfo.setShopName(tenant.getName());
         shopInfo.setPhone(tenant.getContactPersonPhone());
         shopInfo.setEmail(tenant.getContactPersonEmail());
@@ -206,23 +178,18 @@ public class TenantProvisioningService {
             shopInfo.setAddress(shopAddress);
         }
         shopInfoRepository.save(shopInfo);
-        log.debug("Seeded shop_info for tenant: {}", tenant.getTenantId());
+        log.debug("Seeded shop_info for tenant: {}", tenantId);
     }
 
     private void seedDefaultConfig() {
         shopConfigService.seedIfAbsent(ShopConfigKey.DEFAULT_TAX_RATE, 0.0);
         shopConfigService.seedIfAbsent(ShopConfigKey.POS_MODE, "STANDARD");
-        shopConfigService.seedIfAbsent(ShopConfigKey.CASH_DENOMINATIONS, "1000,2000,5000,10000,20000,50000,100000,200000,500000");
-        shopConfigService.seedIfAbsent(ShopConfigKey.PAWN_INTEREST_RATE, 0.0);
-        shopConfigService.seedIfAbsent(ShopConfigKey.PAWN_INTEREST_TYPE, 30);
-        shopConfigService.seedIfAbsent(ShopConfigKey.PAWN_DUE_DATE, 30);
-        shopConfigService.seedIfAbsent(ShopConfigKey.PAWN_EXCLUDE_VISIBLE_ITEM, false);
         log.debug("Seeded default shop_config");
     }
 
-    private void seedShopOwnerUser(Tenant tenant, String adminUsername, String adminPassword) {
+    private void seedShopOwnerUser(Tenant tenant, String adminUsername, String adminPassword, String tenantId) {
         if (userRepository.findByUsername(adminUsername).isPresent()) {
-            log.info("Admin user '{}' already exists in tenant: {}", adminUsername, tenant.getTenantId());
+            log.info("Admin user '{}' already exists in tenant: {}", adminUsername, tenantId);
             return;
         }
 
@@ -241,10 +208,9 @@ public class TenantProvisioningService {
                 .requireAction(null)
                 .lang("vi")
                 .build();
-        // Use the owner-side set directly — avoids triggering the LAZY role.getUsers() collection,
-        // which would fail if the role entity is detached from an earlier transaction.
+        admin.setTenantId(tenantId);
         admin.getRoles().add(shopOwnerRole);
         userRepository.save(admin);
-        log.info("Created admin user '{}' for tenant: {}", adminUsername, tenant.getTenantId());
+        log.info("Created admin user '{}' for tenant: {}", adminUsername, tenantId);
     }
 }

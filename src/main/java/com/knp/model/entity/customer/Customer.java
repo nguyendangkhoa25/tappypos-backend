@@ -1,7 +1,7 @@
 package com.knp.model.entity.customer;
 
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
@@ -16,7 +16,7 @@ import java.time.LocalDate;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Customer extends BaseEntity {
+public class Customer extends TenantAwareEntity {
 
     @NotBlank(message = "Customer name is required")
     @Column(nullable = false)

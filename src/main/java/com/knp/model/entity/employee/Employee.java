@@ -2,7 +2,7 @@ package com.knp.model.entity.employee;
 
 import com.knp.model.enums.EmployeePosition;
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -18,7 +18,7 @@ import java.time.LocalDate;
 @SuperBuilder
 @Entity
 @Table(name = "employees")
-public class Employee extends BaseEntity {
+public class Employee extends TenantAwareEntity {
 
     @Column(name = "full_name", nullable = false)
     private String fullName;

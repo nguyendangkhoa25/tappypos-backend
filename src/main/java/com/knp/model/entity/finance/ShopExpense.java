@@ -1,6 +1,6 @@
 package com.knp.model.entity.finance;
 
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import com.knp.model.enums.ExpenseCategory;
 import jakarta.persistence.*;
 import lombok.*;
@@ -19,7 +19,7 @@ import java.time.LocalDate;
 @NoArgsConstructor
 @AllArgsConstructor
 @SuperBuilder
-public class ShopExpense extends BaseEntity {
+public class ShopExpense extends TenantAwareEntity {
 
     @Column(nullable = false, precision = 20, scale = 0)
     private BigDecimal amount;

@@ -123,7 +123,7 @@ class RoleServiceTest {
     void testInitializeDefaultRoles_Success() {
         // Given - stub all roles as not existing using doReturn for lenient stubbing
         doReturn(false).when(roleRepository).existsByName("MASTER_TENANT");
-        doReturn(false).when(roleRepository).existsByName("VENDOR_ADMIN");
+        doReturn(false).when(roleRepository).existsByName("AGENT");
         doReturn(false).when(roleRepository).existsByName("SHOP_OWNER");
         doReturn(false).when(roleRepository).existsByName("MANAGER");
         doReturn(false).when(roleRepository).existsByName("CASHIER");
@@ -151,7 +151,7 @@ class RoleServiceTest {
 
         // Given - stub all possible role checks using doReturn for lenient stubbing
         doReturn(true).when(roleRepository).existsByName("MASTER_TENANT");
-        doReturn(true).when(roleRepository).existsByName("VENDOR_ADMIN");
+        doReturn(true).when(roleRepository).existsByName("AGENT");
         doReturn(true).when(roleRepository).existsByName("SHOP_OWNER");
         doReturn(true).when(roleRepository).existsByName("MANAGER");
         doReturn(true).when(roleRepository).existsByName("CASHIER");

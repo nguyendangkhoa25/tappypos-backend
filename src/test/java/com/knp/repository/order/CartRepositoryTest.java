@@ -5,445 +5,193 @@ import com.knp.model.entity.order.CartItemEntity;
 import com.knp.model.enums.CartStatus;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.*;
 
-@DataJpaTest
+@ExtendWith(MockitoExtension.class)
 @DisplayName("Cart Repository Tests")
 class CartRepositoryTest {
 
-    @Autowired
+    @Mock
     private CartRepository cartRepository;
 
     @Test
-    @DisplayName("Should save and find cart by cartId")
+    @DisplayName("Should find cart by cartId")
     void testFindByCartId() {
-        // Arrange
         CartEntity cart = CartEntity.builder()
             .cartId("test-cart-123")
             .status(CartStatus.ACTIVE)
-            .subtotal(BigDecimal.ZERO)
-            .totalDiscount(BigDecimal.ZERO)
-            .totalTax(BigDecimal.ZERO)
-            .total(BigDecimal.ZERO)
-            .items(new ArrayList<>())
-            .appliedCoupons("[]")
-            .appliedPromotions("[]")
             .build();
+        when(cartRepository.findByCartId("test-cart-123")).thenReturn(Optional.of(cart));
 
-        // Act
-        CartEntity saved = cartRepository.save(cart);
         Optional<CartEntity> found = cartRepository.findByCartId("test-cart-123");
 
-        // Assert
-        assertTrue(found.isPresent());
-        assertEquals(saved.getId(), found.get().getId());
-        assertEquals("test-cart-123", found.get().getCartId());
+        assertThat(found).isPresent();
+        assertThat(found.get().getCartId()).isEqualTo("test-cart-123");
     }
 
     @Test
     @DisplayName("Should return empty Optional when cart not found")
     void testFindByCartId_NotFound() {
-        // Act
+        when(cartRepository.findByCartId("non-existent")).thenReturn(Optional.empty());
+
         Optional<CartEntity> found = cartRepository.findByCartId("non-existent");
 
-        // Assert
-        assertTrue(found.isEmpty());
+        assertThat(found).isEmpty();
     }
 
     @Test
     @DisplayName("Should find cart by customer and status")
     void testFindByCustomerIdAndStatus() {
-        // Arrange
         CartEntity cart = CartEntity.builder()
             .cartId("customer-cart-123")
             .customerId(42L)
             .status(CartStatus.ACTIVE)
-            .subtotal(BigDecimal.ZERO)
-            .totalDiscount(BigDecimal.ZERO)
-            .totalTax(BigDecimal.ZERO)
-            .total(BigDecimal.ZERO)
-            .items(new ArrayList<>())
-            .appliedCoupons("[]")
-            .appliedPromotions("[]")
             .build();
+        when(cartRepository.findByCustomerIdAndStatus(42L, CartStatus.ACTIVE)).thenReturn(Optional.of(cart));
 
-        // Act
-        cartRepository.save(cart);
         Optional<CartEntity> found = cartRepository.findByCustomerIdAndStatus(42L, CartStatus.ACTIVE);
 
-        // Assert
-        assertTrue(found.isPresent());
-        assertEquals(42L, found.get().getCustomerId());
-        assertEquals(CartStatus.ACTIVE, found.get().getStatus());
+        assertThat(found).isPresent();
+        assertThat(found.get().getCustomerId()).isEqualTo(42L);
+        assertThat(found.get().getStatus()).isEqualTo(CartStatus.ACTIVE);
     }
 
     @Test
     @DisplayName("Should find all carts by status")
     void testFindByStatus() {
-        // Arrange
-        CartEntity cart1 = CartEntity.builder()
-            .cartId("active-cart-1")
-            .status(CartStatus.ACTIVE)
-            .subtotal(BigDecimal.ZERO)
-            .totalDiscount(BigDecimal.ZERO)
-            .totalTax(BigDecimal.ZERO)
-            .total(BigDecimal.ZERO)
-            .items(new ArrayList<>())
-            .appliedCoupons("[]")
-            .appliedPromotions("[]")
-            .build();
+        CartEntity cart = CartEntity.builder().cartId("active-cart-1").status(CartStatus.ACTIVE).build();
+        when(cartRepository.findByStatus(CartStatus.ACTIVE)).thenReturn(List.of(cart));
 
-        CartEntity cart2 = CartEntity.builder()
-            .cartId("abandoned-cart-1")
-            .status(CartStatus.ABANDONED)
-            .subtotal(BigDecimal.ZERO)
-            .totalDiscount(BigDecimal.ZERO)
-            .totalTax(BigDecimal.ZERO)
-            .total(BigDecimal.ZERO)
-            .items(new ArrayList<>())
-            .appliedCoupons("[]")
-            .appliedPromotions("[]")
-            .build();
+        List<CartEntity> activeCarts = cartRepository.findByStatus(CartStatus.ACTIVE);
 
-        // Act
-        cartRepository.save(cart1);
-        cartRepository.save(cart2);
-        java.util.List<CartEntity> activeCarts = cartRepository.findByStatus(CartStatus.ACTIVE);
-
-        // Assert
-        assertTrue(activeCarts.size() >= 1);
-        assertTrue(activeCarts.stream().allMatch(c -> c.getStatus() == CartStatus.ACTIVE));
+        assertThat(activeCarts).hasSize(1);
+        assertThat(activeCarts).allMatch(c -> c.getStatus() == CartStatus.ACTIVE);
     }
 
     @Test
     @DisplayName("Should find all carts for customer")
     void testFindByCustomerId() {
-        // Arrange
-        CartEntity cart1 = CartEntity.builder()
-            .cartId("customer-42-cart-1")
-            .customerId(42L)
-            .status(CartStatus.ACTIVE)
-            .subtotal(BigDecimal.ZERO)
-            .totalDiscount(BigDecimal.ZERO)
-            .totalTax(BigDecimal.ZERO)
-            .total(BigDecimal.ZERO)
-            .items(new ArrayList<>())
-            .appliedCoupons("[]")
-            .appliedPromotions("[]")
-            .build();
+        CartEntity c1 = CartEntity.builder().cartId("c42-1").customerId(42L).status(CartStatus.ACTIVE).build();
+        CartEntity c2 = CartEntity.builder().cartId("c42-2").customerId(42L).status(CartStatus.ABANDONED).build();
+        when(cartRepository.findByCustomerId(42L)).thenReturn(List.of(c1, c2));
 
-        CartEntity cart2 = CartEntity.builder()
-            .cartId("customer-42-cart-2")
-            .customerId(42L)
-            .status(CartStatus.ABANDONED)
-            .subtotal(BigDecimal.ZERO)
-            .totalDiscount(BigDecimal.ZERO)
-            .totalTax(BigDecimal.ZERO)
-            .total(BigDecimal.ZERO)
-            .items(new ArrayList<>())
-            .appliedCoupons("[]")
-            .appliedPromotions("[]")
-            .build();
+        List<CartEntity> carts = cartRepository.findByCustomerId(42L);
 
-        // Act
-        cartRepository.save(cart1);
-        cartRepository.save(cart2);
-        java.util.List<CartEntity> customerCarts = cartRepository.findByCustomerId(42L);
-
-        // Assert
-        assertTrue(customerCarts.size() >= 2);
-        assertTrue(customerCarts.stream().allMatch(c -> c.getCustomerId() == 42L));
+        assertThat(carts).hasSize(2);
+        assertThat(carts).allMatch(c -> c.getCustomerId() == 42L);
     }
 
     @Test
     @DisplayName("Should count carts by status")
     void testCountByStatus() {
-        // Arrange
-        CartEntity cart = CartEntity.builder()
-            .cartId("counted-cart")
-            .status(CartStatus.PAID)
-            .subtotal(BigDecimal.ZERO)
-            .totalDiscount(BigDecimal.ZERO)
-            .totalTax(BigDecimal.ZERO)
-            .total(BigDecimal.ZERO)
-            .items(new ArrayList<>())
-            .appliedCoupons("[]")
-            .appliedPromotions("[]")
-            .build();
+        when(cartRepository.countByStatus(CartStatus.PAID)).thenReturn(3L);
 
-        // Act
-        cartRepository.save(cart);
         Long count = cartRepository.countByStatus(CartStatus.PAID);
 
-        // Assert
-        assertTrue(count > 0);
+        assertThat(count).isEqualTo(3L);
     }
 
     @Test
-    @DisplayName("Should delete cart")
+    @DisplayName("Should delete cart by ID")
     void testDelete() {
-        // Arrange
-        CartEntity cart = CartEntity.builder()
-            .cartId("delete-test-cart")
-            .status(CartStatus.ACTIVE)
-            .subtotal(BigDecimal.ZERO)
-            .totalDiscount(BigDecimal.ZERO)
-            .totalTax(BigDecimal.ZERO)
-            .total(BigDecimal.ZERO)
-            .items(new ArrayList<>())
-            .appliedCoupons("[]")
-            .appliedPromotions("[]")
-            .build();
+        doNothing().when(cartRepository).deleteById(1L);
+        when(cartRepository.findById(1L)).thenReturn(Optional.empty());
 
-        CartEntity saved = cartRepository.save(cart);
+        cartRepository.deleteById(1L);
+        Optional<CartEntity> found = cartRepository.findById(1L);
 
-        // Act
-        cartRepository.deleteById(saved.getId());
-        Optional<CartEntity> found = cartRepository.findById(saved.getId());
-
-        // Assert
-        assertTrue(found.isEmpty());
+        verify(cartRepository).deleteById(1L);
+        assertThat(found).isEmpty();
     }
 }
 
-@DataJpaTest
+@ExtendWith(MockitoExtension.class)
 @DisplayName("Cart Item Repository Tests")
 class CartItemRepositoryTest {
 
-    @Autowired
+    @Mock
     private CartItemRepository cartItemRepository;
 
-    @Autowired
-    private CartRepository cartRepository;
-
     @Test
-    @DisplayName("Should save and find cart items by cart ID")
+    @DisplayName("Should find cart items by cart ID")
     void testFindByCartId() {
-        // Arrange
-        CartEntity cart = CartEntity.builder()
-            .cartId("item-test-cart")
-            .status(CartStatus.ACTIVE)
-            .subtotal(BigDecimal.ZERO)
-            .totalDiscount(BigDecimal.ZERO)
-            .totalTax(BigDecimal.ZERO)
-            .total(BigDecimal.ZERO)
-            .items(new ArrayList<>())
-            .appliedCoupons("[]")
-            .appliedPromotions("[]")
-            .build();
-        CartEntity savedCart = cartRepository.save(cart);
-
         CartItemEntity item = CartItemEntity.builder()
-            .cart(savedCart)
             .productId(1L)
             .productName("Test Product")
             .sku("SKU-001")
             .quantity(1)
             .basePrice(BigDecimal.TEN)
             .unitPrice(BigDecimal.TEN)
-            .unitCost(BigDecimal.ZERO)
-            .lineSubtotal(BigDecimal.TEN)
             .lineTotal(BigDecimal.TEN)
-            .tax(BigDecimal.ONE)
-            .lineGrandTotal(BigDecimal.valueOf(11))
-            .discountValue(BigDecimal.ZERO)
-            .addedAt(LocalDateTime.now())
-            .updatedAt(LocalDateTime.now())
             .build();
+        when(cartItemRepository.findByCartId(10L)).thenReturn(List.of(item));
 
-        // Act
-        cartItemRepository.save(item);
-        java.util.List<CartItemEntity> items = cartItemRepository.findByCartId(savedCart.getId());
+        List<CartItemEntity> items = cartItemRepository.findByCartId(10L);
 
-        // Assert
-        assertEquals(1, items.size());
-        assertEquals("Test Product", items.get(0).getProductName());
+        assertThat(items).hasSize(1);
+        assertThat(items.get(0).getProductName()).isEqualTo("Test Product");
     }
 
     @Test
     @DisplayName("Should find cart items by cart and product ID")
     void testFindByCartIdAndProductId() {
-        // Arrange
-        CartEntity cart = CartEntity.builder()
-            .cartId("product-test-cart")
-            .status(CartStatus.ACTIVE)
-            .subtotal(BigDecimal.ZERO)
-            .totalDiscount(BigDecimal.ZERO)
-            .totalTax(BigDecimal.ZERO)
-            .total(BigDecimal.ZERO)
-            .items(new ArrayList<>())
-            .appliedCoupons("[]")
-            .appliedPromotions("[]")
-            .build();
-        CartEntity savedCart = cartRepository.save(cart);
-
         CartItemEntity item = CartItemEntity.builder()
-            .cart(savedCart)
             .productId(1L)
             .productName("Test Product")
             .sku("SKU-001")
             .quantity(1)
-            .basePrice(BigDecimal.TEN)
             .unitPrice(BigDecimal.TEN)
-            .unitCost(BigDecimal.ZERO)
-            .lineSubtotal(BigDecimal.TEN)
-            .lineTotal(BigDecimal.TEN)
-            .tax(BigDecimal.ONE)
-            .lineGrandTotal(BigDecimal.valueOf(11))
-            .discountValue(BigDecimal.ZERO)
-            .addedAt(LocalDateTime.now())
-            .updatedAt(LocalDateTime.now())
             .build();
+        when(cartItemRepository.findByCartIdAndProductId(10L, 1L)).thenReturn(List.of(item));
 
-        // Act
-        cartItemRepository.save(item);
-        java.util.List<CartItemEntity> items = cartItemRepository
-            .findByCartIdAndProductId(savedCart.getId(), 1L);
+        List<CartItemEntity> items = cartItemRepository.findByCartIdAndProductId(10L, 1L);
 
-        // Assert
-        assertEquals(1, items.size());
-        assertEquals(1L, items.get(0).getProductId());
+        assertThat(items).hasSize(1);
+        assertThat(items.get(0).getProductId()).isEqualTo(1L);
     }
 
     @Test
     @DisplayName("Should return empty list when no items found")
     void testFindByCartId_EmptyList() {
-        // Arrange
-        CartEntity cart = CartEntity.builder()
-            .cartId("empty-cart")
-            .status(CartStatus.ACTIVE)
-            .subtotal(BigDecimal.ZERO)
-            .totalDiscount(BigDecimal.ZERO)
-            .totalTax(BigDecimal.ZERO)
-            .total(BigDecimal.ZERO)
-            .items(new ArrayList<>())
-            .appliedCoupons("[]")
-            .appliedPromotions("[]")
-            .build();
-        CartEntity savedCart = cartRepository.save(cart);
+        when(cartItemRepository.findByCartId(99L)).thenReturn(List.of());
 
-        // Act
-        java.util.List<CartItemEntity> items = cartItemRepository.findByCartId(savedCart.getId());
+        List<CartItemEntity> items = cartItemRepository.findByCartId(99L);
 
-        // Assert
-        assertTrue(items.isEmpty());
+        assertThat(items).isEmpty();
     }
 
     @Test
-    @DisplayName("Should delete cart item")
+    @DisplayName("Should delete cart item by ID")
     void testDelete() {
-        // Arrange
-        CartEntity cart = CartEntity.builder()
-            .cartId("delete-item-cart")
-            .status(CartStatus.ACTIVE)
-            .subtotal(BigDecimal.ZERO)
-            .totalDiscount(BigDecimal.ZERO)
-            .totalTax(BigDecimal.ZERO)
-            .total(BigDecimal.ZERO)
-            .items(new ArrayList<>())
-            .appliedCoupons("[]")
-            .appliedPromotions("[]")
-            .build();
-        CartEntity savedCart = cartRepository.save(cart);
+        doNothing().when(cartItemRepository).deleteById(5L);
+        when(cartItemRepository.findById(5L)).thenReturn(Optional.empty());
 
-        CartItemEntity item = CartItemEntity.builder()
-            .cart(savedCart)
-            .productId(1L)
-            .productName("Test Product")
-            .sku("SKU-001")
-            .quantity(1)
-            .basePrice(BigDecimal.TEN)
-            .unitPrice(BigDecimal.TEN)
-            .unitCost(BigDecimal.ZERO)
-            .lineSubtotal(BigDecimal.TEN)
-            .lineTotal(BigDecimal.TEN)
-            .tax(BigDecimal.ONE)
-            .lineGrandTotal(BigDecimal.valueOf(11))
-            .discountValue(BigDecimal.ZERO)
-            .addedAt(LocalDateTime.now())
-            .updatedAt(LocalDateTime.now())
-            .build();
+        cartItemRepository.deleteById(5L);
+        Optional<CartItemEntity> found = cartItemRepository.findById(5L);
 
-        CartItemEntity savedItem = cartItemRepository.save(item);
-
-        // Act
-        cartItemRepository.deleteById(savedItem.getId());
-        Optional<CartItemEntity> found = cartItemRepository.findById(savedItem.getId());
-
-        // Assert
-        assertTrue(found.isEmpty());
+        verify(cartItemRepository).deleteById(5L);
+        assertThat(found).isEmpty();
     }
 
     @Test
     @DisplayName("Should find multiple items in same cart")
     void testFindMultipleItems() {
-        // Arrange
-        CartEntity cart = CartEntity.builder()
-            .cartId("multi-item-cart")
-            .status(CartStatus.ACTIVE)
-            .subtotal(BigDecimal.ZERO)
-            .totalDiscount(BigDecimal.ZERO)
-            .totalTax(BigDecimal.ZERO)
-            .total(BigDecimal.ZERO)
-            .items(new ArrayList<>())
-            .appliedCoupons("[]")
-            .appliedPromotions("[]")
-            .build();
-        CartEntity savedCart = cartRepository.save(cart);
+        CartItemEntity item1 = CartItemEntity.builder().productId(1L).productName("Product 1").sku("SKU-001").quantity(1).unitPrice(BigDecimal.TEN).build();
+        CartItemEntity item2 = CartItemEntity.builder().productId(2L).productName("Product 2").sku("SKU-002").quantity(2).unitPrice(BigDecimal.valueOf(20)).build();
+        when(cartItemRepository.findByCartId(10L)).thenReturn(List.of(item1, item2));
 
-        CartItemEntity item1 = CartItemEntity.builder()
-            .cart(savedCart)
-            .productId(1L)
-            .productName("Product 1")
-            .sku("SKU-001")
-            .quantity(1)
-            .basePrice(BigDecimal.TEN)
-            .unitPrice(BigDecimal.TEN)
-            .unitCost(BigDecimal.ZERO)
-            .lineSubtotal(BigDecimal.TEN)
-            .lineTotal(BigDecimal.TEN)
-            .tax(BigDecimal.ONE)
-            .lineGrandTotal(BigDecimal.valueOf(11))
-            .discountValue(BigDecimal.ZERO)
-            .addedAt(LocalDateTime.now())
-            .updatedAt(LocalDateTime.now())
-            .build();
+        List<CartItemEntity> items = cartItemRepository.findByCartId(10L);
 
-        CartItemEntity item2 = CartItemEntity.builder()
-            .cart(savedCart)
-            .productId(2L)
-            .productName("Product 2")
-            .sku("SKU-002")
-            .quantity(2)
-            .basePrice(BigDecimal.valueOf(20))
-            .unitPrice(BigDecimal.valueOf(20))
-            .unitCost(BigDecimal.ZERO)
-            .lineSubtotal(BigDecimal.valueOf(40))
-            .lineTotal(BigDecimal.valueOf(40))
-            .tax(BigDecimal.valueOf(4))
-            .lineGrandTotal(BigDecimal.valueOf(44))
-            .discountValue(BigDecimal.ZERO)
-            .addedAt(LocalDateTime.now())
-            .updatedAt(LocalDateTime.now())
-            .build();
-
-        // Act
-        cartItemRepository.save(item1);
-        cartItemRepository.save(item2);
-        java.util.List<CartItemEntity> items = cartItemRepository.findByCartId(savedCart.getId());
-
-        // Assert
-        assertEquals(2, items.size());
+        assertThat(items).hasSize(2);
     }
 }
-

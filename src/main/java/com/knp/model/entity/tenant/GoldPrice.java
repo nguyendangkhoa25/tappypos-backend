@@ -1,6 +1,6 @@
 package com.knp.model.entity.tenant;
 
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -14,7 +14,7 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 @AllArgsConstructor
 @SuperBuilder
-public class GoldPrice extends BaseEntity {
+public class GoldPrice extends TenantAwareEntity {
 
     @Column(nullable = false, length = 50)
     private String code;

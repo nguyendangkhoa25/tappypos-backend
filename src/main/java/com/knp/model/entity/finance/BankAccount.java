@@ -1,7 +1,7 @@
 package com.knp.model.entity.finance;
 
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
@@ -12,7 +12,7 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 @AllArgsConstructor
 @SuperBuilder
-public class BankAccount extends BaseEntity {
+public class BankAccount extends TenantAwareEntity {
 
     @Column(name = "bank_bin", nullable = false, length = 20)
     private String bankBin;

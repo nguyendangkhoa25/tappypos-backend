@@ -47,6 +47,7 @@ import com.knp.service.inventory.InventoryService;
 import com.knp.service.product.ProductService;
 import com.knp.service.tenant.ShopInfoService;
 import com.knp.service.customer.LoyaltyService;
+import com.knp.multitenant.TenantContext;
 
 /**
  * Cart Service Implementation
@@ -78,6 +79,7 @@ public class CartServiceImpl implements CartService {
     private final ShopInfoService shopInfoService;
     private final PromotionService promotionService;
     private final LoyaltyService loyaltyService;
+    private final TenantContext tenantContext;
 
     /**
      * Initialize a new cart session
@@ -88,6 +90,7 @@ public class CartServiceImpl implements CartService {
         log.info("Initializing new cart");
 
         CartEntity cart = CartEntity.builder()
+                .tenantId(tenantContext.getCurrentTenantId())
                 .cartId(UUID.randomUUID().toString())
                 .status(CartStatus.ACTIVE)
                 .subtotal(BigDecimal.ZERO)
@@ -234,6 +237,7 @@ public class CartServiceImpl implements CartService {
         } else {
             // Add new item with product details
             CartItemEntity newItem = CartItemEntity.builder()
+                    .tenantId(tenantContext.getCurrentTenantId())
                     .cart(cart)
                     .productId(request.getProductId())
                     .productName(product.getName())

@@ -15,11 +15,16 @@ import java.util.Optional;
 @Repository
 public interface EmployeeRepository extends JpaRepository<Employee, Long> {
 
-    @Query("SELECT e FROM Employee e WHERE e.deleted <> true " +
-            "AND (:search IS NULL OR LOWER(e.fullName) LIKE LOWER(CONCAT('%', :search, '%')) " +
-            "OR LOWER(e.phone) LIKE LOWER(CONCAT('%', :search, '%')) " +
-            "OR LOWER(e.email) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-            "ORDER BY e.id DESC")
+    @Query(value = "SELECT * FROM employees WHERE deleted <> true " +
+            "AND (CAST(:search AS text) IS NULL OR LOWER(full_name) LIKE LOWER('%' || CAST(:search AS text) || '%') " +
+            "OR LOWER(phone) LIKE LOWER('%' || CAST(:search AS text) || '%') " +
+            "OR LOWER(email) LIKE LOWER('%' || CAST(:search AS text) || '%')) " +
+            "ORDER BY id DESC",
+           countQuery = "SELECT COUNT(*) FROM employees WHERE deleted <> true " +
+            "AND (CAST(:search AS text) IS NULL OR LOWER(full_name) LIKE LOWER('%' || CAST(:search AS text) || '%') " +
+            "OR LOWER(phone) LIKE LOWER('%' || CAST(:search AS text) || '%') " +
+            "OR LOWER(email) LIKE LOWER('%' || CAST(:search AS text) || '%'))",
+           nativeQuery = true)
     Page<Employee> findAllWithSearch(@Param("search") String search, Pageable pageable);
 
     @Query("SELECT e FROM Employee e WHERE e.deleted <> true ORDER BY e.id DESC")

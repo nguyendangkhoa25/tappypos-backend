@@ -1,7 +1,7 @@
 package com.knp.model.entity.product;
 
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
@@ -12,7 +12,7 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 @AllArgsConstructor
 @SuperBuilder
-public class VariantTypeOption extends BaseEntity {
+public class VariantTypeOption extends TenantAwareEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "variant_type_id", nullable = false)

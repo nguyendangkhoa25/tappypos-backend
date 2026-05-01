@@ -1,6 +1,6 @@
 package com.knp.model.entity.tenant;
 
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
@@ -20,7 +20,7 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 @AllArgsConstructor
 @SuperBuilder
-public class PrintTemplate extends BaseEntity {
+public class PrintTemplate extends TenantAwareEntity {
 
     @Column(name = "template_type", nullable = false, length = 50)
     private String templateType;

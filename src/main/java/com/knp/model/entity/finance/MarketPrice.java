@@ -1,7 +1,7 @@
 package com.knp.model.entity.finance;
 
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -13,7 +13,7 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class MarketPrice extends BaseEntity {
+public class MarketPrice extends TenantAwareEntity {
 
     @Column(nullable = false, length = 100)
     private String name;

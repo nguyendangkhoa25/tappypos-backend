@@ -3,6 +3,7 @@ package com.knp.service.tenant;
 import com.knp.config.EncryptionService;
 import com.knp.model.entity.tenant.ShopConfig;
 import com.knp.model.enums.ShopConfigKey;
+import com.knp.multitenant.TenantContext;
 import com.knp.repository.tenant.ShopConfigRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -27,6 +28,7 @@ class ShopConfigServiceTest {
 
     @Mock private ShopConfigRepository shopConfigRepository;
     @Mock private EncryptionService encryptionService;
+    @Mock private TenantContext tenantContext;
 
     @InjectMocks
     private ShopConfigService shopConfigService;

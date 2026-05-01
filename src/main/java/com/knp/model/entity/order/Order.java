@@ -1,7 +1,7 @@
 package com.knp.model.entity.order;
 
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import com.knp.model.entity.finance.Invoice;
 import com.knp.model.entity.customer.Customer;
 import lombok.*;
@@ -18,7 +18,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Order extends BaseEntity {
+public class Order extends TenantAwareEntity {
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "customer_id", nullable = true)

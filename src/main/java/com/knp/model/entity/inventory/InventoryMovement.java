@@ -1,7 +1,7 @@
 package com.knp.model.entity.inventory;
 
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import com.knp.model.entity.product.Product;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -20,7 +20,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @SuperBuilder
-public class InventoryMovement extends BaseEntity {
+public class InventoryMovement extends TenantAwareEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "inventory_id", nullable = false)

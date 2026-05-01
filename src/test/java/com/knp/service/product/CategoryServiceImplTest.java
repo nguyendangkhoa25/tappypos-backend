@@ -6,6 +6,7 @@ import com.knp.model.dto.category.CreateCategoryRequest;
 import com.knp.model.dto.category.UpdateCategoryRequest;
 import com.knp.model.entity.product.Category;
 import com.knp.model.entity.product.Product;
+import com.knp.multitenant.TenantContext;
 import com.knp.repository.product.CategoryRepository;
 import com.knp.service.MessageService;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,6 +33,9 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 @DisplayName("CategoryServiceImpl Unit Tests")
 class CategoryServiceImplTest {
+
+    @Mock
+    private TenantContext tenantContext;
 
     @Mock
     private CategoryRepository categoryRepository;

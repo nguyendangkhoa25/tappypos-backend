@@ -1,7 +1,7 @@
 package com.knp.model.entity.audit;
 
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import org.hibernate.annotations.Filter;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 
@@ -18,11 +18,15 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@Filter(name = "tenantFilter", condition = "tenant_id = :tenantId OR tenant_id IS NULL")
 public class ActivityLog {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "tenant_id")
+    private String tenantId;
 
     @Column(name = "actor_username", nullable = false, length = 50)
     private String actorUsername;

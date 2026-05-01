@@ -2,7 +2,7 @@ package com.knp.model.entity.product;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import com.knp.model.entity.vendor.Vendor;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -18,7 +18,7 @@ import java.util.Set;
 @NoArgsConstructor
 @AllArgsConstructor
 @SuperBuilder
-public class Product extends BaseEntity {
+public class Product extends TenantAwareEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_type_id", nullable = false)

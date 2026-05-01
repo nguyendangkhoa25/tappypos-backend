@@ -12,7 +12,7 @@ import com.knp.model.entity.auth.Role;
 import com.knp.model.entity.auth.User;
 import com.knp.multitenant.TenantContext;
 import com.knp.repository.employee.EmployeeRepository;
-import com.knp.repository.tenant.VendorAdminRepository;
+import com.knp.repository.tenant.AgentRepository;
 import com.knp.repository.auth.RoleRepository;
 import com.knp.repository.auth.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -63,7 +63,7 @@ class UserServiceTest {
     private EmployeeRepository employeeRepository;
 
     @Mock
-    private VendorAdminRepository vendorAdminRepository;
+    private AgentRepository agentRepository;
 
     @Mock
     private TenantContext tenantContext;

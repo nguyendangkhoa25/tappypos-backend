@@ -8,6 +8,7 @@ import com.knp.model.dto.employee.UpdateEmployeeRequest;
 import com.knp.model.entity.employee.Employee;
 import com.knp.model.entity.auth.User;
 import com.knp.model.enums.EmployeePosition;
+import com.knp.multitenant.TenantContext;
 import com.knp.repository.employee.EmployeeRepository;
 import com.knp.repository.auth.UserRepository;
 import com.knp.service.MessageService;
@@ -34,6 +35,7 @@ import static org.mockito.Mockito.*;
 @DisplayName("EmployeeServiceImpl Unit Tests")
 class EmployeeServiceImplTest {
 
+    @Mock private TenantContext tenantContext;
     @Mock private EmployeeRepository employeeRepository;
     @Mock private UserRepository userRepository;
     @Mock private MessageService messageService;

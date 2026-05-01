@@ -1,7 +1,7 @@
 package com.knp.model.entity.vendor;
 
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -17,7 +17,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class PurchaseOrder extends BaseEntity {
+public class PurchaseOrder extends TenantAwareEntity {
 
     @Column(name = "po_number", nullable = false, unique = true, length = 30)
     private String poNumber;

@@ -2,7 +2,7 @@ package com.knp.model.entity.pawn;
 
 import com.knp.model.enums.PawnStatus;
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import org.hibernate.annotations.Filter;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -18,11 +18,15 @@ import java.util.Set;
 @AllArgsConstructor
 @NoArgsConstructor
 @ToString
+@Filter(name = "tenantFilter", condition = "tenant_id = :tenantId")
 public class PawnEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "pawn_id")
     private Long pawnId;
+
+    @Column(name = "tenant_id", nullable = false)
+    private String tenantId;
 
     @Column(name = "customer_id")
     private Long customerId;

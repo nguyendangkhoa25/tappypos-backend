@@ -31,7 +31,7 @@ public class MasterDatabaseAccessAspect {
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String BEARER_PREFIX = "Bearer ";
     private static final java.util.Set<String> ALLOWED_MASTER_ROLES =
-            java.util.Set.of("MASTER_TENANT", "VENDOR_ADMIN");
+            java.util.Set.of("MASTER_TENANT", "AGENT");
 
     /**
      * Check if current request is accessing master database with proper role
@@ -57,7 +57,7 @@ public class MasterDatabaseAccessAspect {
             throw new ForbiddenException("error.access.master_only");
         }
 
-        // Check 2: User must have a recognised master role (MASTER_TENANT or VENDOR_ADMIN)
+        // Check 2: User must have a recognised master role (MASTER_TENANT or AGENT)
         List<String> roles = jwtTokenProvider.getRolesFromToken(token);
         boolean hasMasterRole = roles != null && roles.stream().anyMatch(ALLOWED_MASTER_ROLES::contains);
         if (!hasMasterRole) {

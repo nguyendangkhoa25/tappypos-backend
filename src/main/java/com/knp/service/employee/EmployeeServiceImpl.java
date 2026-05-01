@@ -11,6 +11,7 @@ import com.knp.model.entity.auth.User;
 import com.knp.model.enums.EmployeePosition;
 import com.knp.repository.employee.EmployeeRepository;
 import com.knp.repository.auth.UserRepository;
+import com.knp.multitenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -31,6 +32,7 @@ public class EmployeeServiceImpl implements EmployeeService {
     private final EmployeeRepository employeeRepository;
     private final UserRepository userRepository;
     private final MessageService messageService;
+    private final TenantContext tenantContext;
 
     @Override
     public Page<EmployeeDTO> getAll(String search, int page, int size) {
@@ -72,6 +74,7 @@ public class EmployeeServiceImpl implements EmployeeService {
         }
 
         Employee employee = Employee.builder()
+                .tenantId(tenantContext.getCurrentTenantId())
                 .fullName(request.getFullName())
                 .phone(request.getPhone())
                 .email(request.getEmail())

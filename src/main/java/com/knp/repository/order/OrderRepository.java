@@ -42,10 +42,12 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query("SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.deleted = false AND o.status = 'COMPLETED'")
     BigDecimal sumTotalRevenue();
 
-    @Query("SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.deleted = false AND o.status = 'COMPLETED' AND YEAR(o.completedAt) = :year AND MONTH(o.completedAt) = :month")
+    @Query(value = "SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE deleted = false AND status = 'COMPLETED' AND EXTRACT(YEAR FROM completed_at) = :year AND EXTRACT(MONTH FROM completed_at) = :month",
+           nativeQuery = true)
     BigDecimal sumRevenueByMonth(@Param("year") int year, @Param("month") int month);
 
-    @Query("SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.deleted = false AND o.status = 'COMPLETED' AND YEAR(o.completedAt) = :year")
+    @Query(value = "SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE deleted = false AND status = 'COMPLETED' AND EXTRACT(YEAR FROM completed_at) = :year",
+           nativeQuery = true)
     BigDecimal sumRevenueByYear(@Param("year") int year);
 
     @Query("SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.completedAt >= :from AND o.completedAt <= :to")
@@ -60,30 +62,37 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query("SELECT COUNT(o) FROM Order o WHERE o.deleted = false AND o.status = 'COMPLETED'")
     Long countCompleted();
 
-    @Query("SELECT COUNT(o) FROM Order o WHERE o.deleted = false AND o.status = 'COMPLETED' AND YEAR(o.completedAt) = :year AND MONTH(o.completedAt) = :month")
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND status = 'COMPLETED' AND EXTRACT(YEAR FROM completed_at) = :year AND EXTRACT(MONTH FROM completed_at) = :month",
+           nativeQuery = true)
     Long countCompletedByMonth(@Param("year") int year, @Param("month") int month);
 
-    @Query("SELECT COUNT(o) FROM Order o WHERE o.deleted = false AND o.status = 'COMPLETED' AND YEAR(o.completedAt) = :year")
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND status = 'COMPLETED' AND EXTRACT(YEAR FROM completed_at) = :year",
+           nativeQuery = true)
     Long countCompletedByYear(@Param("year") int year);
 
     // Monthly breakdown: [month, revenue, orderCount]
-    @Query("SELECT MONTH(o.completedAt), COALESCE(SUM(o.totalAmount), 0), COUNT(o) FROM Order o WHERE o.deleted = false AND o.status = 'COMPLETED' AND YEAR(o.completedAt) = :year GROUP BY MONTH(o.completedAt) ORDER BY MONTH(o.completedAt)")
+    @Query(value = "SELECT EXTRACT(MONTH FROM completed_at), COALESCE(SUM(total_amount), 0), COUNT(*) FROM orders WHERE deleted = false AND status = 'COMPLETED' AND EXTRACT(YEAR FROM completed_at) = :year GROUP BY EXTRACT(MONTH FROM completed_at) ORDER BY EXTRACT(MONTH FROM completed_at)",
+           nativeQuery = true)
     List<Object[]> sumRevenueGroupedByMonth(@Param("year") int year);
 
     // Daily breakdown: [day, revenue, orderCount]
-    @Query("SELECT DAY(o.completedAt), COALESCE(SUM(o.totalAmount), 0), COUNT(o) FROM Order o WHERE o.deleted = false AND o.status = 'COMPLETED' AND YEAR(o.completedAt) = :year AND MONTH(o.completedAt) = :month GROUP BY DAY(o.completedAt) ORDER BY DAY(o.completedAt)")
+    @Query(value = "SELECT EXTRACT(DAY FROM completed_at), COALESCE(SUM(total_amount), 0), COUNT(*) FROM orders WHERE deleted = false AND status = 'COMPLETED' AND EXTRACT(YEAR FROM completed_at) = :year AND EXTRACT(MONTH FROM completed_at) = :month GROUP BY EXTRACT(DAY FROM completed_at) ORDER BY EXTRACT(DAY FROM completed_at)",
+           nativeQuery = true)
     List<Object[]> sumRevenueGroupedByDay(@Param("year") int year, @Param("month") int month);
 
     // Payment method breakdown: [paymentMethod, count, totalAmount]
-    @Query("SELECT o.paymentMethod, COUNT(o), COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.deleted = false AND o.status = 'COMPLETED' AND (:year IS NULL OR YEAR(o.completedAt) = :year) AND (:month IS NULL OR MONTH(o.completedAt) = :month) GROUP BY o.paymentMethod")
+    @Query(value = "SELECT payment_method, COUNT(*), COALESCE(SUM(total_amount), 0) FROM orders WHERE deleted = false AND status = 'COMPLETED' AND (CAST(:year AS integer) IS NULL OR EXTRACT(YEAR FROM completed_at) = CAST(:year AS integer)) AND (CAST(:month AS integer) IS NULL OR EXTRACT(MONTH FROM completed_at) = CAST(:month AS integer)) GROUP BY payment_method",
+           nativeQuery = true)
     List<Object[]> groupByPaymentMethod(@Param("year") Integer year, @Param("month") Integer month);
 
-    // Day-of-week breakdown: [dayOfWeek(1=Sun..7=Sat), revenue, orderCount]
-    @Query("SELECT DAYOFWEEK(o.completedAt), COALESCE(SUM(o.totalAmount), 0), COUNT(o) FROM Order o WHERE o.deleted = false AND o.status = 'COMPLETED' AND (:year IS NULL OR YEAR(o.completedAt) = :year) AND (:month IS NULL OR MONTH(o.completedAt) = :month) GROUP BY DAYOFWEEK(o.completedAt) ORDER BY DAYOFWEEK(o.completedAt)")
+    // Day-of-week breakdown: [dayOfWeek(0=Sun..6=Sat), revenue, orderCount]
+    @Query(value = "SELECT EXTRACT(DOW FROM completed_at), COALESCE(SUM(total_amount), 0), COUNT(*) FROM orders WHERE deleted = false AND status = 'COMPLETED' AND (CAST(:year AS integer) IS NULL OR EXTRACT(YEAR FROM completed_at) = CAST(:year AS integer)) AND (CAST(:month AS integer) IS NULL OR EXTRACT(MONTH FROM completed_at) = CAST(:month AS integer)) GROUP BY EXTRACT(DOW FROM completed_at) ORDER BY EXTRACT(DOW FROM completed_at)",
+           nativeQuery = true)
     List<Object[]> sumRevenueGroupedByDayOfWeek(@Param("year") Integer year, @Param("month") Integer month);
 
     // Hourly breakdown: [hour(0-23), revenue, orderCount]
-    @Query("SELECT HOUR(o.completedAt), COALESCE(SUM(o.totalAmount), 0), COUNT(o) FROM Order o WHERE o.deleted = false AND o.status = 'COMPLETED' AND (:year IS NULL OR YEAR(o.completedAt) = :year) AND (:month IS NULL OR MONTH(o.completedAt) = :month) GROUP BY HOUR(o.completedAt) ORDER BY HOUR(o.completedAt)")
+    @Query(value = "SELECT EXTRACT(HOUR FROM completed_at), COALESCE(SUM(total_amount), 0), COUNT(*) FROM orders WHERE deleted = false AND status = 'COMPLETED' AND (CAST(:year AS integer) IS NULL OR EXTRACT(YEAR FROM completed_at) = CAST(:year AS integer)) AND (CAST(:month AS integer) IS NULL OR EXTRACT(MONTH FROM completed_at) = CAST(:month AS integer)) GROUP BY EXTRACT(HOUR FROM completed_at) ORDER BY EXTRACT(HOUR FROM completed_at)",
+           nativeQuery = true)
     List<Object[]> sumRevenueGroupedByHour(@Param("year") Integer year, @Param("month") Integer month);
 
     // Category breakdown: [categoryName, orderCount, revenue]
@@ -96,9 +105,9 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             JOIN product p ON p.id = oi.product_id
             LEFT JOIN product_category pc ON pc.product_id = p.id
             LEFT JOIN category c ON c.id = pc.category_id
-            WHERE o.deleted = 0 AND o.status = 'COMPLETED'
-              AND (:year IS NULL OR YEAR(o.completed_at) = :year)
-              AND (:month IS NULL OR MONTH(o.completed_at) = :month)
+            WHERE o.deleted = false AND o.status = 'COMPLETED'
+              AND (CAST(:year AS integer) IS NULL OR EXTRACT(YEAR FROM o.completed_at) = CAST(:year AS integer))
+              AND (CAST(:month AS integer) IS NULL OR EXTRACT(MONTH FROM o.completed_at) = CAST(:month AS integer))
             GROUP BY COALESCE(c.name, 'Không phân loại')
             ORDER BY revenue DESC
             """, nativeQuery = true)
@@ -112,9 +121,9 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             FROM orders o
             LEFT JOIN users u ON u.username = o.created_by
             LEFT JOIN employees e ON e.user_id = u.id
-            WHERE o.deleted = 0 AND o.status = 'COMPLETED'
-              AND (:year IS NULL OR YEAR(o.completed_at) = :year)
-              AND (:month IS NULL OR MONTH(o.completed_at) = :month)
+            WHERE o.deleted = false AND o.status = 'COMPLETED'
+              AND (CAST(:year AS integer) IS NULL OR EXTRACT(YEAR FROM o.completed_at) = CAST(:year AS integer))
+              AND (CAST(:month AS integer) IS NULL OR EXTRACT(MONTH FROM o.completed_at) = CAST(:month AS integer))
             GROUP BY COALESCE(e.full_name, o.created_by), o.created_by
             ORDER BY revenue DESC
             """, nativeQuery = true)

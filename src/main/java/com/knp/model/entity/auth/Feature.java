@@ -4,7 +4,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 import lombok.*;
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.UnifiedTenantEntity;
 
 /**
  * Feature entity - Represents application features for RBAC
@@ -24,7 +24,7 @@ import com.knp.model.entity.BaseEntity;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Feature extends BaseEntity {
+public class Feature extends UnifiedTenantEntity {
 
     /**
      * Feature key - matches FeatureEnum.name() (e.g., DASHBOARD, ORDER, etc.)

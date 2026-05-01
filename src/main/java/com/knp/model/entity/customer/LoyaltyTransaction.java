@@ -2,7 +2,7 @@ package com.knp.model.entity.customer;
 
 import com.knp.model.enums.LoyaltyTransactionType;
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import lombok.*;
 
 @Entity
@@ -12,7 +12,7 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class LoyaltyTransaction extends BaseEntity {
+public class LoyaltyTransaction extends TenantAwareEntity {
 
     @Column(name = "customer_id", nullable = false)
     private Long customerId;

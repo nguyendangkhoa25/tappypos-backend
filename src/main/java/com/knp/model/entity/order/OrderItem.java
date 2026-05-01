@@ -1,7 +1,7 @@
 package com.knp.model.entity.order;
 
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import com.knp.model.entity.product.Product;
 import jakarta.validation.constraints.Positive;
 import lombok.*;
@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class OrderItem extends BaseEntity {
+public class OrderItem extends TenantAwareEntity {
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "order_id", nullable = false)

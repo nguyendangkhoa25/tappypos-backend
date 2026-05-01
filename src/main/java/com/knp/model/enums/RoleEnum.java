@@ -9,7 +9,7 @@ import lombok.Getter;
 @Getter
 public enum RoleEnum {
     MASTER_TENANT("MASTER_TENANT", "Master Tenant - Full access to tenant management"),
-    VENDOR_ADMIN("VENDOR_ADMIN", "Vendor Admin - Manages assigned shops on behalf of a distributor"),
+    AGENT("AGENT", "Agent - Manages assigned shops on behalf of an agent"),
     SHOP_OWNER("SHOP_OWNER", "Shop Owner - Full access to all features"),
     MANAGER("MANAGER", "Manager - Can manage shop, employees, and reports"),
     CASHIER("CASHIER", "Cashier - Handles POS sales and customer transactions"),

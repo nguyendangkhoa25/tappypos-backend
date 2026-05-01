@@ -1,7 +1,7 @@
 package com.knp.model.entity.order;
 
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import org.hibernate.annotations.Filter;
 import com.knp.model.entity.customer.Customer;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -34,11 +34,15 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@Filter(name = "tenantFilter", condition = "tenant_id = :tenantId")
 public class CartEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "tenant_id", nullable = false)
+    private String tenantId;
 
     @Column(nullable = false, unique = true, length = 36)
     private String cartId; // UUID for cart session

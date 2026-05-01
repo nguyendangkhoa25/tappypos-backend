@@ -1,7 +1,7 @@
 package com.knp.model.entity.auth;
 
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.UnifiedTenantEntity;
 import lombok.*;
 
 import java.util.HashSet;
@@ -14,7 +14,7 @@ import java.util.Set;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Role extends BaseEntity {
+public class Role extends UnifiedTenantEntity {
 
     @Column(unique = true, nullable = false, length = 50)
     private String name;

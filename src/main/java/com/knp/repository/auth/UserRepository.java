@@ -33,12 +33,18 @@ public interface UserRepository extends JpaRepository<User, Long> {
     /**
      * Get all users with pagination, search, and filtering
      */
-    @Query("SELECT u FROM User u WHERE " +
-            "(:search IS NULL OR LOWER(u.username) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-            "LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-            "LOWER(u.fullName) LIKE LOWER(CONCAT('%', :search, '%'))) AND " +
-            "u.deleted <> true " +
-            "ORDER BY u.id DESC")
+    @Query(value = "SELECT * FROM users WHERE " +
+            "(CAST(:search AS text) IS NULL OR LOWER(username) LIKE LOWER('%' || CAST(:search AS text) || '%') OR " +
+            "LOWER(email) LIKE LOWER('%' || CAST(:search AS text) || '%') OR " +
+            "LOWER(full_name) LIKE LOWER('%' || CAST(:search AS text) || '%')) AND " +
+            "deleted <> true " +
+            "ORDER BY id DESC",
+           countQuery = "SELECT COUNT(*) FROM users WHERE " +
+            "(CAST(:search AS text) IS NULL OR LOWER(username) LIKE LOWER('%' || CAST(:search AS text) || '%') OR " +
+            "LOWER(email) LIKE LOWER('%' || CAST(:search AS text) || '%') OR " +
+            "LOWER(full_name) LIKE LOWER('%' || CAST(:search AS text) || '%')) AND " +
+            "deleted <> true",
+           nativeQuery = true)
     Page<User> findAllWithSearch(
             @Param("search") String search,
             Pageable pageable

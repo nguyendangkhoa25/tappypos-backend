@@ -1,7 +1,7 @@
 package com.knp.model.entity.notification;
 
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.UnifiedTenantEntity;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @SuperBuilder
-public class Notification extends BaseEntity {
+public class Notification extends UnifiedTenantEntity {
 
     @Column(name = "user_id", nullable = false, length = 50)
     private String userId;

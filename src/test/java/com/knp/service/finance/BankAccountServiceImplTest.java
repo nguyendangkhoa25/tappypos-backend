@@ -3,6 +3,7 @@ package com.knp.service.finance;
 import com.knp.model.dto.bank.BankAccountDTO;
 import com.knp.model.dto.bank.SaveBankAccountRequest;
 import com.knp.model.entity.finance.BankAccount;
+import com.knp.multitenant.TenantContext;
 import com.knp.repository.finance.BankAccountRepository;
 import com.knp.service.MessageService;
 import jakarta.persistence.EntityNotFoundException;
@@ -29,6 +30,7 @@ import static org.mockito.Mockito.*;
 @DisplayName("BankAccountServiceImpl Unit Tests")
 class BankAccountServiceImplTest {
 
+    @Mock private TenantContext tenantContext;
     @Mock private BankAccountRepository repo;
     @Mock private MessageService messageService;
 

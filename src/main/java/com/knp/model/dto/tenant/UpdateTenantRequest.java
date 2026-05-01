@@ -42,7 +42,7 @@ public class UpdateTenantRequest {
     private String contactPersonZaloId;
     private ShopType shopType;
 
-    /** Master admin only: reassign the VENDOR_ADMIN who manages this shop (null = unassign). */
+    /** Master admin only: reassign the AGENT who manages this shop (null = unassign). */
     private Long vendorId;
 }
 

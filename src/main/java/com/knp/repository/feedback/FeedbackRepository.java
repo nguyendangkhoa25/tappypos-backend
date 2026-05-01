@@ -1,8 +1,6 @@
 package com.knp.repository.feedback;
 
 import com.knp.model.entity.feedback.UserFeedback;
-import com.knp.model.enums.FeedbackStatus;
-import com.knp.model.enums.FeedbackType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -18,13 +16,18 @@ public interface FeedbackRepository extends JpaRepository<UserFeedback, Long> {
                                                   @Param("username") String username,
                                                   Pageable pageable);
 
-    @Query("SELECT f FROM UserFeedback f WHERE f.deleted = false " +
-           "AND (:tenantId IS NULL OR f.tenantId = :tenantId) " +
-           "AND (:status IS NULL OR f.status = :status) " +
-           "AND (:type IS NULL OR f.type = :type) " +
-           "ORDER BY f.createdAt DESC")
+    @Query(value = "SELECT * FROM user_feedback WHERE deleted = false " +
+           "AND (CAST(:tenantId AS text) IS NULL OR tenant_id = CAST(:tenantId AS text)) " +
+           "AND (CAST(:status AS text) IS NULL OR status = CAST(:status AS text)) " +
+           "AND (CAST(:type AS text) IS NULL OR type = CAST(:type AS text)) " +
+           "ORDER BY created_at DESC",
+           countQuery = "SELECT COUNT(*) FROM user_feedback WHERE deleted = false " +
+           "AND (CAST(:tenantId AS text) IS NULL OR tenant_id = CAST(:tenantId AS text)) " +
+           "AND (CAST(:status AS text) IS NULL OR status = CAST(:status AS text)) " +
+           "AND (CAST(:type AS text) IS NULL OR type = CAST(:type AS text))",
+           nativeQuery = true)
     Page<UserFeedback> findAll(@Param("tenantId") String tenantId,
-                               @Param("status") FeedbackStatus status,
-                               @Param("type") FeedbackType type,
+                               @Param("status") String status,
+                               @Param("type") String type,
                                Pageable pageable);
 }

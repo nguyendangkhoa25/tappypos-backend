@@ -7,19 +7,16 @@ import com.knp.model.dto.tenant.TenantDTO;
 import com.knp.model.dto.tenant.TenantStatsDTO;
 import com.knp.model.dto.tenant.UpdateTenantRequest;
 import com.knp.model.entity.tenant.Tenant;
-import com.knp.model.entity.tenant.VendorAdmin;
+import com.knp.model.entity.tenant.Agent;
 import com.knp.model.entity.auth.User;
-import com.knp.multitenant.DatasourceManager;
 import com.knp.repository.auth.UserRepository;
 import com.knp.repository.tenant.TenantRepository;
-import com.knp.repository.tenant.VendorAdminRepository;
+import com.knp.repository.tenant.AgentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
@@ -37,10 +34,9 @@ import java.util.stream.Collectors;
 public class TenantService {
 
     private final TenantRepository tenantRepository;
-    private final VendorAdminRepository vendorAdminRepository;
+    private final AgentRepository agentRepository;
     private final UserRepository userRepository;
     private final AuthContext authContext;
-    private final DatasourceManager datasourceManager;
 
     private String deriveTenantDbName(String tenantId) {
         return tenantId;
@@ -52,35 +48,35 @@ public class TenantService {
     }
 
     /**
-     * Returns true when the authenticated user holds the VENDOR_ADMIN role.
-     * Used to decide whether to scope queries to a single vendor.
+     * Returns true when the authenticated user holds the AGENT role.
+     * Used to decide whether to scope queries to a single agent.
      */
-    private boolean isVendorAdmin() {
+    private boolean isAgent() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null) return false;
         return auth.getAuthorities().stream()
-                .anyMatch(a -> "VENDOR_ADMIN".equals(a.getAuthority()));
+                .anyMatch(a -> "AGENT".equals(a.getAuthority()));
     }
 
     /**
-     * Resolves the VendorAdmin row for the current user.
-     * Returns empty when the user is master admin (has no vendor row).
+     * Resolves the Agent row for the current user.
+     * Returns empty when the user is master admin (has no agent row).
      */
-    private Optional<VendorAdmin> getCurrentVendorAdmin() {
+    private Optional<Agent> getCurrentAgent() {
         String username = getCurrentUsername();
         return userRepository.findByUsername(username)
-                .flatMap(u -> vendorAdminRepository.findByUserId(u.getId()));
+                .flatMap(u -> agentRepository.findByUserId(u.getId()));
     }
 
     /**
-     * Throws ForbiddenException if the current user is a VENDOR_ADMIN who does not
+     * Throws ForbiddenException if the current user is an AGENT who does not
      * own the given tenant. Master admins always pass.
      */
     private void assertVendorOwns(Tenant tenant) {
-        if (!isVendorAdmin()) return;
-        VendorAdmin vendor = getCurrentVendorAdmin()
+        if (!isAgent()) return;
+        Agent agent = getCurrentAgent()
                 .orElseThrow(() -> new ForbiddenException("error.access.vendor_not_found"));
-        if (!vendor.getId().equals(tenant.getVendorId())) {
+        if (!agent.getId().equals(tenant.getVendorId())) {
             throw new ForbiddenException("error.access.not_your_shop");
         }
     }
@@ -94,11 +90,11 @@ public class TenantService {
 
     /**
      * Returns all tenants visible to the caller.
-     * VENDOR_ADMIN sees only their own shops; master admin sees all.
+     * AGENT sees only their own shops; master admin sees all.
      */
     public List<TenantDTO> getAllTenants(String search) {
         List<Tenant> tenants = resolveVisibleTenants();
-        Map<Long, VendorAdmin> vendorCache = buildVendorCache(tenants);
+        Map<Long, Agent> vendorCache = buildAgentCache(tenants);
 
         String term = (search != null) ? search.trim().toLowerCase() : null;
         return tenants.stream()
@@ -136,9 +132,9 @@ public class TenantService {
     public TenantDTO getTenantById(String tenantId) {
         Tenant tenant = findTenant(tenantId);
         assertVendorOwns(tenant);
-        VendorAdmin vendor = tenant.getVendorId() != null
-                ? vendorAdminRepository.findById(tenant.getVendorId()).orElse(null) : null;
-        return mapToDTO(tenant, vendor);
+        Agent agent = tenant.getVendorId() != null
+                ? agentRepository.findById(tenant.getVendorId()).orElse(null) : null;
+        return mapToDTO(tenant, agent);
     }
 
     public TenantDTO createTenant(CreateTenantRequest request) {
@@ -176,9 +172,9 @@ public class TenantService {
         Tenant saved = tenantRepository.save(tenant);
         log.info("Tenant created: {} by {} (vendorId={})", saved.getTenantId(), currentUser, vendorId);
 
-        VendorAdmin vendor = vendorId != null
-                ? vendorAdminRepository.findById(vendorId).orElse(null) : null;
-        return mapToDTO(saved, vendor);
+        Agent agent = vendorId != null
+                ? agentRepository.findById(vendorId).orElse(null) : null;
+        return mapToDTO(saved, agent);
     }
 
     public TenantDTO updateTenant(String tenantId, UpdateTenantRequest request) {
@@ -191,14 +187,13 @@ public class TenantService {
         if (request.getExpirationDate()    != null) tenant.setExpirationDate(request.getExpirationDate());
         if (request.getMaxUsers()          != null) tenant.setMaxUsers(request.getMaxUsers());
         if (request.getSubscriptionType()  != null) tenant.setSubscriptionType(request.getSubscriptionType());
-        if (request.getShopType()          != null) tenant.setShopType(request.getShopType());
         if (request.getContactPersonName() != null) tenant.setContactPersonName(request.getContactPersonName());
         if (request.getContactPersonPhone()!= null) tenant.setContactPersonPhone(request.getContactPersonPhone());
         if (request.getContactPersonEmail()!= null) tenant.setContactPersonEmail(request.getContactPersonEmail());
         if (request.getContactPersonZaloId()!=null) tenant.setContactPersonZaloId(request.getContactPersonZaloId());
 
         // Only master admin may change features, dbName, or reassign vendor
-        if (!isVendorAdmin()) {
+        if (!isAgent()) {
             if (request.getFeatures() != null) tenant.setFeatures(String.join(",", request.getFeatures()));
             if (request.getDbName()   != null) tenant.setDbName(request.getDbName());
             if (request.getVendorId() != null) tenant.setVendorId(request.getVendorId());
@@ -207,25 +202,22 @@ public class TenantService {
         tenant.setUpdatedBy(currentUser);
 
         Tenant updated = tenantRepository.save(tenant);
-        datasourceManager.reloadAllTenantDatasource();
         log.info("Tenant updated: {} by {}", tenantId, currentUser);
 
-        VendorAdmin vendor = updated.getVendorId() != null
-                ? vendorAdminRepository.findById(updated.getVendorId()).orElse(null) : null;
-        return mapToDTO(updated, vendor);
+        Agent agent = updated.getVendorId() != null
+                ? agentRepository.findById(updated.getVendorId()).orElse(null) : null;
+        return mapToDTO(updated, agent);
     }
 
     /**
      * Only master admin can permanently delete a shop.
      */
     public void deleteTenant(String tenantId) {
-        if (isVendorAdmin()) {
+        if (isAgent()) {
             throw new ForbiddenException("error.access.master_only");
         }
         Tenant tenant = findTenant(tenantId);
         tenantRepository.delete(tenant);
-        datasourceManager.removeTenantDatasource(tenantId);
-        datasourceManager.reloadAllTenantDatasource();
         log.info("Tenant deleted: {}", tenantId);
     }
 
@@ -240,13 +232,11 @@ public class TenantService {
         tenant.setUpdatedBy(currentUser);
 
         Tenant updated = tenantRepository.save(tenant);
-        datasourceManager.removeTenantDatasource(tenantId);
-        datasourceManager.reloadAllTenantDatasource();
         log.info("Tenant deactivated: {} by {}", tenantId, currentUser);
 
-        VendorAdmin vendor = updated.getVendorId() != null
-                ? vendorAdminRepository.findById(updated.getVendorId()).orElse(null) : null;
-        return mapToDTO(updated, vendor);
+        Agent agent = updated.getVendorId() != null
+                ? agentRepository.findById(updated.getVendorId()).orElse(null) : null;
+        return mapToDTO(updated, agent);
     }
 
     public TenantDTO activateTenant(String tenantId) {
@@ -260,56 +250,15 @@ public class TenantService {
         tenant.setUpdatedBy(currentUser);
 
         Tenant updated = tenantRepository.save(tenant);
-        datasourceManager.addOrUpdateTenantDatasource(tenantId, tenant.getDbName());
-        datasourceManager.reloadAllTenantDatasource();
         log.info("Tenant activated: {} by {}", tenantId, currentUser);
 
-        VendorAdmin vendor = updated.getVendorId() != null
-                ? vendorAdminRepository.findById(updated.getVendorId()).orElse(null) : null;
-        return mapToDTO(updated, vendor);
+        Agent agent = updated.getVendorId() != null
+                ? agentRepository.findById(updated.getVendorId()).orElse(null) : null;
+        return mapToDTO(updated, agent);
     }
 
     public Tenant getTenantEntity(String tenantId) {
         return findTenant(tenantId);
-    }
-
-    // ── Datasource helpers (unchanged) ───────────────────────────────────────
-
-    public void registerDatasourceSync(String tenantId, String dbName) {
-        datasourceManager.addOrUpdateTenantDatasource(tenantId, dbName);
-    }
-
-    @Async
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void createTenantDatasource(String tenantId, String dbName) {
-        try {
-            datasourceManager.addOrUpdateTenantDatasource(tenantId, dbName);
-            datasourceManager.reloadAllTenantDatasource();
-        } catch (Exception e) {
-            log.error("Failed to create datasource for tenant: {}", tenantId, e);
-            throw new RuntimeException("Failed to create datasource: " + e.getMessage(), e);
-        }
-    }
-
-    @Async
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void removeTenantDatasource(String tenantId) {
-        try {
-            datasourceManager.removeTenantDatasource(tenantId);
-            datasourceManager.reloadAllTenantDatasource();
-        } catch (Exception e) {
-            log.error("Failed to remove datasource for tenant: {}", tenantId, e);
-        }
-    }
-
-    @Async
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void reloadAllDatasource() {
-        try {
-            datasourceManager.reloadAllTenantDatasource();
-        } catch (Exception e) {
-            log.error("Async datasource reload failed", e);
-        }
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -321,26 +270,26 @@ public class TenantService {
 
     /**
      * Returns the list of tenants the caller may see:
-     * - VENDOR_ADMIN → only tenants assigned to their vendor
+     * - AGENT → only tenants assigned to their agent
      * - master admin → all tenants
      */
     private List<Tenant> resolveVisibleTenants() {
-        if (isVendorAdmin()) {
-            return getCurrentVendorAdmin()
-                    .map(v -> tenantRepository.findAllByVendorId(v.getId()))
+        if (isAgent()) {
+            return getCurrentAgent()
+                    .map(a -> tenantRepository.findAllByVendorId(a.getId()))
                     .orElse(List.of());
         }
         return tenantRepository.findAll();
     }
 
     /**
-     * For creates: if VENDOR_ADMIN, ignore the request's vendorId and use their own.
+     * For creates: if AGENT, ignore the request's vendorId and use their own.
      * If master admin, use the request's vendorId (may be null).
      */
     private Long resolveVendorIdForCreate(CreateTenantRequest request) {
-        if (isVendorAdmin()) {
-            return getCurrentVendorAdmin()
-                    .map(VendorAdmin::getId)
+        if (isAgent()) {
+            return getCurrentAgent()
+                    .map(Agent::getId)
                     .orElseThrow(() -> new ForbiddenException("error.access.vendor_not_found"));
         }
         return request.getVendorId();
@@ -354,21 +303,21 @@ public class TenantService {
     }
 
     /**
-     * Builds an id→VendorAdmin lookup map for a list of tenants
-     * so we can attach vendor names without N+1 queries.
+     * Builds an id→Agent lookup map for a list of tenants
+     * so we can attach agent names without N+1 queries.
      */
-    private Map<Long, VendorAdmin> buildVendorCache(List<Tenant> tenants) {
+    private Map<Long, Agent> buildAgentCache(List<Tenant> tenants) {
         List<Long> vendorIds = tenants.stream()
                 .map(Tenant::getVendorId)
                 .filter(id -> id != null)
                 .distinct()
                 .collect(Collectors.toList());
         if (vendorIds.isEmpty()) return Map.of();
-        return vendorAdminRepository.findAllById(vendorIds).stream()
-                .collect(Collectors.toMap(VendorAdmin::getId, Function.identity()));
+        return agentRepository.findAllById(vendorIds).stream()
+                .collect(Collectors.toMap(Agent::getId, Function.identity()));
     }
 
-    private TenantDTO mapToDTO(Tenant tenant, VendorAdmin vendor) {
+    private TenantDTO mapToDTO(Tenant tenant, Agent agent) {
         return TenantDTO.builder()
                 .id(tenant.getId())
                 .tenantId(tenant.getTenantId())
@@ -386,7 +335,7 @@ public class TenantService {
                 .contactPersonEmail(tenant.getContactPersonEmail())
                 .contactPersonZaloId(tenant.getContactPersonZaloId())
                 .vendorId(tenant.getVendorId())
-                .vendorName(vendor != null ? vendor.getName() : null)
+                .vendorName(agent != null ? agent.getName() : null)
                 .createdAt(tenant.getCreatedAt())
                 .updatedAt(tenant.getUpdatedAt())
                 .activeAt(tenant.getActiveAt())

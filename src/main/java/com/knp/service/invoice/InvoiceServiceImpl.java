@@ -16,6 +16,7 @@ import com.knp.model.enums.ShopConfigKey;
 import com.knp.service.invoice.ExternalInvoiceService;
 import com.knp.service.invoice.InvoiceServiceFactory;
 import com.knp.service.tenant.ShopConfigService;
+import com.knp.multitenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -46,6 +47,7 @@ public class InvoiceServiceImpl implements InvoiceService {
     private final ShopConfigService shopConfigService;
     private final InvoiceServiceFactory invoiceServiceFactory;
     private final MessageService messageService;
+    private final TenantContext tenantContext;
 
     @Override
     public Page<InvoiceDTO> getAllInvoices(Pageable pageable) {
@@ -109,6 +111,7 @@ public class InvoiceServiceImpl implements InvoiceService {
         String createdBy = SecurityContextHolder.getContext().getAuthentication().getName();
 
         Invoice invoice = Invoice.builder()
+                .tenantId(tenantContext.getCurrentTenantId())
                 .invoiceNumber(generateInvoiceNumber())
                 .invoiceSeries(request.getInvoiceSeries())
                 .status(Invoice.InvoiceStatus.DRAFT)
@@ -440,6 +443,7 @@ public class InvoiceServiceImpl implements InvoiceService {
                         .divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
 
                 InvoiceItem item = InvoiceItem.builder()
+                        .tenantId(tenantContext.getCurrentTenantId())
                         .invoice(invoice)
                         .orderItemId(orderItem.getId())
                         .orderId(order.getId())

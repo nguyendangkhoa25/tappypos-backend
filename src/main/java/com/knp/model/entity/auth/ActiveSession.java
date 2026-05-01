@@ -1,7 +1,7 @@
 package com.knp.model.entity.auth;
 
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import org.hibernate.annotations.Filter;
 import lombok.*;
 
 import java.time.LocalDateTime;
@@ -13,11 +13,15 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@Filter(name = "tenantFilter", condition = "tenant_id = :tenantId OR tenant_id IS NULL")
 public class ActiveSession {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "tenant_id")
+    private String tenantId;
 
     @Column(nullable = false, length = 50, unique = true)
     private String username;

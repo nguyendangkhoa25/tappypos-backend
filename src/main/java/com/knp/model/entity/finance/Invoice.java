@@ -1,10 +1,11 @@
 package com.knp.model.entity.finance;
 
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import com.knp.model.entity.customer.Customer;
 import com.knp.model.entity.order.Order;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -16,9 +17,8 @@ import java.util.List;
 @Getter
 @Setter
 @NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class Invoice extends BaseEntity {
+@SuperBuilder
+public class Invoice extends TenantAwareEntity {
 
     @Column(name = "invoice_number", unique = true, length = 30)
     private String invoiceNumber;

@@ -10,6 +10,7 @@ import com.knp.model.entity.inventory.Inventory;
 import com.knp.model.entity.product.Product;
 import com.knp.repository.inventory.InventoryRepository;
 import com.knp.repository.product.ProductRepository;
+import com.knp.multitenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -30,6 +31,7 @@ public class InventoryServiceImpl implements InventoryService {
     private final InventoryRepository inventoryRepository;
     private final ProductRepository productRepository;
     private final MessageService messageService;
+    private final TenantContext tenantContext;
 
     @Override
     public InventoryDTO createInventory(CreateInventoryRequest request) {
@@ -48,6 +50,7 @@ public class InventoryServiceImpl implements InventoryService {
         // (e.g., same drug from different suppliers or received on different dates)
 
         Inventory inventory = Inventory.builder()
+                .tenantId(tenantContext.getCurrentTenantId())
                 .product(product)
                 .quantityInStock(request.getQuantityInStock())
                 .reorderLevel(request.getReorderLevel())

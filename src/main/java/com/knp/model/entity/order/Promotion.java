@@ -2,7 +2,7 @@ package com.knp.model.entity.order;
 
 import com.knp.model.enums.DiscountType;
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -15,7 +15,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Promotion extends BaseEntity {
+public class Promotion extends TenantAwareEntity {
 
     @Column(nullable = false, length = 200)
     private String name;

@@ -2,6 +2,7 @@ package com.knp.service.finance;
 
 import com.knp.config.AuthContext;
 import com.knp.exception.ResourceNotFoundException;
+import com.knp.multitenant.TenantContext;
 import com.knp.model.dto.finance.ExpenseCategoryBreakdownDTO;
 import com.knp.model.dto.finance.ShopExpenseDTO;
 import com.knp.model.dto.finance.ShopExpenseRequest;
@@ -33,6 +34,7 @@ import static org.mockito.Mockito.*;
 @DisplayName("ShopExpenseServiceImpl Unit Tests")
 class ShopExpenseServiceImplTest {
 
+    @Mock private TenantContext tenantContext;
     @Mock private ShopExpenseRepository expenseRepository;
     @Mock private AuthContext authContext;
 

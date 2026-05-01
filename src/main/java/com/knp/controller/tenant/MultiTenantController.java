@@ -11,8 +11,8 @@ import com.knp.model.dto.tenant.UpdateTenantRequest;
 import com.knp.model.entity.tenant.Tenant;
 import com.knp.multitenant.TenantContext;
 import com.knp.service.tenant.ShopInfoService;
-import com.knp.service.tenant.TenantDatabaseSetupService;
 import com.knp.service.tenant.TenantProvisioningService;
+import com.knp.service.tenant.TenantSeedService;
 import com.knp.service.tenant.TenantService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,7 +38,7 @@ public class MultiTenantController {
     private final ShopInfoService shopInfoService;
     private final TenantContext tenantContext;
     private final TenantProvisioningService tenantProvisioningService;
-    private final TenantDatabaseSetupService tenantDatabaseSetupService;
+    private final TenantSeedService tenantSeedService;
 
     /**
      * GET /api/multi-tenants/stats
@@ -94,12 +94,6 @@ public class MultiTenantController {
         TenantDTO tenant = tenantService.createTenant(request);
         log.info("Created tenant record: {}", request.getTenantId());
 
-        // Create database, apply DDL, and seed shop-type DML before registering the pool
-        tenantDatabaseSetupService.setup(tenant.getDbName(), request.getShopType());
-
-        // Register datasource synchronously so provisioning can use it immediately
-        tenantService.registerDatasourceSync(tenant.getTenantId(), tenant.getDbName());
-
         // Provision default data (roles, features, admin user, shop info, walk-in customer)
         Tenant tenantEntity = tenantService.getTenantEntity(tenant.getTenantId());
         tenantContext.setCurrentTenant(tenantEntity);
@@ -107,16 +101,18 @@ public class MultiTenantController {
             tenantProvisioningService.provision(tenantEntity,
                     request.getAdminUsername(), request.getAdminPassword(),
                     request.getRoleSetups(), request.getShopAddress());
+            try {
+                tenantSeedService.seed(request.getShopType());
+            } catch (Exception e) {
+                log.warn("Shop-type DML seed failed for tenant {} (non-fatal): {}",
+                        tenant.getTenantId(), e.getMessage());
+            }
         } catch (Exception e) {
-            tenantContext.clear();
             log.error("Provisioning failed for tenant {}: {}", tenant.getTenantId(), e.getMessage(), e);
             throw new RuntimeException("Tenant created but admin user provisioning failed: " + e.getMessage(), e);
         } finally {
             tenantContext.clear();
         }
-
-        // Reload all datasources async so other nodes pick up the new tenant
-        tenantService.reloadAllDatasource();
 
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(ApiResponse.success(tenant, "Tenant created successfully"));
@@ -135,8 +131,6 @@ public class MultiTenantController {
         TenantDTO tenant = tenantService.updateTenant(tenantId, request);
 
         log.info("Updated tenant: {}", tenantId);
-        tenantService.reloadAllDatasource();
-
         return ResponseEntity.ok(
             ApiResponse.success(tenant, "Tenant updated successfully")
         );
@@ -152,9 +146,6 @@ public class MultiTenantController {
         log.info("Request: Delete tenant: {}", tenantId);
         tenantService.deleteTenant(tenantId);
         log.info("Deleted tenant: {}", tenantId);
-
-        // Remove datasource asynchronously in background
-        tenantService.removeTenantDatasource(tenantId);
         return ResponseEntity.ok(
             ApiResponse.success(null, "Tenant deleted successfully")
         );
@@ -170,12 +161,6 @@ public class MultiTenantController {
         log.info("Request: Activate tenant: {}", tenantId);
         TenantDTO tenant = tenantService.activateTenant(tenantId);
         log.info("Activated tenant: {}", tenantId);
-
-        tenantService.createTenantDatasource(
-                tenant.getTenantId(),
-                tenant.getDbName()
-        );
-
         return ResponseEntity.ok(
             ApiResponse.success(tenant, "Tenant activated successfully")
         );
@@ -229,9 +214,6 @@ public class MultiTenantController {
         log.info("Request: Deactivate tenant: {}", tenantId);
         TenantDTO tenant = tenantService.deactivateTenant(tenantId);
         log.info("Deactivated tenant: {}", tenantId);
-
-        tenantService.removeTenantDatasource(tenantId);
-
         return ResponseEntity.ok(
             ApiResponse.success(tenant, "Tenant deactivated successfully")
         );

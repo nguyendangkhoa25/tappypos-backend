@@ -1,7 +1,7 @@
 package com.knp.model.entity.product;
 
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
@@ -15,7 +15,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @SuperBuilder
-public class VariantType extends BaseEntity {
+public class VariantType extends TenantAwareEntity {
 
     @Column(nullable = false, length = 100)
     private String name;

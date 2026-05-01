@@ -1,7 +1,7 @@
 package com.knp.model.entity.auth;
 
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.UnifiedTenantEntity;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
@@ -16,7 +16,7 @@ import java.util.Set;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class User extends BaseEntity {
+public class User extends UnifiedTenantEntity {
 
     @NotBlank(message = "Username is required")
     @Column(unique = true, nullable = false, length = 50)

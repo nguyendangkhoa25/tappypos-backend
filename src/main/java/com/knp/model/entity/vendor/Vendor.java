@@ -1,7 +1,7 @@
 package com.knp.model.entity.vendor;
 
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import lombok.*;
 
 @Entity
@@ -11,7 +11,7 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Vendor extends BaseEntity {
+public class Vendor extends TenantAwareEntity {
 
     @Column(nullable = false, length = 200)
     private String name;

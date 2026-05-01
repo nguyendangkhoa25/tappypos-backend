@@ -1,7 +1,7 @@
 package com.knp.model.entity.customer;
 
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -13,7 +13,7 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class LoyaltyProgram extends BaseEntity {
+public class LoyaltyProgram extends TenantAwareEntity {
 
     /** Points earned per amountPerPoints VND spent (default: 1 point per 10,000 VND) */
     @Builder.Default

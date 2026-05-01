@@ -58,7 +58,7 @@ public class CreateTenantRequest {
     /** Role/feature assignments for this shop. Null = use system defaults. SHOP_OWNER is always included. */
     private List<RoleSetupRequest> roleSetups;
 
-    /** Master admin only: assign the VENDOR_ADMIN (by vendor id) who will manage this shop. */
+    /** Master admin only: assign the AGENT (by agent id) who will manage this shop. */
     private Long vendorId;
 }
 

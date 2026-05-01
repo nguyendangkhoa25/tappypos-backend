@@ -3,6 +3,7 @@ package com.knp.service.tenant;
 import com.knp.config.EncryptionService;
 import com.knp.model.entity.tenant.ShopConfig;
 import com.knp.model.enums.ShopConfigKey;
+import com.knp.multitenant.TenantContext;
 import com.knp.repository.tenant.ShopConfigRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +21,7 @@ public class ShopConfigService {
 
     private final ShopConfigRepository shopConfigRepository;
     private final EncryptionService encryptionService;
+    private final TenantContext tenantContext;
 
     // ── Read helpers ────────────────────────────────────────────────────────────
 
@@ -103,6 +105,7 @@ public class ShopConfigService {
     private void upsert(ShopConfigKey key, String rawValue) {
         ShopConfig cfg = shopConfigRepository.findByConfigKey(key.getKey())
                 .orElseGet(() -> ShopConfig.builder()
+                        .tenantId(tenantContext.getCurrentTenantId())
                         .configKey(key.getKey())
                         .configGroup(key.getGroup())
                         .encrypted(key.isEncrypted())

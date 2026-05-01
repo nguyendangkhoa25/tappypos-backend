@@ -1,7 +1,7 @@
 package com.knp.model.entity.product;
 
 import jakarta.persistence.*;
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -19,7 +19,7 @@ import java.util.Set;
 @NoArgsConstructor
 @AllArgsConstructor
 @SuperBuilder
-public class ProductType extends BaseEntity {
+public class ProductType extends TenantAwareEntity {
 
     @Column(nullable = false, unique = true, length = 100)
     private String code;

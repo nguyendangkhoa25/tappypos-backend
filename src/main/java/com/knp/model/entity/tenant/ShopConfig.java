@@ -1,6 +1,6 @@
 package com.knp.model.entity.tenant;
 
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
@@ -14,7 +14,7 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 @AllArgsConstructor
 @SuperBuilder
-public class ShopConfig extends BaseEntity {
+public class ShopConfig extends TenantAwareEntity {
 
     @Column(name = "config_key", length = 100, nullable = false, unique = true)
     private String configKey;

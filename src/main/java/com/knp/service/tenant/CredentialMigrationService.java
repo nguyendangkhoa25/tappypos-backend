@@ -18,9 +18,9 @@ import java.util.Map;
  * One-time migration utility: encrypts any plaintext e-invoice credentials
  * that were stored before the EncryptedStringConverter was applied.
  *
- * Uses raw JDBC via the RoutingDataSource (tenant context controls which DB
- * is targeted) so that the JPA converter is bypassed and we can both read the
- * raw plaintext and write back the encrypted value in one pass.
+ * Uses raw JDBC (tenant context controls row-level filtering via PostgreSQL RLS)
+ * so that the JPA converter is bypassed and we can both read the raw plaintext
+ * and write back the encrypted value in one pass.
  */
 @Slf4j
 @Service
@@ -30,7 +30,7 @@ public class CredentialMigrationService {
     private final TenantRepository tenantRepository;
     private final TenantContext    tenantContext;
     private final EncryptionService encryptionService;
-    private final DataSource        dataSource; // RoutingDataSource
+    private final DataSource        dataSource;
 
     private static final String[] CREDENTIAL_COLUMNS = {"e_invoice_password", "e_invoice_key"};
 

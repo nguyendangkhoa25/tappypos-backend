@@ -1,6 +1,6 @@
 package com.knp.model.entity.tenant;
 
-import com.knp.model.entity.BaseEntity;
+import com.knp.model.entity.TenantAwareEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
@@ -15,7 +15,7 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 @AllArgsConstructor
 @SuperBuilder
-public class ShopInfo extends BaseEntity {
+public class ShopInfo extends TenantAwareEntity {
 
     @NotBlank(message = "Shop name is required")
     @Column(nullable = false)

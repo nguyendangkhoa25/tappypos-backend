@@ -8,6 +8,7 @@ import com.knp.model.dto.finance.ShopExpenseRequest;
 import com.knp.model.entity.finance.ShopExpense;
 import com.knp.model.enums.ExpenseCategory;
 import com.knp.repository.finance.ShopExpenseRepository;
+import com.knp.multitenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -28,11 +29,13 @@ public class ShopExpenseServiceImpl implements ShopExpenseService {
 
     private final ShopExpenseRepository expenseRepository;
     private final AuthContext authContext;
+    private final TenantContext tenantContext;
 
     @Override
     @Transactional
     public ShopExpenseDTO create(ShopExpenseRequest request) {
         ShopExpense expense = ShopExpense.builder()
+                .tenantId(tenantContext.getCurrentTenantId())
                 .amount(request.getAmount())
                 .category(request.getCategory())
                 .description(request.getDescription())
@@ -67,7 +70,7 @@ public class ShopExpenseServiceImpl implements ShopExpenseService {
     @Override
     @Transactional(readOnly = true)
     public Page<ShopExpenseDTO> search(LocalDate from, LocalDate to, ExpenseCategory category, Pageable pageable) {
-        return expenseRepository.search(from, to, category, pageable).map(this::toDTO);
+        return expenseRepository.search(from, to, category != null ? category.name() : null, pageable).map(this::toDTO);
     }
 
     @Override

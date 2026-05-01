@@ -16,7 +16,7 @@ import com.knp.model.enums.RoleEnum;
 import com.knp.model.enums.ActivityAction;
 import com.knp.multitenant.TenantContext;
 import com.knp.repository.employee.EmployeeRepository;
-import com.knp.repository.tenant.VendorAdminRepository;
+import com.knp.repository.tenant.AgentRepository;
 import com.knp.repository.auth.RoleRepository;
 import com.knp.repository.auth.UserRepository;
 import com.knp.service.audit.ActivityLogService;
@@ -48,7 +48,7 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final MessageService messageService;
     private final EmployeeRepository employeeRepository;
-    private final VendorAdminRepository vendorAdminRepository;
+    private final AgentRepository agentRepository;
     private final TenantContext tenantContext;
     private final ActivityLogService activityLogService;
     private final NotificationService notificationService;
@@ -357,10 +357,10 @@ public class UserService {
         Long vendorId = null;
         String vendorName = null;
         if (tenantContext.getCurrentTenantId() == null) {
-            var vendorOpt = vendorAdminRepository.findByUserId(user.getId());
-            if (vendorOpt.isPresent()) {
-                vendorId = vendorOpt.get().getId();
-                vendorName = vendorOpt.get().getName();
+            var agentOpt = agentRepository.findByUserId(user.getId());
+            if (agentOpt.isPresent()) {
+                vendorId = agentOpt.get().getId();
+                vendorName = agentOpt.get().getName();
             }
         }
 
@@ -541,18 +541,18 @@ public class UserService {
         if (tenantContext.getCurrentTenantId() != null) return;
         clearVendorAssignment(userId);
         if (vendorId != null) {
-            vendorAdminRepository.findById(vendorId).ifPresent(v -> {
-                v.setUserId(userId);
-                vendorAdminRepository.save(v);
+            agentRepository.findById(vendorId).ifPresent(a -> {
+                a.setUserId(userId);
+                agentRepository.save(a);
             });
         }
     }
 
     private void clearVendorAssignment(Long userId) {
         if (tenantContext.getCurrentTenantId() != null) return;
-        vendorAdminRepository.findByUserId(userId).ifPresent(v -> {
-            v.setUserId(null);
-            vendorAdminRepository.save(v);
+        agentRepository.findByUserId(userId).ifPresent(a -> {
+            a.setUserId(null);
+            agentRepository.save(a);
         });
     }
 

@@ -12,7 +12,7 @@ import com.knp.annotation.RequiresFeature;
 
 /**
  * ShopInfoController - REST API endpoints for shop information management
- * Database routing is handled automatically by TenantContext and RoutingDataSource
+ * Tenant isolation is enforced by TenantContext, Hibernate filter, and PostgreSQL RLS
  */
 @RestController
 @RequestMapping("/shop-info")

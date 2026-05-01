@@ -5,6 +5,7 @@ import com.knp.model.dto.bank.SaveBankAccountRequest;
 import com.knp.model.entity.finance.BankAccount;
 import com.knp.repository.finance.BankAccountRepository;
 import com.knp.service.MessageService;
+import com.knp.multitenant.TenantContext;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,7 @@ public class BankAccountServiceImpl implements BankAccountService {
 
     private final BankAccountRepository repo;
     private final MessageService messageService;
+    private final TenantContext tenantContext;
 
     @Override
     public List<BankAccountDTO> getAll() {
@@ -34,6 +36,7 @@ public class BankAccountServiceImpl implements BankAccountService {
     @Transactional
     public BankAccountDTO create(SaveBankAccountRequest req) {
         BankAccount account = BankAccount.builder()
+                .tenantId(tenantContext.getCurrentTenantId())
                 .bankBin(req.getBankBin())
                 .bankCode(req.getBankCode())
                 .bankName(req.getBankName())

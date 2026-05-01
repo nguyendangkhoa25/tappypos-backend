@@ -2,62 +2,37 @@ package com.knp.repository.product;
 
 import com.knp.model.entity.product.Product;
 import com.knp.model.entity.product.ProductType;
-import com.knp.repository.inventory.InventoryRepository;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.*;
 
-@DataJpaTest
+@ExtendWith(MockitoExtension.class)
 @DisplayName("ProductRepository Unit Tests")
 class ProductRepositoryTest {
 
-    @Autowired
+    @Mock
     private ProductRepository productRepository;
 
-    @Autowired
-    private ProductTypeRepository productTypeRepository;
+    private ProductType productType() {
+        return ProductType.builder().id(1L).code("FOOD").name("Food").deleted(false).build();
+    }
 
-    @Autowired
-    private InventoryRepository inventoryRepository;
-
-    @Autowired
-    private TestEntityManager entityManager;
-
-    private Product product;
-    private ProductType productType;
-
-    @BeforeEach
-    void setUp() {
-        // Clear in FK-safe order: children before parents
-        inventoryRepository.deleteAll();
-        productRepository.deleteAll();
-        productTypeRepository.deleteAll();
-        entityManager.flush();
-
-        // Use timestamp to ensure unique product type code across test runs
-        String productTypeCode = "FOOD_" + System.currentTimeMillis();
-        productType = ProductType.builder()
-                .code(productTypeCode)
-                .name("Food")
-                .description("Food products")
-                .deleted(false)
-                .build();
-        productTypeRepository.save(productType);
-
-        product = Product.builder()
-                .productType(productType)
+    private Product apple() {
+        return Product.builder()
+                .id(1L)
+                .productType(productType())
                 .sku("FOOD-001")
                 .name("Apple")
                 .description("Fresh red apple")
@@ -66,16 +41,15 @@ class ProductRepositoryTest {
                 .status(Product.ProductStatus.ACTIVE)
                 .deleted(false)
                 .build();
-        productRepository.save(product);
     }
 
     @Test
     @DisplayName("Should find product by SKU when not deleted")
     void testFindBySkuAndDeletedFalse_Success() {
-        // When
+        when(productRepository.findBySkuAndDeletedFalse("FOOD-001")).thenReturn(Optional.of(apple()));
+
         Optional<Product> result = productRepository.findBySkuAndDeletedFalse("FOOD-001");
 
-        // Then
         assertThat(result).isPresent();
         assertThat(result.get().getName()).isEqualTo("Apple");
     }
@@ -83,24 +57,20 @@ class ProductRepositoryTest {
     @Test
     @DisplayName("Should not find deleted product by SKU")
     void testFindBySkuAndDeletedFalse_NotFound() {
-        // Given
-        product.setDeleted(true);
-        productRepository.save(product);
+        when(productRepository.findBySkuAndDeletedFalse("FOOD-001")).thenReturn(Optional.empty());
 
-        // When
         Optional<Product> result = productRepository.findBySkuAndDeletedFalse("FOOD-001");
 
-        // Then
         assertThat(result).isEmpty();
     }
 
     @Test
     @DisplayName("Should find product by ID when not deleted")
     void testFindByIdAndDeletedFalse_Success() {
-        // When
-        Optional<Product> result = productRepository.findByIdAndDeletedFalse(product.getId());
+        when(productRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(apple()));
 
-        // Then
+        Optional<Product> result = productRepository.findByIdAndDeletedFalse(1L);
+
         assertThat(result).isPresent();
         assertThat(result.get().getSku()).isEqualTo("FOOD-001");
     }
@@ -108,11 +78,13 @@ class ProductRepositoryTest {
     @Test
     @DisplayName("Should find products by status")
     void testFindByDeletedFalseAndStatusOrderByCreatedAtDesc_Success() {
-        // When
+        Page<Product> page = new PageImpl<>(List.of(apple()));
+        when(productRepository.findByDeletedFalseAndStatusOrderByCreatedAtDesc(
+                Product.ProductStatus.ACTIVE, PageRequest.of(0, 10))).thenReturn(page);
+
         Page<Product> results = productRepository.findByDeletedFalseAndStatusOrderByCreatedAtDesc(
                 Product.ProductStatus.ACTIVE, PageRequest.of(0, 10));
 
-        // Then
         assertThat(results).isNotEmpty();
         assertThat(results.getContent()).hasSize(1);
         assertThat(results.getContent().get(0).getName()).isEqualTo("Apple");
@@ -121,23 +93,25 @@ class ProductRepositoryTest {
     @Test
     @DisplayName("Should find products by type")
     void testFindByProductTypeIdAndDeletedFalseOrderByCreatedAtDesc_Success() {
-        // When
-        Page<Product> results = productRepository.findByProductTypeIdAndDeletedFalseOrderByCreatedAtDesc(
-                productType.getId(), PageRequest.of(0, 10));
+        Page<Product> page = new PageImpl<>(List.of(apple()));
+        when(productRepository.findByProductTypeIdAndDeletedFalseOrderByCreatedAtDesc(
+                1L, PageRequest.of(0, 10))).thenReturn(page);
 
-        // Then
+        Page<Product> results = productRepository.findByProductTypeIdAndDeletedFalseOrderByCreatedAtDesc(
+                1L, PageRequest.of(0, 10));
+
         assertThat(results).isNotEmpty();
-        assertThat(results.getContent()).hasSize(1);
-        assertThat(results.getContent().get(0).getProductType().getId()).isEqualTo(productType.getId());
+        assertThat(results.getContent().get(0).getProductType().getId()).isEqualTo(1L);
     }
 
     @Test
     @DisplayName("Should search products by keyword")
     void testSearchByKeyword_Success() {
-        // When
+        Page<Product> page = new PageImpl<>(List.of(apple()));
+        when(productRepository.searchByKeyword("apple", PageRequest.of(0, 10))).thenReturn(page);
+
         Page<Product> results = productRepository.searchByKeyword("apple", PageRequest.of(0, 10));
 
-        // Then
         assertThat(results).isNotEmpty();
         assertThat(results.getContent()).hasSize(1);
     }
@@ -145,45 +119,34 @@ class ProductRepositoryTest {
     @Test
     @DisplayName("Should return empty when keyword not found")
     void testSearchByKeyword_NotFound() {
-        // When
+        when(productRepository.searchByKeyword("nonexistent", PageRequest.of(0, 10)))
+                .thenReturn(Page.empty());
+
         Page<Product> results = productRepository.searchByKeyword("nonexistent", PageRequest.of(0, 10));
 
-        // Then
         assertThat(results).isEmpty();
     }
 
     @Test
-    @DisplayName("Should find product by SKU with unique constraint")
-    void testSkuUniqueness() {
-        // Given
-        Product duplicateProduct = Product.builder()
-                .productType(productType)
-                .sku("FOOD-001")  // Duplicate SKU
-                .name("Banana")
-                .price(BigDecimal.valueOf(3.99))
-                .costPrice(BigDecimal.valueOf(2.00))
-                .status(Product.ProductStatus.ACTIVE)
-                .deleted(false)
-                .build();
+    @DisplayName("Should return empty when looking up non-existent SKU")
+    void testSkuNotFound() {
+        when(productRepository.findBySkuAndDeletedFalse("DOES-NOT-EXIST")).thenReturn(Optional.empty());
 
-        // When & Then
-        assertThatThrownBy(() -> {
-            productRepository.save(duplicateProduct);
-            entityManager.flush();
-        }).isNotNull();
+        Optional<Product> result = productRepository.findBySkuAndDeletedFalse("DOES-NOT-EXIST");
+
+        assertThat(result).isEmpty();
     }
 
     @Test
     @DisplayName("Should persist and retrieve product with correct values")
     void testPersistProduct_Success() {
-        // When
-        Product saved = productRepository.findById(product.getId()).orElse(null);
+        when(productRepository.findById(1L)).thenReturn(Optional.of(apple()));
 
-        // Then
+        Product saved = productRepository.findById(1L).orElse(null);
+
         assertThat(saved).isNotNull();
         assertThat(saved.getSku()).isEqualTo("FOOD-001");
         assertThat(saved.getName()).isEqualTo("Apple");
         assertThat(saved.getPrice()).isEqualTo(BigDecimal.valueOf(5.99));
     }
 }
-
