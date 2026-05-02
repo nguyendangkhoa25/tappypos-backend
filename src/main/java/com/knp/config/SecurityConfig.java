@@ -42,6 +42,7 @@ public class SecurityConfig {
                         .requestMatchers("/tenants/**").permitAll()
                         .requestMatchers("/banks/**").permitAll()
                         .requestMatchers("/auth/login").permitAll()
+                        .requestMatchers("/auth/login/force").permitAll()
                         .requestMatchers("/auth/register").permitAll()
                         .requestMatchers("/auth/refresh").permitAll()
                         .requestMatchers("/auth/logout").permitAll()

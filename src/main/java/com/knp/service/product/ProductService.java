@@ -18,5 +18,6 @@ public interface ProductService {
     List<ProductTypeDTO> getAllProductTypes();
     ProductTypeWithAttributesDTO getProductTypeWithAttributes(Long productTypeId);
     String generateSku(String name, String typeCode);
+    BarcodeLookupResult lookupByBarcode(String barcode);
 }
 

@@ -114,7 +114,7 @@ public class CustomerController {
     }
 
     @GetMapping("/walkin")
-    @RequiresFeature("POS")
+    @RequiresFeature({"POS", "CUSTOMER"})
     public ResponseEntity<ApiResponse<CustomerDTO>> getWalkinCustomer() {
         return ResponseEntity.ok(ApiResponse.success(customerService.getWalkinCustomer()));
     }

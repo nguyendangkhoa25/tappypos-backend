@@ -10,6 +10,8 @@ import com.knp.model.dto.tenant.TenantStatsDTO;
 import com.knp.model.dto.tenant.UpdateTenantRequest;
 import com.knp.model.entity.tenant.Tenant;
 import com.knp.multitenant.TenantContext;
+import com.knp.service.MessageService;
+import com.knp.service.notification.NotificationService;
 import com.knp.service.tenant.ShopInfoService;
 import com.knp.service.tenant.TenantProvisioningService;
 import com.knp.service.tenant.TenantSeedService;
@@ -18,7 +20,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Locale;
 
 import java.util.List;
 
@@ -39,6 +44,8 @@ public class MultiTenantController {
     private final TenantContext tenantContext;
     private final TenantProvisioningService tenantProvisioningService;
     private final TenantSeedService tenantSeedService;
+    private final NotificationService notificationService;
+    private final MessageService messageService;
 
     /**
      * GET /api/multi-tenants/stats
@@ -113,6 +120,15 @@ public class MultiTenantController {
         } finally {
             tenantContext.clear();
         }
+
+        // Notify all MASTER_TENANT users asynchronously — username captured here (main thread)
+        // before the async call since SecurityContextHolder is thread-local.
+        String createdBy = SecurityContextHolder.getContext().getAuthentication().getName();
+        Locale vi = new Locale("vi");
+        String notifTitle = messageService.getMessage("notification.master.tenant.created.title", vi);
+        String notifMsg = messageService.getMessage("notification.master.tenant.created.message", vi,
+                tenant.getName(), tenant.getTenantId(), createdBy);
+        notificationService.pushToMasterUsersAsync(notifTitle, notifMsg, "TENANT", tenantEntity.getId());
 
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(ApiResponse.success(tenant, "Tenant created successfully"));

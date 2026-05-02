@@ -14,6 +14,7 @@ import java.util.Optional;
 @Repository
 public interface ProductRepository extends JpaRepository<Product, Long> {
     Optional<Product> findBySkuAndDeletedFalse(String sku);
+    Optional<Product> findByBarcodeAndDeletedFalse(String barcode);
     Optional<Product> findByIdAndDeletedFalse(Long id);
     Page<Product> findByDeletedFalseAndStatusOrderByCreatedAtDesc(Product.ProductStatus status, Pageable pageable);
     Page<Product> findByProductTypeIdAndDeletedFalseOrderByCreatedAtDesc(Long productTypeId, Pageable pageable);

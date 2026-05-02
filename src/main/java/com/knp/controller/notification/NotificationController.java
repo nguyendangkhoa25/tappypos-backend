@@ -79,4 +79,16 @@ public class NotificationController {
         notificationService.delete(id);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
+
+    /** GET /notifications/preferences — returns the current user's enabled type list */
+    @GetMapping("/preferences")
+    public ResponseEntity<ApiResponse<List<String>>> getPreferences() {
+        return ResponseEntity.ok(ApiResponse.success(notificationService.getPreferences()));
+    }
+
+    /** PUT /notifications/preferences — replaces the enabled type list */
+    @PutMapping("/preferences")
+    public ResponseEntity<ApiResponse<List<String>>> savePreferences(@RequestBody List<String> enabledTypes) {
+        return ResponseEntity.ok(ApiResponse.success(notificationService.savePreferences(enabledTypes)));
+    }
 }

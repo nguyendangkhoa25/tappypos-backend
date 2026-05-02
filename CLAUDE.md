@@ -64,8 +64,10 @@ Features are enforced at three levels:
 - `JwtAuthenticationFilter` extracts the `features` claim from the JWT and stores it in `FeatureContext` (ThreadLocal). Cleared in `finally` after each request.
 - **Every shop controller must be annotated** `@RequiresFeature("FEATURE_NAME")`. No exceptions — if a controller handles shop data, it must have this annotation. Controllers without it are accessible to all authenticated users, which is wrong.
 - `FeatureAccessAspect` intercepts all annotated controllers, reads `FeatureContext`, and throws `ForbiddenException("error.access.feature_required")` → HTTP 403 if the feature is absent.
-- Master-tenant users have features `[DASHBOARD, USER, TENANT_MGMT, AGENT_MGMT, ACTIVITY_LOG, FEEDBACK_MGMT]` — they are automatically blocked from all shop endpoints by this mechanism. No special-casing needed.
-- Master-only endpoints (tenant provisioning, feedback admin) use `@MasterDatabaseOnly` instead — checks `MASTER_TENANT` role + `isMasterUser` flag, not features.
+- `@RequiresFeature` accepts a single string **or an array** — `@RequiresFeature({"POS", "CUSTOMER"})` grants access when the user has **any** of the listed features (OR logic).
+- **MASTER_TENANT** role features: `[USER, TENANT_MGMT, AGENT_MGMT, ACTIVITY_LOG, FEEDBACK_MGMT, MASTER_DASHBOARD, NOTIFICATION, CONTACT_LEAD_MGMT, PRODUCT_CATALOG]`
+- **AGENT** role features: `[TENANT_MGMT, MASTER_DASHBOARD, NOTIFICATION]` — agents see shops and the dashboard but cannot access product catalog, feedback management, or contact leads.
+- Master-only endpoints (tenant provisioning, feedback admin, contact leads) use `@MasterDatabaseOnly` instead — checks `MASTER_TENANT` role + `isMasterUser` flag, not features.
 
 **3. Frontend gating (`FeatureProtectedRoute`)**
 - Decodes features from the JWT in `localStorage` and blocks navigation client-side. Every shop route must be wrapped in `<FeatureProtectedRoute featureName="...">`. Routes without this wrapper are accessible to all authenticated users — only add unwrapped routes for truly global pages (login, 404, maintenance).
@@ -96,10 +98,30 @@ Features are enforced at three levels:
 | `VENDOR` | `VendorController`, `PurchaseOrderController` |
 | `PAWN` | `PawnController`, `BuybackOrderController`, `MarketPriceController`, `GoldPriceController` |
 | `ACTIVITY_LOG` | `ActivityLogController` |
-| `NOTIFICATION` | `NotificationController` |
-| `FEEDBACK` | `FeedbackController` (shop-user methods only; admin methods use `@MasterDatabaseOnly`) |
+| `NOTIFICATION` | `NotificationController` — includes `GET/PUT /notifications/preferences` for per-user type opt-in |
+| `FEEDBACK` | `FeedbackController` (shop-user submit methods only; admin review methods use `@MasterDatabaseOnly`) |
+| `MASTER_DASHBOARD` | `MasterDashboardController` (MASTER_TENANT + AGENT) |
+| `PRODUCT_CATALOG` | `ProductCatalogController` (MASTER_TENANT only; AGENT excluded) |
+| `CONTACT_LEAD_MGMT` | `ContactController` admin methods use `@MasterDatabaseOnly` (MASTER_TENANT only) |
+| `FEEDBACK_MGMT` | `FeedbackController` admin methods use `@MasterDatabaseOnly` (MASTER_TENANT only) |
 
 **Do NOT use `@PreAuthorize`** — `@EnableMethodSecurity` is not configured; these annotations are silently ignored.
+
+### Async Side-Effect Pattern
+
+`@EnableAsync` is active. Any operation that is a side effect of the main flow (notifications, audit log) must be **fire-and-forget** — it must never block or fail the caller.
+
+**Rules:**
+1. Annotate with `@Async` on the method (not the class).
+2. Pass all required context (e.g. `tenantId`, `username`) as method parameters — `TenantContext` and `SecurityContextHolder` are ThreadLocal and are **not** inherited by the async thread.
+3. Catch and log all exceptions internally — never let them propagate to the caller.
+4. If the async method needs a DB write in tenant context, call `tenantContext.setCurrentTenant(...)` at the start and `tenantContext.clear()` in `finally`.
+
+**Existing implementations:**
+- `ActivityLogServiceImpl.logAsync(tenantId, ...)` — audit writes; sets its own TenantContext in the async thread.
+- `NotificationService.pushToMasterUsersAsync(title, message, ...)` — wraps `pushToMasterUsers`; called from `MultiTenantController` after tenant creation.
+
+When adding new side-effects, follow this same pattern.
 
 ### Product System (EAV)
 

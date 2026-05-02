@@ -146,5 +146,17 @@ public class ProductController {
         productService.deleteProduct(id);
         return ResponseEntity.ok(ApiResponse.success(null, "Product deleted successfully"));
     }
+
+    /**
+     * Barcode lookup — shop inventory first, then master catalog
+     * GET /api/products/barcode/{barcode}
+     */
+    @GetMapping("/barcode/{barcode}")
+    public ResponseEntity<ApiResponse<BarcodeLookupResult>> lookupBarcode(
+            @PathVariable String barcode) {
+        log.info("GET /api/products/barcode/{} - Barcode lookup", barcode);
+        BarcodeLookupResult result = productService.lookupByBarcode(barcode);
+        return ResponseEntity.ok(ApiResponse.success(result, "Barcode lookup completed"));
+    }
 }
 
