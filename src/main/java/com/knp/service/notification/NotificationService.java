@@ -5,21 +5,26 @@ import com.knp.service.MessageService;
 import com.knp.model.dto.notification.CreateNotificationRequest;
 import com.knp.model.dto.notification.NotificationDTO;
 import com.knp.model.entity.notification.Notification;
+import com.knp.model.entity.notification.NotificationPreference;
 import com.knp.model.entity.tenant.Tenant;
 import com.knp.model.enums.RoleEnum;
+import com.knp.repository.notification.NotificationPreferenceRepository;
 import com.knp.repository.notification.NotificationRepository;
 import com.knp.repository.auth.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -29,6 +34,7 @@ import java.util.stream.Collectors;
 public class NotificationService {
 
     private final NotificationRepository notificationRepository;
+    private final NotificationPreferenceRepository preferenceRepository;
     private final UserRepository userRepository;
     private final MessageService messageService;
 
@@ -74,6 +80,41 @@ public class NotificationService {
         notificationRepository.save(n);
     }
 
+    // ── Notification preferences ──────────────────────────────────────────────
+
+    public List<String> getPreferences() {
+        return preferenceRepository.findByUserId(currentUsername())
+                .map(p -> "ALL".equals(p.getEnabledTypes())
+                        ? List.of("ALL")
+                        : Arrays.asList(p.getEnabledTypes().split(",")))
+                .orElse(List.of("ALL"));
+    }
+
+    @Transactional
+    public List<String> savePreferences(List<String> enabledTypes) {
+        String username = currentUsername();
+        NotificationPreference pref = preferenceRepository.findByUserId(username)
+                .orElse(NotificationPreference.builder().userId(username).build());
+        boolean allEnabled = enabledTypes == null || enabledTypes.isEmpty()
+                || enabledTypes.contains("ALL");
+        pref.setEnabledTypes(allEnabled ? "ALL" : String.join(",", enabledTypes));
+        preferenceRepository.save(pref);
+        log.info("Saved notification preferences for {}: {}", username, pref.getEnabledTypes());
+        return getPreferences();
+    }
+
+    /**
+     * Returns user IDs from the given list who have opted out of the specified type.
+     * Single batch query — avoids N+1.
+     */
+    private Set<String> optedOutUsers(List<String> userIds, Notification.NotificationType type) {
+        return preferenceRepository.findByUserIdIn(userIds).stream()
+                .filter(p -> !"ALL".equals(p.getEnabledTypes())
+                        && !Arrays.asList(p.getEnabledTypes().split(",")).contains(type.name()))
+                .map(NotificationPreference::getUserId)
+                .collect(Collectors.toSet());
+    }
+
     /**
      * Create notifications.
      * If targetUserIds is empty/null, broadcasts to all active users in this tenant.
@@ -87,20 +128,24 @@ public class NotificationService {
                 ? req.getTargetUserIds()
                 : userRepository.findAllActiveUsernames();
 
-        List<Notification> created = targets.stream().map(userId -> Notification.builder()
-                .userId(userId)
-                .title(req.getTitle().trim())
-                .message(req.getMessage())
-                .type(type)
-                .referenceType(req.getReferenceType())
-                .referenceId(req.getReferenceId())
-                .isRead(false)
-                .createdBy(creator)
-                .build()
-        ).collect(Collectors.toList());
+        Set<String> optedOut = optedOutUsers(targets, type);
+        List<Notification> created = targets.stream()
+                .filter(userId -> !optedOut.contains(userId))
+                .map(userId -> Notification.builder()
+                        .userId(userId)
+                        .title(req.getTitle().trim())
+                        .message(req.getMessage())
+                        .type(type)
+                        .referenceType(req.getReferenceType())
+                        .referenceId(req.getReferenceId())
+                        .isRead(false)
+                        .createdBy(creator)
+                        .build())
+                .collect(Collectors.toList());
 
         List<Notification> saved = notificationRepository.saveAll(created);
-        log.info("Created {} notification(s): type={}, title={}", saved.size(), type, req.getTitle());
+        log.info("Created {} notification(s): type={}, title={} ({} opted out)",
+                saved.size(), type, req.getTitle(), optedOut.size());
         return saved.stream().map(this::mapToDTO).collect(Collectors.toList());
     }
 
@@ -124,21 +169,36 @@ public class NotificationService {
         String message = messageService.getMessage("notification.expiry.warning.message", vi,
                 tenant.getName(), expiryDate);
 
-        List<Notification> notifications = shopOwners.stream().map(username -> Notification.builder()
-                .userId(username)
-                .title(title)
-                .message(message)
-                .type(Notification.NotificationType.BILLING)
-                .referenceType("TENANT")
-                .referenceId(tenant.getId())
-                .isRead(false)
-                .createdBy("SYSTEM")
-                .build()
-        ).collect(Collectors.toList());
+        Set<String> optedOut = optedOutUsers(shopOwners, Notification.NotificationType.BILLING);
+        List<Notification> notifications = shopOwners.stream()
+                .filter(username -> !optedOut.contains(username))
+                .map(username -> Notification.builder()
+                        .userId(username)
+                        .title(title)
+                        .message(message)
+                        .type(Notification.NotificationType.BILLING)
+                        .referenceType("TENANT")
+                        .referenceId(tenant.getId())
+                        .isRead(false)
+                        .createdBy("SYSTEM")
+                        .build())
+                .collect(Collectors.toList());
 
         notificationRepository.saveAll(notifications);
-        log.info("Pushed expiry warning to {} shop owner(s) for tenant {} (expires {})",
-                notifications.size(), tenant.getTenantId(), tenant.getExpirationDate());
+        log.info("Pushed expiry warning to {} shop owner(s) for tenant {} (expires {}, {} opted out)",
+                notifications.size(), tenant.getTenantId(), tenant.getExpirationDate(), optedOut.size());
+    }
+
+    /**
+     * Async fire-and-forget variant — caller is never blocked or thrown at.
+     */
+    @Async
+    public void pushToMasterUsersAsync(String title, String message, String referenceType, Long referenceId) {
+        try {
+            pushToMasterUsers(title, message, referenceType, referenceId);
+        } catch (Exception e) {
+            log.warn("Async pushToMasterUsers failed: {}", e.getMessage());
+        }
     }
 
     /**
@@ -151,19 +211,23 @@ public class NotificationService {
             log.warn("pushToMasterUsers: no MASTER_TENANT users found, skipping notification");
             return;
         }
-        List<Notification> notifications = masterUsers.stream().map(userId -> Notification.builder()
-                .userId(userId)
-                .title(title)
-                .message(message)
-                .type(Notification.NotificationType.SYSTEM)
-                .referenceType(referenceType)
-                .referenceId(referenceId)
-                .isRead(false)
-                .createdBy("SYSTEM")
-                .build()
-        ).collect(Collectors.toList());
+        Set<String> optedOut = optedOutUsers(masterUsers, Notification.NotificationType.SYSTEM);
+        List<Notification> notifications = masterUsers.stream()
+                .filter(userId -> !optedOut.contains(userId))
+                .map(userId -> Notification.builder()
+                        .userId(userId)
+                        .title(title)
+                        .message(message)
+                        .type(Notification.NotificationType.SYSTEM)
+                        .referenceType(referenceType)
+                        .referenceId(referenceId)
+                        .isRead(false)
+                        .createdBy("SYSTEM")
+                        .build())
+                .collect(Collectors.toList());
         notificationRepository.saveAll(notifications);
-        log.info("Pushed notification to {} master user(s): {}", notifications.size(), title);
+        log.info("Pushed notification to {} master user(s): {} ({} opted out)",
+                notifications.size(), title, optedOut.size());
     }
 
     /**

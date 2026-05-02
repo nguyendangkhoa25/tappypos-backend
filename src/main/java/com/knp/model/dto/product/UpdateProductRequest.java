@@ -19,6 +19,9 @@ public class UpdateProductRequest {
     // Accepted but not applied — SKU is immutable after creation
     private String sku;
 
+    @Size(max = 100, message = "Barcode must not exceed 100 characters")
+    private String barcode;
+
     @NotBlank(message = "Product name is required")
     @Size(min = 2, max = 255, message = "Product name must be between 2 and 255 characters")
     private String name;

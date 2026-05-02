@@ -27,6 +27,9 @@ public class Product extends TenantAwareEntity {
     @Column(unique = true, nullable = false, length = 100)
     private String sku;
 
+    @Column(length = 100)
+    private String barcode;
+
     @Column(nullable = false, length = 255)
     private String name;
 

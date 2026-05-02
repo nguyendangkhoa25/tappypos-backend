@@ -82,22 +82,49 @@ VALUES
 
 -- ── 6. Default print template ─────────────────────────────────
 INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_default) VALUES
-    (current_setting('app.current_tenant', true), 'RECEIPT', 'Mặc định', '{
-  "paperSize": "80mm",
-  "showLogo": false,
+    -- POS receipt for sales at pawn shop
+    (current_setting('app.current_tenant', true), 'POS_RECEIPT', 'Mặc định', '{
+  "headerText": "",
+  "footerText": "Cảm ơn quý khách!\nHẹn gặp lại!",
   "showAddress": true,
-  "showPhone": true,
-  "showTaxCode": false,
-  "showQrCode": false,
-  "fontSize": 12,
-  "lineSpacing": 1.2,
-  "headerLines": ["{{shopName}}", "{{address}}", "ĐT: {{phone}}"],
-  "footerLines": ["Cảm ơn quý khách!", "Hẹn gặp lại!"],
+  "showTaxId": false,
   "showOrderNumber": true,
-  "showCashier": true,
-  "showPaymentMethod": true,
-  "showChangeAmount": true,
-  "itemColumns": ["name", "qty", "price", "total"]
+  "showDateTime": true,
+  "showCustomer": true,
+  "showTaxBreakdown": false,
+  "showCashDetails": true,
+  "paperWidth": "80mm",
+  "autoClose": true
+}', TRUE),
+    -- Pawn stamp: A5 landscape, 2 copies (customer + shop), all contract fields
+    (current_setting('app.current_tenant', true), 'PAWN_STAMP', 'Biên nhận cầm đồ', '{
+  "showShopName": true,
+  "showQrCode": true,
+  "showCustomerInfo": true,
+  "showItemDetails": true,
+  "showWeight": true,
+  "showItemType": true,
+  "showPawnAmount": true,
+  "showAmountInWords": true,
+  "showInterestRate": true,
+  "showDueDate": true,
+  "showPawnDate": true,
+  "showPawnId": true,
+  "paperWidth": 210,
+  "paperHeight": 145,
+  "copies": 2
+}', TRUE),
+    -- Product stamp for buyback / assessed items
+    (current_setting('app.current_tenant', true), 'PRODUCT_STAMP', 'Tem tài sản', '{
+  "showShopName": true,
+  "showSku": true,
+  "showPrice": true,
+  "showBarcode": false,
+  "showLocation": true,
+  "showBatch": false,
+  "showExpiry": false,
+  "labelWidth": 60,
+  "labelHeight": 38
 }', TRUE)
 ON CONFLICT (template_type, name, tenant_id) DO NOTHING;
 

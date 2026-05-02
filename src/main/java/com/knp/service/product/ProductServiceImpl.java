@@ -21,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
 import java.util.stream.Collectors;
 import com.knp.service.audit.ActivityLogService;
+import com.knp.client.OpenFoodFactsClient;
+import com.knp.util.BarcodeValidator;
 
 @Slf4j
 @Service
@@ -38,6 +40,9 @@ public class ProductServiceImpl implements ProductService {
     private final MessageService messageService;
     private final ActivityLogService activityLogService;
     private final TenantContext tenantContext;
+    private final ProductCatalogRepository productCatalogRepository;
+    private final OpenFoodFactsClient openFoodFactsClient;
+    private final ProductCatalogService productCatalogService;
 
     @Override
     public ProductDTO createProduct(CreateProductRequest request) {
@@ -68,6 +73,7 @@ public class ProductServiceImpl implements ProductService {
         Product product = Product.builder()
                 .productType(productType)
                 .sku(request.getSku())
+                .barcode(request.getBarcode())
                 .name(request.getName())
                 .description(request.getDescription())
                 .price(request.getPrice())
@@ -174,6 +180,7 @@ public class ProductServiceImpl implements ProductService {
 
         product.setName(request.getName());
         product.setDescription(request.getDescription());
+        product.setBarcode(request.getBarcode());
         product.setPrice(request.getPrice());
         if (request.getCostPrice() != null) {
             product.setCostPrice(request.getCostPrice());
@@ -423,6 +430,7 @@ public class ProductServiceImpl implements ProductService {
                 .productTypeId(product.getProductType().getId())
                 .productTypeName(product.getProductType().getName())
                 .sku(product.getSku())
+                .barcode(product.getBarcode())
                 .name(product.getName())
                 .description(product.getDescription())
                 .price(product.getPrice())
@@ -448,6 +456,59 @@ public class ProductServiceImpl implements ProductService {
                 .searchable(attr.getSearchable())
                 .filterable(attr.getFilterable())
                 .displayOrder(attr.getDisplayOrder())
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public BarcodeLookupResult lookupByBarcode(String barcode) {
+        // Layer 1: shop's own inventory
+        var shopProduct = productRepository.findByBarcodeAndDeletedFalse(barcode);
+        if (shopProduct.isPresent()) {
+            return BarcodeLookupResult.builder()
+                    .source(BarcodeLookupResult.Source.SHOP)
+                    .product(mapToDTO(shopProduct.get()))
+                    .build();
+        }
+
+        // Layer 2: master product catalog
+        var catalogEntry = productCatalogRepository.findByBarcode(barcode);
+        if (catalogEntry.isPresent()) {
+            var c = catalogEntry.get();
+            return BarcodeLookupResult.builder()
+                    .source(BarcodeLookupResult.Source.CATALOG)
+                    .catalog(BarcodeLookupResult.CatalogHint.builder()
+                            .barcode(c.getBarcode())
+                            .name(c.getName())
+                            .brand(c.getBrand())
+                            .categoryHint(c.getCategoryHint())
+                            .unit(c.getUnit())
+                            .description(c.getDescription())
+                            .build())
+                    .build();
+        }
+
+        // Layer 3: live Open Food Facts lookup — only when enabled and barcode is structurally valid
+        if (openFoodFactsClient.isEnabled() && BarcodeValidator.isValid(barcode)) {
+            var offProduct = openFoodFactsClient.fetchByBarcode(barcode);
+            if (offProduct.isPresent()) {
+                var p = offProduct.get();
+                // Persist asynchronously so the caller gets a fast response
+                productCatalogService.saveFromOffAsync(p);
+                return BarcodeLookupResult.builder()
+                        .source(BarcodeLookupResult.Source.CATALOG)
+                        .catalog(BarcodeLookupResult.CatalogHint.builder()
+                                .barcode(barcode)
+                                .name(p.product_name != null ? p.product_name.trim() : barcode)
+                                .brand(p.brands != null ? p.brands.split(",")[0].trim() : null)
+                                .imageUrl(p.image_front_url)
+                                .build())
+                        .build();
+            }
+        }
+
+        return BarcodeLookupResult.builder()
+                .source(BarcodeLookupResult.Source.NONE)
                 .build();
     }
 }

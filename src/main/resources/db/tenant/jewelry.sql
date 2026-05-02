@@ -166,23 +166,51 @@ ON CONFLICT (config_key, tenant_id) DO NOTHING;
 
 -- ── 9. Print templates ────────────────────────────────────────
 INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_default) VALUES
-    (current_setting('app.current_tenant', true), 'RECEIPT', 'Biên nhận 80mm', '{
-  "paperSize": "80mm",
-  "showLogo": false,
+    -- POS receipt: show tax code (jewelry shops are typically VAT-registered)
+    (current_setting('app.current_tenant', true), 'POS_RECEIPT', 'Biên nhận 80mm', '{
+  "headerText": "",
+  "footerText": "Cảm ơn quý khách!\nHẹn gặp lại!",
   "showAddress": true,
-  "showPhone": true,
-  "showTaxCode": true,
-  "showQrCode": false,
-  "fontSize": 12,
-  "lineSpacing": 1.2,
-  "headerLines": ["{{shopName}}", "{{address}}", "ĐT: {{phone}}", "MST: {{taxCode}}"],
-  "footerLines": ["Cảm ơn quý khách!", "Hẹn gặp lại!"],
+  "showTaxId": true,
   "showOrderNumber": true,
-  "showCashier": true,
-  "showPaymentMethod": true,
-  "showChangeAmount": true,
-  "itemColumns": ["name", "qty", "price", "total"]
+  "showDateTime": true,
+  "showCustomer": true,
+  "showTaxBreakdown": false,
+  "showCashDetails": true,
+  "paperWidth": "80mm",
+  "autoClose": true
 }', TRUE),
+    -- Pawn stamp: A5, 2 copies, all fields including interest rate
+    (current_setting('app.current_tenant', true), 'PAWN_STAMP', 'Biên nhận cầm đồ vàng', '{
+  "showShopName": true,
+  "showQrCode": true,
+  "showCustomerInfo": true,
+  "showItemDetails": true,
+  "showWeight": true,
+  "showItemType": true,
+  "showPawnAmount": true,
+  "showAmountInWords": true,
+  "showInterestRate": true,
+  "showDueDate": true,
+  "showPawnDate": true,
+  "showPawnId": true,
+  "paperWidth": 210,
+  "paperHeight": 145,
+  "copies": 2
+}', TRUE),
+    -- Product stamp: compact label for jewelry items
+    (current_setting('app.current_tenant', true), 'PRODUCT_STAMP', 'Tem trang sức', '{
+  "showShopName": true,
+  "showSku": true,
+  "showPrice": true,
+  "showBarcode": true,
+  "showLocation": false,
+  "showBatch": false,
+  "showExpiry": false,
+  "labelWidth": 40,
+  "labelHeight": 25
+}', TRUE),
+    -- Jewelry-specific stamp labels (managed via jewelry stamp UI)
     (current_setting('app.current_tenant', true), 'JEWELRY_STAMP', 'Tem vàng 16x30mm', '{
   "paperSize": "16x30mm",
   "fontSize": 7,

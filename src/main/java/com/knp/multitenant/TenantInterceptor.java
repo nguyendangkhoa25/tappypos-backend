@@ -51,7 +51,9 @@ public class TenantInterceptor implements HandlerInterceptor {
             "/api/employees",
             "/api/multi-tenants",        // Tenant management (master DB only)
             "/api/profiles",             // Profile management (works for both master and tenant users)
-            "/api/feedback"              // Feedback (stored in master DB, accessible from any tenant)
+            "/api/feedback",             // Feedback (stored in master DB, accessible from any tenant)
+            "/api/product-catalog",      // Product catalog (master DB, accessible from master and tenant contexts)
+            "/api/master-dashboard"      // Master dashboard stats (accessible to master admin and agents)
     };
 
     @Override

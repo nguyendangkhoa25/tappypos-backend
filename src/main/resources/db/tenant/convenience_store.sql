@@ -229,24 +229,45 @@ VALUES
     (current_setting('app.current_tenant', true), 'Vàng',      10000000,  1.50, '#FFC107', 'Chi tiêu từ 10 triệu VND', 3),
     (current_setting('app.current_tenant', true), 'Kim cương', 50000000,  2.00, '#00BCD4', 'Chi tiêu từ 50 triệu VND', 4);
 
--- ── 10. Default print template ────────────────────────────────
+-- ── 10. Default print templates ───────────────────────────────
 INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_default) VALUES
-    (current_setting('app.current_tenant', true), 'RECEIPT', 'Mặc định', '{
-  "paperSize": "80mm",
-  "showLogo": false,
+    -- POS receipt: show tax breakdown + cash details (common for retail/FMCG)
+    (current_setting('app.current_tenant', true), 'POS_RECEIPT', 'Mặc định', '{
+  "headerText": "",
+  "footerText": "Cảm ơn quý khách!\nHẹn gặp lại!",
   "showAddress": true,
-  "showPhone": true,
-  "showTaxCode": false,
-  "showQrCode": false,
-  "fontSize": 12,
-  "lineSpacing": 1.2,
-  "headerLines": ["{{shopName}}", "{{address}}", "ĐT: {{phone}}"],
-  "footerLines": ["Cảm ơn quý khách!", "Hẹn gặp lại!"],
+  "showTaxId": false,
   "showOrderNumber": true,
-  "showCashier": true,
-  "showPaymentMethod": true,
-  "showChangeAmount": true,
-  "itemColumns": ["name", "qty", "price", "total"]
+  "showDateTime": true,
+  "showCustomer": true,
+  "showTaxBreakdown": true,
+  "showCashDetails": true,
+  "paperWidth": "80mm",
+  "autoClose": true
+}', TRUE),
+    -- Product stamp: barcode + expiry for FMCG
+    (current_setting('app.current_tenant', true), 'PRODUCT_STAMP', 'Tem sản phẩm', '{
+  "showShopName": true,
+  "showSku": true,
+  "showPrice": true,
+  "showBarcode": true,
+  "showLocation": false,
+  "showBatch": false,
+  "showExpiry": true,
+  "labelWidth": 60,
+  "labelHeight": 38
+}', TRUE),
+    -- Inventory stamp: batch + expiry + location for stock management
+    (current_setting('app.current_tenant', true), 'INVENTORY_STAMP', 'Tem kho', '{
+  "showShopName": true,
+  "showSku": true,
+  "showPrice": false,
+  "showBarcode": true,
+  "showLocation": true,
+  "showBatch": true,
+  "showExpiry": true,
+  "labelWidth": 60,
+  "labelHeight": 38
 }', TRUE)
 ON CONFLICT (template_type, name, tenant_id) DO NOTHING;
 

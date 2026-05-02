@@ -1,6 +1,7 @@
 package com.knp.repository.feedback;
 
 import com.knp.model.entity.feedback.UserFeedback;
+import com.knp.model.enums.FeedbackStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -10,6 +11,12 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface FeedbackRepository extends JpaRepository<UserFeedback, Long> {
+
+    @Query("SELECT COUNT(f) FROM UserFeedback f WHERE f.deleted = false")
+    long countAllActive();
+
+    @Query("SELECT COUNT(f) FROM UserFeedback f WHERE f.deleted = false AND f.status = :status")
+    long countByStatus(@Param("status") FeedbackStatus status);
 
     @Query("SELECT f FROM UserFeedback f WHERE f.deleted = false AND f.tenantId = :tenantId AND f.username = :username ORDER BY f.createdAt DESC")
     Page<UserFeedback> findByTenantIdAndUsername(@Param("tenantId") String tenantId,

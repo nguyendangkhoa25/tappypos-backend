@@ -26,17 +26,18 @@ public class FeatureAccessAspect {
 
     @Around("@within(com.knp.annotation.RequiresFeature) || @annotation(com.knp.annotation.RequiresFeature)")
     public Object checkFeatureAccess(ProceedingJoinPoint joinPoint) throws Throwable {
-        String required = resolveRequiredFeature(joinPoint);
+        String[] required = resolveRequiredFeatures(joinPoint);
 
-        if (!featureContext.hasFeature(required)) {
-            log.warn("Access denied: feature '{}' not present. isMasterUser={}", required, featureContext.isMasterUser());
+        boolean hasAccess = java.util.Arrays.stream(required).anyMatch(featureContext::hasFeature);
+        if (!hasAccess) {
+            log.warn("Access denied: none of features {} present. isMasterUser={}", java.util.Arrays.toString(required), featureContext.isMasterUser());
             throw new ForbiddenException("error.access.feature_required");
         }
 
         return joinPoint.proceed();
     }
 
-    private String resolveRequiredFeature(ProceedingJoinPoint joinPoint) {
+    private String[] resolveRequiredFeatures(ProceedingJoinPoint joinPoint) {
         MethodSignature sig = (MethodSignature) joinPoint.getSignature();
 
         // Method-level annotation takes precedence over class-level

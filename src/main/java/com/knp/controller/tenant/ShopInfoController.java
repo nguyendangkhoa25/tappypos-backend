@@ -141,6 +141,7 @@ public class ShopInfoController {
      * Examples:
      * - GET /api/shop-info/public
      */
+    @RequiresFeature("DASHBOARD")
     @GetMapping("/public")
     public ResponseEntity<ApiResponse<PublicShopInfoDTO>> getPublicShopInfo() {
         log.info("Endpoint: GET /shop-info/public - Get public shop information");

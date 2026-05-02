@@ -265,7 +265,20 @@ CREATE TABLE IF NOT EXISTS notifications (
     deleted_at     TIMESTAMP    DEFAULT NULL
 );
 
--- 3.9 activity_log
+-- 3.9 notification_preferences (per-user opt-in list; 'ALL' = receive everything)
+CREATE TABLE IF NOT EXISTS notification_preferences (
+    id            BIGSERIAL     PRIMARY KEY,
+    tenant_id     VARCHAR(100)  DEFAULT NULL,
+    user_id       VARCHAR(50)   NOT NULL,
+    enabled_types TEXT          NOT NULL DEFAULT 'ALL',
+    created_at    TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMP,
+    deleted       BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at    TIMESTAMP,
+    CONSTRAINT uq_notif_pref_user UNIQUE (user_id, tenant_id)
+);
+
+-- 3.10 activity_log
 CREATE TABLE IF NOT EXISTS activity_log (
     id              BIGSERIAL    PRIMARY KEY,
     tenant_id       VARCHAR(100) DEFAULT NULL,
@@ -385,6 +398,7 @@ CREATE TABLE IF NOT EXISTS product (
     updated_at      TIMESTAMP      NOT NULL DEFAULT NOW(),
     deleted         BOOLEAN        NOT NULL DEFAULT FALSE,
     deleted_at      TIMESTAMP      DEFAULT NULL,
+    barcode         VARCHAR(100)   DEFAULT NULL,
     CONSTRAINT uq_product_sku_tenant     UNIQUE (sku, tenant_id),
     CONSTRAINT fk_product_type           FOREIGN KEY (product_type_id) REFERENCES product_type (id),
     CONSTRAINT fk_product_vendor         FOREIGN KEY (vendor_id)       REFERENCES vendors       (id)
@@ -675,8 +689,10 @@ CREATE TABLE IF NOT EXISTS invoice_items (
     tax_percentage           DECIMAL(5,2)   DEFAULT 0.00,
     tax_amount               DECIMAL(19,2)  DEFAULT 0.00,
     total_amount_with_tax    DECIMAL(19,2)  NOT NULL,
-    created_at               TIMESTAMP      DEFAULT NOW(),
+    created_at               TIMESTAMP      NOT NULL DEFAULT NOW(),
     updated_at               TIMESTAMP      DEFAULT NOW(),
+    deleted                  BOOLEAN        NOT NULL DEFAULT FALSE,
+    deleted_at               TIMESTAMP,
     CONSTRAINT chk_ii_amount   CHECK (total_amount_with_tax >= 0),
     CONSTRAINT fk_ii_invoice   FOREIGN KEY (invoice_id) REFERENCES invoices (id) ON DELETE CASCADE
 );
@@ -1175,6 +1191,37 @@ CREATE TABLE IF NOT EXISTS jewelry_counters (
     CONSTRAINT uq_jewelry_counters_code_tenant UNIQUE (code, tenant_id)
 );
 
+-- 4.43 contact_leads (trial registration requests from the public landing page)
+CREATE TABLE IF NOT EXISTS contact_leads (
+    id          BIGSERIAL     PRIMARY KEY,
+    name        VARCHAR(100)  NOT NULL,
+    phone       VARCHAR(20)   NOT NULL,
+    shop_type   VARCHAR(50),
+    note        VARCHAR(1000),
+    source      VARCHAR(50)   DEFAULT 'LANDING_PAGE',
+    status      VARCHAR(20)   NOT NULL DEFAULT 'NEW',
+    admin_note  VARCHAR(1000),
+    deleted     BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at  TIMESTAMP,
+    created_at  TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMP
+);
+
+-- 4.44 product_catalog (master shared product catalog; no RLS — global reference data)
+CREATE TABLE IF NOT EXISTS product_catalog (
+    id            BIGSERIAL     PRIMARY KEY,
+    barcode       VARCHAR(100)  NOT NULL UNIQUE,
+    name          VARCHAR(200)  NOT NULL,
+    brand         VARCHAR(100),
+    category_hint VARCHAR(100),
+    unit          VARCHAR(50)   DEFAULT 'Cái',
+    description   VARCHAR(1000),
+    image_url     VARCHAR(500),
+    source        VARCHAR(50)   DEFAULT 'MANUAL',
+    created_at    TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMP
+);
+
 -- ════════════════════════════════════════════════════════════
 -- SECTION 5: Indexes
 -- ════════════════════════════════════════════════════════════
@@ -1234,6 +1281,9 @@ CREATE INDEX IF NOT EXISTS idx_as_tenant_id ON active_sessions (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_notif_user_read ON notifications (user_id, is_read, deleted);
 CREATE INDEX IF NOT EXISTS idx_notif_tenant_id ON notifications (tenant_id);
 
+-- notification_preferences
+CREATE INDEX IF NOT EXISTS idx_np_user_id ON notification_preferences (user_id);
+
 -- activity_log
 CREATE INDEX IF NOT EXISTS idx_al_actor      ON activity_log (actor_username);
 CREATE INDEX IF NOT EXISTS idx_al_action     ON activity_log (action);
@@ -1245,10 +1295,12 @@ CREATE INDEX IF NOT EXISTS idx_pt_tenant_id  ON product_type (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_pt_deleted    ON product_type (deleted);
 
 -- product
-CREATE INDEX IF NOT EXISTS idx_product_tenant_id ON product (tenant_id);
-CREATE INDEX IF NOT EXISTS idx_product_status    ON product (status);
-CREATE INDEX IF NOT EXISTS idx_product_deleted   ON product (deleted);
+CREATE INDEX IF NOT EXISTS idx_product_tenant_id  ON product (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_product_status     ON product (status);
+CREATE INDEX IF NOT EXISTS idx_product_deleted    ON product (deleted);
 CREATE INDEX IF NOT EXISTS idx_product_created_at ON product (created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_product_barcode_tenant
+    ON product (barcode, tenant_id) WHERE barcode IS NOT NULL;
 
 -- inventory
 CREATE INDEX IF NOT EXISTS idx_inv_tenant_id  ON inventory (tenant_id);
@@ -1342,6 +1394,13 @@ CREATE INDEX IF NOT EXISTS idx_gp_tenant_id ON gold_price (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_gt_active ON gold_types (active);
 CREATE INDEX IF NOT EXISTS idx_gb_active ON gold_brands (active);
 
+-- contact_leads
+CREATE INDEX IF NOT EXISTS idx_contact_leads_created_at ON contact_leads (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_contact_leads_status     ON contact_leads (status);
+
+-- product_catalog
+CREATE INDEX IF NOT EXISTS idx_product_catalog_barcode ON product_catalog (barcode);
+
 -- ════════════════════════════════════════════════════════════
 -- SECTION 6: updated_at triggers
 -- ════════════════════════════════════════════════════════════
@@ -1351,7 +1410,7 @@ DECLARE t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY[
     'agents','banks','gold_types','gold_brands',
-    'features','roles','users','role_features','notifications',
+    'features','roles','users','role_features','notifications','notification_preferences',
     'product_type','attribute_group','attribute_definition','category',
     'vendors','product','product_attribute_value','variant_types','variant_type_options',
     'inventory','inventory_movement','customers',
@@ -1361,7 +1420,8 @@ BEGIN
     'employees','purchase_orders','purchase_order_items',
     'market_prices','buyback_orders','buyback_order_items',
     'shop_info','shop_config','print_templates','bank_accounts','shop_expense',
-    'gold_price','jewelry_counters','user_feedback'
+    'gold_price','jewelry_counters','user_feedback',
+    'contact_leads','product_catalog'
   ]
   LOOP
     EXECUTE format(
@@ -1439,6 +1499,11 @@ CREATE POLICY tenant_isolation ON active_sessions
 ALTER TABLE notifications   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications   FORCE  ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON notifications
+  USING (tenant_id IS NOT DISTINCT FROM current_tenant_id());
+
+ALTER TABLE notification_preferences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notification_preferences FORCE  ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON notification_preferences
   USING (tenant_id IS NOT DISTINCT FROM current_tenant_id());
 
 ALTER TABLE activity_log    ENABLE ROW LEVEL SECURITY;
@@ -1527,10 +1592,13 @@ VALUES
     (202601025, NULL, 'FEEDBACK',         'Góp Ý',                     'Gửi phản hồi và đề xuất đến quản trị hệ thống',                  TRUE,  FALSE),
     (202601026, NULL, 'PRINT_TEMPLATE',   'Mẫu In',                    'Quản lý mẫu in biên nhận và hóa đơn',                            TRUE,  FALSE),
     (202601027, NULL, 'BANK_ACCOUNT',     'Tài Khoản Ngân Hàng',       'Quản lý tài khoản ngân hàng của cửa hàng',                       TRUE,  FALSE),
-    (202601028, NULL, 'ACCOUNTING',       'Kế Toán',                   'Xem báo cáo kế toán tổng hợp',                                   TRUE,  FALSE)
+    (202601028, NULL, 'ACCOUNTING',       'Kế Toán',                   'Xem báo cáo kế toán tổng hợp',                                   TRUE,  FALSE),
+    -- Master-only management features
+    (202601029, NULL, 'CONTACT_LEAD_MGMT','Đăng Ký Dùng Thử',          'Xem và quản lý các yêu cầu đăng ký dùng thử từ trang chủ',       TRUE,  FALSE),
+    (202601030, NULL, 'PRODUCT_CATALOG',  'Danh Mục Sản Phẩm',         'Quản lý danh mục sản phẩm dùng chung toàn hệ thống',             TRUE,  FALSE)
 ON CONFLICT (id) DO NOTHING;
 
-SELECT setval(pg_get_serial_sequence('features', 'id'), 202601028, true);
+SELECT setval(pg_get_serial_sequence('features', 'id'), 202601030, true);
 
 -- ── 2. Master roles ───────────────────────────────────────────
 INSERT INTO roles (id, tenant_id, name, description, deleted)
@@ -1544,16 +1612,20 @@ SELECT setval(pg_get_serial_sequence('roles', 'id'), 202600002, true);
 -- ── 3. Role-feature mappings (master roles) ───────────────────
 INSERT INTO role_features (tenant_id, role_id, feature_id)
 VALUES
-    -- MASTER_TENANT: user, tenant, vendor, activity, feedback, master dashboard
+    -- MASTER_TENANT: full master feature set
     (NULL, 202600001, 202601011),   -- USER
     (NULL, 202600001, 202601013),   -- TENANT_MGMT
     (NULL, 202600001, 202601015),   -- AGENT_MGMT
     (NULL, 202600001, 202601018),   -- ACTIVITY_LOG
     (NULL, 202600001, 202601020),   -- FEEDBACK_MGMT
     (NULL, 202600001, 202601021),   -- MASTER_DASHBOARD
-    -- AGENT: tenant management + master dashboard
+    (NULL, 202600001, 202601024),   -- NOTIFICATION
+    (NULL, 202600001, 202601029),   -- CONTACT_LEAD_MGMT
+    (NULL, 202600001, 202601030),   -- PRODUCT_CATALOG
+    -- AGENT: tenant management + master dashboard + notifications
     (NULL, 202600002, 202601013),   -- TENANT_MGMT
-    (NULL, 202600002, 202601021)    -- MASTER_DASHBOARD
+    (NULL, 202600002, 202601021),   -- MASTER_DASHBOARD
+    (NULL, 202600002, 202601024)    -- NOTIFICATION
 ON CONFLICT (role_id, feature_id) DO NOTHING;
 
 -- ── 4. Default admin user ─────────────────────────────────────
@@ -1631,3 +1703,37 @@ INSERT INTO banks (code, bin, name, short_name, sort_order) VALUES
 ('IVB',      '970434', 'Ngân hàng TNHH Indochina',                                          'Indovina Bank',        57),
 ('ANZ',      '970421', 'Ngân hàng ANZ Việt Nam',                                            'ANZ Vietnam',          58)
 ON CONFLICT (code) DO NOTHING;
+
+-- ── 6. Product catalog seed data (common Vietnamese consumer products) ──────────
+INSERT INTO product_catalog (barcode, name, brand, category_hint, unit, description, source) VALUES
+    ('8934563143326', 'Mì Hảo Hảo Tôm Chua Cay 75g',           'Acecook',       'Thực phẩm',        'Gói',  'Mì ăn liền tôm chua cay',                    'SEED'),
+    ('8934563141841', 'Mì Hảo Hảo Sườn Heo Xào 75g',           'Acecook',       'Thực phẩm',        'Gói',  'Mì ăn liền sườn heo xào',                    'SEED'),
+    ('8936014130013', 'Nước Tương Maggi 200ml',                  'Nestlé',        'Thực phẩm',        'Chai', 'Nước tương cao cấp Maggi 200ml',              'SEED'),
+    ('8934588032506', 'Nước Mắm Phú Quốc 40 độ đạm 500ml',     'Chinsu',        'Thực phẩm',        'Chai', 'Nước mắm Phú Quốc truyền thống',             'SEED'),
+    ('8935049500017', 'Dầu Ăn Neptune 1L',                       'Neptune',       'Thực phẩm',        'Chai', 'Dầu ăn cao cấp Neptune 1 lít',               'SEED'),
+    ('8934868203218', 'Gạo ST25 5kg',                            'Hồ Quang Trí', 'Thực phẩm',        'Túi',  'Gạo ST25 thơm ngon 5kg',                     'SEED'),
+    ('8936048770012', 'Nước Rửa Chén Sunlight Chanh 750ml',     'Unilever',      'Hóa phẩm',         'Chai', 'Nước rửa chén Sunlight hương chanh',          'SEED'),
+    ('8934588014014', 'Bột Giặt Omo 800g',                       'Unilever',      'Hóa phẩm',         'Hộp',  'Bột giặt Omo tẩy sạch cực mạnh',             'SEED'),
+    ('8934564278093', 'Kem Đánh Răng Colgate 225g',             'Colgate',       'Chăm sóc cá nhân', 'Hộp',  'Kem đánh răng Colgate bảo vệ 12 giờ',        'SEED'),
+    ('8935049040027', 'Dầu Gội Clear Men 170ml',                 'Unilever',      'Chăm sóc cá nhân', 'Chai', 'Dầu gội Clear Men sạch gàu',                 'SEED'),
+    ('8934868015016', 'Nước Uống Aquafina 500ml',                'PepsiCo',       'Đồ uống',          'Chai', 'Nước uống tinh khiết Aquafina 500ml',         'SEED'),
+    ('8934868015023', 'Nước Uống Aquafina 1.5L',                 'PepsiCo',       'Đồ uống',          'Chai', 'Nước uống tinh khiết Aquafina 1.5L',          'SEED'),
+    ('8934822400038', 'Coca-Cola 330ml (lon)',                    'Coca-Cola',     'Đồ uống',          'Lon',  'Nước ngọt Coca-Cola lon 330ml',               'SEED'),
+    ('8934822400052', 'Pepsi 330ml (lon)',                        'PepsiCo',       'Đồ uống',          'Lon',  'Nước ngọt Pepsi lon 330ml',                   'SEED'),
+    ('8934822400069', '7UP 330ml (lon)',                          'PepsiCo',       'Đồ uống',          'Lon',  'Nước ngọt 7UP lon 330ml',                     'SEED'),
+    ('8936012640029', 'Trà Xanh Không Độ 500ml',                'THP',           'Đồ uống',          'Chai', 'Trà xanh Không Độ 500ml',                     'SEED'),
+    ('8936012640036', 'Nước Tăng Lực Number 1 330ml',           'THP',           'Đồ uống',          'Lon',  'Nước tăng lực Number 1 lon 330ml',            'SEED'),
+    ('8934822400076', 'Red Bull 250ml (lon)',                     'Red Bull',      'Đồ uống',          'Lon',  'Nước tăng lực Red Bull lon 250ml',            'SEED'),
+    ('8935232200028', 'Sữa Tươi Vinamilk Full Cream 1L',        'Vinamilk',      'Đồ uống',          'Hộp',  'Sữa tươi tiệt trùng Vinamilk toàn phần 1L',  'SEED'),
+    ('8935232200035', 'Sữa Tươi TH True Milk 1L',               'TH',            'Đồ uống',          'Hộp',  'Sữa tươi sạch TH True Milk 1L',              'SEED'),
+    ('8935049890016', 'Bánh Oreo Chocolate 97g',                 'Mondelez',      'Thực phẩm',        'Gói',  'Bánh quy nhân kem chocolate Oreo',            'SEED'),
+    ('8934563200020', 'Snack Oishi Tôm 40g',                    'Oishi',         'Thực phẩm',        'Gói',  'Snack tôm Oishi giòn tan',                    'SEED'),
+    ('8936120280019', 'Kẹo Mentos Bạc Hà 37.5g',               'Mentos',        'Thực phẩm',        'Cuộn', 'Kẹo Mentos hương bạc hà',                    'SEED'),
+    ('8934588020138', 'Nước Mắm Nam Ngư 500ml',                 'Masan',         'Thực phẩm',        'Chai', 'Nước mắm đặc biệt Nam Ngư 500ml',            'SEED'),
+    ('8934588020015', 'Tương Ớt Chinsu 250g',                   'Chinsu',        'Thực phẩm',        'Chai', 'Tương ớt Chinsu đặc biệt',                   'SEED'),
+    ('8934822400014', 'Bia Tiger 330ml (lon)',                    'Heineken',      'Đồ uống',          'Lon',  'Bia Tiger lon 330ml',                         'SEED'),
+    ('8934822400021', 'Bia Heineken 330ml (lon)',                 'Heineken',      'Đồ uống',          'Lon',  'Bia Heineken lon 330ml',                      'SEED'),
+    ('8934822400045', 'Bia Saigon Đỏ 333ml (lon)',              'Sabeco',        'Đồ uống',          'Lon',  'Bia Saigon Đỏ lon 333ml',                    'SEED'),
+    ('8934868202099', 'Cà Phê Trung Nguyên 1 500g',             'Trung Nguyên', 'Đồ uống',          'Gói',  'Cà phê rang xay Trung Nguyên loại 1',         'SEED'),
+    ('8936014130006', 'Cà Phê Nescafé Classic 200g',            'Nestlé',        'Đồ uống',          'Hộp',  'Cà phê hoà tan Nescafé Classic',              'SEED')
+ON CONFLICT (barcode) DO NOTHING;
