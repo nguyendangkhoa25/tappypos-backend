@@ -3,12 +3,10 @@ package com.knp.util;
 import com.knp.model.enums.PawnInterestCalculation;
 import com.knp.model.enums.PawnStatus;
 
-import static com.knp.model.enums.PawnInterestCalculation.INTEREST_BY_DAY_FULL_MONTH;
-
 public class PawnUtil {
 
-    public static String getPawnInterestCalculation(Integer interestDaysPerMonth) {
-        return PawnInterestCalculation.stream().filter(item -> item.code == interestDaysPerMonth).findFirst().orElse(INTEREST_BY_DAY_FULL_MONTH).label;
+    public static String getPawnInterestCalculation(String interestCalcMode) {
+        return PawnInterestCalculation.fromCode(interestCalcMode).label;
     }
 
     public static String getPawnStatusLabel(String pawnStatus) {

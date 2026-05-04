@@ -33,7 +33,7 @@ public class PawnAudit {
     private String forfeitedReason;
     private BigDecimal forfeitedAmount;
     private LocalDateTime forfeitedDate;
-    private Integer interestDaysPerMonth;
+    private String interestCalcMode;
     private String createdBy;
     private LocalDateTime createdAt;
     private String updatedBy;

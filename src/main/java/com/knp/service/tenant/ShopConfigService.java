@@ -102,6 +102,21 @@ public class ShopConfigService {
         set(ShopConfigKey.DASHBOARD_WIDGETS, widgetIds == null ? null : String.join(",", widgetIds));
     }
 
+    // ── Mobile navigation config ────────────────────────────────────────────────
+
+    public List<String> getNavConfig() {
+        String raw = getString(ShopConfigKey.NAV_CONFIG);
+        if (raw == null || raw.isBlank()) return null;
+        return Arrays.stream(raw.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .collect(Collectors.toList());
+    }
+
+    public void setNavConfig(List<String> items) {
+        set(ShopConfigKey.NAV_CONFIG, items == null ? null : String.join(",", items));
+    }
+
     // ── Internal ────────────────────────────────────────────────────────────────
 
     private Optional<String> getRaw(ShopConfigKey key) {

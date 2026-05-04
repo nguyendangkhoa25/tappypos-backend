@@ -14,8 +14,13 @@ import com.knp.model.mapper.PawnMapper;
 import com.knp.multitenant.TenantContext;
 import com.knp.repository.customer.CustomerRepository;
 import com.knp.repository.pawn.PawnAuditRepository;
+import com.knp.repository.pawn.PawnElectronicsRepository;
+import com.knp.repository.pawn.PawnGeneralRepository;
 import com.knp.repository.pawn.PawnQueryRepository;
+import com.knp.repository.pawn.PawnRealEstateRepository;
 import com.knp.repository.pawn.PawnRepository;
+import com.knp.repository.pawn.PawnVehicleRepository;
+import com.knp.repository.pawn.PawnWatchRepository;
 import com.knp.repository.pawn.ReqMoneyRepository;
 import com.knp.service.MessageService;
 import com.knp.service.audit.ActivityLogService;
@@ -24,6 +29,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -61,6 +67,11 @@ class PawnServiceImplTest {
     @Mock private ShopInfoService shopInfoService;
     @Mock private TenantContext tenantContext;
     @Mock private MessageService messageService;
+    @Mock private PawnElectronicsRepository electronicsRepository;
+    @Mock private PawnVehicleRepository vehicleRepository;
+    @Mock private PawnWatchRepository watchRepository;
+    @Mock private PawnRealEstateRepository realEstateRepository;
+    @Mock private PawnGeneralRepository generalRepository;
 
     @InjectMocks
     private PawnServiceImpl pawnService;
@@ -306,7 +317,7 @@ class PawnServiceImplTest {
     @Test
     @DisplayName("calculatePawnRedeem computes interest for pawned item (no req moneys)")
     void testCalculatePawnRedeem_NoReqMoneys() {
-        pawnEntity.setInterestDaysPerMonth(30);
+        pawnEntity.setInterestCalcMode("DAILY_30");
         pawnResponse.setPawnDate(LocalDateTime.now().minusDays(30));
         pawnResponse.setPawnAmount(new BigDecimal("5000000"));
         pawnResponse.setInterestRate(new BigDecimal("3"));
@@ -457,7 +468,7 @@ class PawnServiceImplTest {
 
         when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
         when(reqMoneyRepository.save(any(ReqMoneyEntity.class))).thenReturn(savedEntity);
-        when(pawnMapper.fromReqMoneyEntity(savedEntity)).thenReturn(response);
+        when(pawnMapper.fromReqMoneyEntity(any(ReqMoneyEntity.class))).thenReturn(response);
 
         ReqMoneyResponse result = pawnService.requestMoreMoney(1L, request);
 
@@ -491,7 +502,7 @@ class PawnServiceImplTest {
 
         when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
         when(reqMoneyRepository.save(any(ReqMoneyEntity.class))).thenReturn(savedEntity);
-        when(pawnMapper.fromReqMoneyEntity(savedEntity)).thenReturn(response);
+        when(pawnMapper.fromReqMoneyEntity(any(ReqMoneyEntity.class))).thenReturn(response);
 
         ReqMoneyResponse result = pawnService.requestMoreMoney(1L, request);
 
@@ -561,8 +572,8 @@ class PawnServiceImplTest {
         req.setPawnAmount(new BigDecimal("2000000"));
         req.setInterestRate(new BigDecimal("3"));
 
-        when(customerRepository.findByName("Khách vãng lai")).thenReturn(Optional.empty());
-        Customer savedGuest = Customer.builder().name("Khách vãng lai").phone("00000001").build();
+        when(customerRepository.findByPhone("0000000000")).thenReturn(Optional.empty());
+        Customer savedGuest = Customer.builder().name("Khách vãng lai").phone("0000000000").build();
         savedGuest.setId(99L);
         when(customerRepository.save(any(Customer.class))).thenReturn(savedGuest);
 
@@ -598,9 +609,10 @@ class PawnServiceImplTest {
         when(queryRepository.findAll(any(Specification.class), any(PageRequest.class)))
                 .thenReturn(new PageImpl<>(List.of(query)));
         when(pawnMapper.fromPawnQuery(query)).thenReturn(pawnResponse);
+        when(queryRepository.getSummary(any(Specification.class))).thenReturn(null);
 
         SearchPawnRequest searchReq = SearchPawnRequest.builder().build();
-        Page<PawnResponse> result = pawnService.getPawns(PageRequest.of(0, 10), searchReq);
+        PawnSearchResponse result = pawnService.getPawns(PageRequest.of(0, 10), searchReq);
 
         assertThat(result.getContent()).hasSize(1);
     }
@@ -612,8 +624,9 @@ class PawnServiceImplTest {
         when(shopInfoService.getExcludeVisibleItemFlag()).thenReturn(true);
         when(queryRepository.findAll(any(Specification.class), any(PageRequest.class)))
                 .thenReturn(new PageImpl<>(Collections.emptyList()));
+        when(queryRepository.getSummary(any(Specification.class))).thenReturn(null);
 
-        Page<PawnResponse> result = pawnService.getPawns(PageRequest.of(0, 10), SearchPawnRequest.builder().build());
+        PawnSearchResponse result = pawnService.getPawns(PageRequest.of(0, 10), SearchPawnRequest.builder().build());
 
         assertThat(result.getContent()).isEmpty();
     }
@@ -858,7 +871,7 @@ class PawnServiceImplTest {
     @Test
     @DisplayName("calculatePawnRedeem: uses 25-day interest mode")
     void testCalculatePawnRedeem_25DayMode() {
-        pawnEntity.setInterestDaysPerMonth(25);
+        pawnEntity.setInterestCalcMode("DAILY_25");
         pawnResponse.setPawnDate(LocalDateTime.now().minusDays(35));
         pawnResponse.setPawnAmount(new BigDecimal("5000000"));
         pawnResponse.setInterestRate(new BigDecimal("3"));
@@ -875,9 +888,9 @@ class PawnServiceImplTest {
     }
 
     @Test
-    @DisplayName("calculatePawnRedeem: uses full-month interest mode (day count = full month code)")
+    @DisplayName("calculatePawnRedeem: uses full-month interest mode (rounds up to next full month)")
     void testCalculatePawnRedeem_FullMonthMode() {
-        pawnEntity.setInterestDaysPerMonth(31);
+        pawnEntity.setInterestCalcMode("MONTHLY");
         pawnResponse.setPawnDate(LocalDateTime.now().minusDays(20));
         pawnResponse.setPawnAmount(new BigDecimal("2000000"));
         pawnResponse.setInterestRate(new BigDecimal("2"));
@@ -899,7 +912,7 @@ class PawnServiceImplTest {
         RedeemRequest redeemRequest = new RedeemRequest();
         redeemRequest.setExtendingRequest(true);
 
-        pawnEntity.setInterestDaysPerMonth(30);
+        pawnEntity.setInterestCalcMode("DAILY_30");
         pawnResponse.setPawnDate(LocalDateTime.now().minusDays(10));
         pawnResponse.setPawnAmount(new BigDecimal("3000000"));
         pawnResponse.setInterestRate(new BigDecimal("2"));
@@ -914,5 +927,295 @@ class PawnServiceImplTest {
 
         assertThat(result.getInterestAmount()).isNotNull();
         assertThat(result.getHeldDays()).isEqualTo(10);
+    }
+
+    // ── B6: request-level interestCalcMode overrides entity's stored mode ────
+
+    @Test
+    @DisplayName("calculatePawnRedeem: request-level interestCalcMode overrides entity's stored DAILY_30 with MONTHLY")
+    void testCalculatePawnRedeem_RequestOverridesCalcMode() {
+        pawnEntity.setInterestCalcMode("DAILY_30");
+        pawnEntity.getReqMoneys().clear();
+        pawnResponse.setPawnDate(LocalDateTime.now().minusDays(30));
+        pawnResponse.setPawnAmount(new BigDecimal("10000000"));
+        pawnResponse.setInterestRate(new BigDecimal("3"));
+
+        RedeemRequest redeemRequest = new RedeemRequest();
+        redeemRequest.setInterestCalcMode("MONTHLY");
+
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+        when(pawnMapper.fromPawnEntity(pawnEntity)).thenReturn(pawnResponse);
+        when(customerRepository.findById(10L)).thenReturn(Optional.empty());
+        when(auditRepository.findByPawnIdOrderByActionIdAsc(1L)).thenReturn(List.of());
+
+        PawnResponse result = pawnService.calculatePawnRedeem(1L, redeemRequest);
+
+        // pawnDate=30 days ago → dateBetween=30 → pawnedDays=31
+        // MONTHLY: months=(31+29)/30=2; interest=10M * 0.03 * 2 = 600,000
+        // DAILY_30 would give 10M * 0.03 / 30 * 31 = 310,000 — confirms MONTHLY won
+        assertThat(result.getInterestAmount()).isEqualByComparingTo(new BigDecimal("600000"));
+    }
+
+    // ── B5: reqMoneys interest and principal accumulation ─────────────────────
+
+    @Test
+    @DisplayName("calculatePawnRedeem: accumulates interest from each reqMoney disbursement")
+    void testCalculatePawnRedeem_WithReqMoneys_AccumulatesInterest() {
+        ReqMoneyEntity reqMoneyEntity = ReqMoneyEntity.builder()
+                .requestId(5L).pawnId(1L)
+                .requestAmount(new BigDecimal("2000000"))
+                .requestDate(LocalDateTime.now().minusDays(15))
+                .build();
+
+        pawnEntity = PawnEntity.builder()
+                .pawnId(1L).customerId(10L).pawnStatus(PawnStatus.PAWNED)
+                .pawnAmount(new BigDecimal("5000000")).interestRate(new BigDecimal("3"))
+                .interestCalcMode("DAILY_30")
+                .reqMoneys(Set.of(reqMoneyEntity))
+                .build();
+
+        pawnResponse.setPawnDate(LocalDateTime.now().minusDays(30));
+        pawnResponse.setPawnAmount(new BigDecimal("5000000"));
+        pawnResponse.setInterestRate(new BigDecimal("3"));
+
+        ReqMoneyResponse reqMoneyResponse = new ReqMoneyResponse();
+        reqMoneyResponse.setRequestId(5L);
+        reqMoneyResponse.setRequestAmount(new BigDecimal("2000000"));
+
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+        when(pawnMapper.fromPawnEntity(pawnEntity)).thenReturn(pawnResponse);
+        when(customerRepository.findById(10L)).thenReturn(Optional.empty());
+        when(auditRepository.findByPawnIdOrderByActionIdAsc(1L)).thenReturn(List.of());
+        when(pawnMapper.fromReqMoneyEntity(reqMoneyEntity)).thenReturn(reqMoneyResponse);
+
+        PawnResponse result = pawnService.calculatePawnRedeem(1L, null);
+
+        // Main: pawnDate=30 days ago → pawnedDays=31; 5M * 0.03 / 30 * 31 = 155,000
+        // ReqMoney: requestDate=15 days ago → dateBetween=15 → pawnedDays=16; 2M * 0.03 / 30 * 16 = 32,000
+        // Total interest = 187,000; total amount = 5M + 2M + 187,000 = 7,187,000
+        assertThat(result.getInterestAmount()).isEqualByComparingTo(new BigDecimal("187000"));
+        assertThat(result.getReqMoneys()).hasSize(1);
+        assertThat(result.getTotalAmount()).isEqualByComparingTo(new BigDecimal("7187000"));
+    }
+
+    // ── BIWEEKLY interest mode ────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("calculatePawnRedeem: biweekly mode rounds up to next half-month period")
+    void testCalculatePawnRedeem_BiweeklyMode() {
+        pawnEntity.setInterestCalcMode("BIWEEKLY");
+        pawnEntity.getReqMoneys().clear();
+        pawnResponse.setPawnDate(LocalDateTime.now().minusDays(14));
+        pawnResponse.setPawnAmount(new BigDecimal("2000000"));
+        pawnResponse.setInterestRate(new BigDecimal("3"));
+
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+        when(pawnMapper.fromPawnEntity(pawnEntity)).thenReturn(pawnResponse);
+        when(customerRepository.findById(10L)).thenReturn(Optional.empty());
+        when(auditRepository.findByPawnIdOrderByActionIdAsc(1L)).thenReturn(List.of());
+
+        PawnResponse result = pawnService.calculatePawnRedeem(1L, null);
+
+        // pawnDate=14 days ago → dateBetween=14 → pawnedDays=15
+        // halfMonths=(15+14)/15=1; interest=2M * 0.03 * 1 / 2 = 30,000
+        assertThat(result.getInterestAmount()).isEqualByComparingTo(new BigDecimal("30000"));
+    }
+
+    // ── calculateHeldDays: same-day minimum ──────────────────────────────────
+
+    @Test
+    @DisplayName("calculatePawnRedeem: same-day redemption charges minimum 1 day interest")
+    void testCalculatePawnRedeem_SameDayChargesOneDay() {
+        pawnEntity.setInterestCalcMode("DAILY_30");
+        pawnEntity.getReqMoneys().clear();
+        pawnResponse.setPawnDate(LocalDateTime.now());
+        pawnResponse.setPawnAmount(new BigDecimal("3000000"));
+        pawnResponse.setInterestRate(new BigDecimal("3"));
+
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+        when(pawnMapper.fromPawnEntity(pawnEntity)).thenReturn(pawnResponse);
+        when(customerRepository.findById(10L)).thenReturn(Optional.empty());
+        when(auditRepository.findByPawnIdOrderByActionIdAsc(1L)).thenReturn(List.of());
+
+        PawnResponse result = pawnService.calculatePawnRedeem(1L, null);
+
+        // dateBetween=0 → pawnedDays=1; 3M * 0.03 / 30 * 1 = 3,000
+        assertThat(result.getHeldDays()).isEqualTo(1);
+        assertThat(result.getInterestAmount()).isEqualByComparingTo(new BigDecimal("3000"));
+    }
+
+    // ── requestMoreMoney: blocked by terminal statuses ────────────────────────
+
+    @Test
+    @DisplayName("requestMoreMoney throws PawnStatusNotAllowException when pawn is CANCELLED")
+    void testRequestMoreMoney_ThrowsWhenCancelled() {
+        pawnEntity.setPawnStatus(PawnStatus.CANCELLED);
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+
+        assertThatThrownBy(() -> pawnService.requestMoreMoney(1L, new ReqMoneyRequest()))
+                .isInstanceOf(PawnStatusNotAllowException.class);
+    }
+
+    @Test
+    @DisplayName("requestMoreMoney throws PawnStatusNotAllowException when pawn is REDEEMED")
+    void testRequestMoreMoney_ThrowsWhenRedeemed() {
+        pawnEntity.setPawnStatus(PawnStatus.REDEEMED);
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+
+        assertThatThrownBy(() -> pawnService.requestMoreMoney(1L, new ReqMoneyRequest()))
+                .isInstanceOf(PawnStatusNotAllowException.class);
+    }
+
+    @Test
+    @DisplayName("requestMoreMoney throws PawnStatusNotAllowException when pawn is FORFEITED")
+    void testRequestMoreMoney_ThrowsWhenForfeited() {
+        pawnEntity.setPawnStatus(PawnStatus.FORFEITED);
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+
+        assertThatThrownBy(() -> pawnService.requestMoreMoney(1L, new ReqMoneyRequest()))
+                .isInstanceOf(PawnStatusNotAllowException.class);
+    }
+
+    // ── forfeitPawnByPawnId: amount validation ────────────────────────────────
+
+    @Test
+    @DisplayName("forfeitPawnByPawnId throws IllegalArgumentException when interestAmount is null")
+    void testForfeitPawnByPawnId_ThrowsWhenInterestAmountNull() {
+        ForfeitRequest request = new ForfeitRequest();
+        request.setInterestAmount(null);
+        request.setTotalAmount(new BigDecimal("4500000"));
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+
+        assertThatThrownBy(() -> pawnService.forfeitPawnByPawnId(1L, request))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("forfeitPawnByPawnId throws IllegalArgumentException when interestAmount is negative")
+    void testForfeitPawnByPawnId_ThrowsWhenInterestAmountNegative() {
+        ForfeitRequest request = new ForfeitRequest();
+        request.setInterestAmount(new BigDecimal("-1"));
+        request.setTotalAmount(new BigDecimal("4500000"));
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+
+        assertThatThrownBy(() -> pawnService.forfeitPawnByPawnId(1L, request))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("forfeitPawnByPawnId throws IllegalArgumentException when totalAmount is zero")
+    void testForfeitPawnByPawnId_ThrowsWhenTotalAmountZero() {
+        ForfeitRequest request = new ForfeitRequest();
+        request.setInterestAmount(new BigDecimal("450000"));
+        request.setTotalAmount(BigDecimal.ZERO);
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+
+        assertThatThrownBy(() -> pawnService.forfeitPawnByPawnId(1L, request))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    // ── createPawn: visiting guest reuses existing walk-in customer ───────────
+
+    @Test
+    @DisplayName("createPawn: reuses existing walk-in customer instead of creating a new one")
+    @SuppressWarnings("unchecked")
+    void testCreatePawn_VisitingGuest_ReuseExistingCustomer() {
+        PawnRequest req = new PawnRequest();
+        req.setVisitingGuest(true);
+        req.setCustomerId(0L);
+        req.setItemName("Điện thoại");
+        req.setPawnDate(LocalDateTime.now());
+        req.setPawnDueDate(LocalDateTime.now().plusDays(30));
+        req.setPawnAmount(new BigDecimal("2000000"));
+        req.setInterestRate(new BigDecimal("3"));
+
+        com.knp.model.entity.customer.Customer existingGuest = com.knp.model.entity.customer.Customer.builder()
+                .name("Khách vãng lai").phone("0000000000").build();
+        existingGuest.setId(99L);
+        when(customerRepository.findByPhone("0000000000")).thenReturn(Optional.of(existingGuest));
+
+        PawnEntity mappedEntity = PawnEntity.builder().customerId(99L).itemName("Điện thoại")
+                .pawnAmount(new BigDecimal("2000000")).interestRate(new BigDecimal("3")).build();
+        PawnEntity savedEntity = PawnEntity.builder().pawnId(3L).customerId(99L).itemName("Điện thoại")
+                .pawnStatus(PawnStatus.PAWNED).pawnAmount(new BigDecimal("2000000"))
+                .interestRate(new BigDecimal("3")).build();
+        PawnResponse resp = new PawnResponse();
+        resp.setPawnId(3L);
+
+        when(pawnMapper.fromPawnRequest(req)).thenReturn(mappedEntity);
+        when(pawnRepository.save(any(PawnEntity.class))).thenReturn(savedEntity);
+        when(pawnRepository.findById(3L)).thenReturn(Optional.of(savedEntity));
+        when(pawnMapper.fromPawnEntity(savedEntity)).thenReturn(resp);
+        when(customerRepository.findById(99L)).thenReturn(Optional.empty());
+        when(auditRepository.findByPawnIdOrderByActionIdAsc(3L)).thenReturn(List.of());
+
+        pawnService.createPawn(req);
+
+        verify(customerRepository, never()).save(any(com.knp.model.entity.customer.Customer.class));
+    }
+
+    // ── extendPawn: reqMoney amounts rolled into new pawnAmount ──────────────
+
+    @Test
+    @DisplayName("extendPawn: new pawn amount includes all reqMoney disbursements from original")
+    void testExtendPawn_AccumulatesReqMoneys() {
+        ReqMoneyEntity reqMoney = ReqMoneyEntity.builder()
+                .requestId(7L).pawnId(1L).requestAmount(new BigDecimal("1000000")).build();
+        PawnEntity originalPawn = PawnEntity.builder()
+                .pawnId(1L).customerId(10L).itemName("Dây chuyền vàng")
+                .pawnStatus(PawnStatus.PAWNED)
+                .pawnAmount(new BigDecimal("5000000"))
+                .interestRate(new BigDecimal("3"))
+                .interestCalcMode("DAILY_30")
+                .reqMoneys(new HashSet<>(Set.of(reqMoney)))
+                .build();
+
+        PawnRequest req = new PawnRequest();
+        req.setItemName("Dây chuyền vàng");
+        req.setPawnDate(LocalDateTime.now());
+        req.setPawnDueDate(LocalDateTime.now().plusDays(30));
+        req.setExtendDate(LocalDateTime.now());
+        req.setExtendDueDate(LocalDateTime.now().plusDays(30));
+        req.setPawnAmount(new BigDecimal("6000000"));
+        req.setInterestRate(new BigDecimal("3"));
+        req.setPawnStatus(PawnStatus.PAWNED);
+
+        PawnEntity extendedPawn = PawnEntity.builder()
+                .pawnId(2L).customerId(10L).itemName("Dây chuyền vàng")
+                .pawnStatus(PawnStatus.PAWNED).pawnAmount(new BigDecimal("6000000"))
+                .interestRate(new BigDecimal("3")).reqMoneys(new HashSet<>()).build();
+
+        ArgumentCaptor<PawnEntity> saveCaptor = ArgumentCaptor.forClass(PawnEntity.class);
+
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(originalPawn));
+        when(pawnRepository.findById(2L)).thenReturn(Optional.of(extendedPawn));
+        when(pawnRepository.save(saveCaptor.capture())).thenReturn(originalPawn).thenReturn(extendedPawn);
+        when(pawnMapper.fromPawnEntity(extendedPawn)).thenReturn(pawnResponse);
+        when(customerRepository.findById(10L)).thenReturn(Optional.empty());
+        when(auditRepository.findByPawnIdOrderByActionIdAsc(2L)).thenReturn(List.of());
+
+        pawnService.extendPawn(1L, req);
+
+        // Second save is the new extended pawn; amount should be 5M + 1M (reqMoney) = 6M
+        List<PawnEntity> captured = saveCaptor.getAllValues();
+        assertThat(captured).hasSizeGreaterThanOrEqualTo(2);
+        assertThat(captured.get(1).getPawnAmount()).isEqualByComparingTo(new BigDecimal("6000000"));
+    }
+
+    // ── deletePawnByPawnIds: category child table cleanup ─────────────────────
+
+    @Test
+    @DisplayName("deletePawnByPawnIds: invokes all category child table cleanup repositories before main delete")
+    void testDeletePawnByPawnIds_CleansUpCategoryRepositories() {
+        when(pawnRepository.findAllById(List.of(1L))).thenReturn(List.of(pawnEntity));
+
+        pawnService.deletePawnByPawnIds(List.of(1L));
+
+        verify(electronicsRepository).deleteByPawnIdIn(List.of(1L));
+        verify(vehicleRepository).deleteByPawnIdIn(List.of(1L));
+        verify(watchRepository).deleteByPawnIdIn(List.of(1L));
+        verify(realEstateRepository).deleteByPawnIdIn(List.of(1L));
+        verify(generalRepository).deleteByPawnIdIn(List.of(1L));
+        verify(pawnRepository).deleteAllByIdInBatch(List.of(1L));
     }
 }

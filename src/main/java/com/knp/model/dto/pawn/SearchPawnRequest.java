@@ -25,4 +25,11 @@ public class SearchPawnRequest {
     private DateFilterRequest pawnDate;
     private DateFilterRequest forfeitedDate;
     private DateFilterRequest requestDate;
+    private String pawnCategory;
+    private String brand;
+    private String model;
+    private String licensePlate;
+    private String imei;
+    private String condition;
+    private Boolean todayFilter;
 }

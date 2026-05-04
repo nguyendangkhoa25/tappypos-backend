@@ -9,6 +9,7 @@ import com.knp.model.dto.tenant.ReceiptTemplateConfig;
 import com.knp.model.dto.tenant.SavePrintTemplateRequest;
 import com.knp.model.dto.tenant.StampTemplateConfig;
 import com.knp.model.entity.tenant.PrintTemplate;
+import com.knp.multitenant.TenantContext;
 import com.knp.repository.tenant.PrintTemplateRepository;
 import com.knp.service.MessageService;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,12 +36,13 @@ class PrintTemplateServiceTest {
 
     @Mock private PrintTemplateRepository repo;
     @Mock private MessageService messageService;
+    @Mock private TenantContext tenantContext;
 
     private PrintTemplateService service;
 
     @BeforeEach
     void setUp() {
-        service = new PrintTemplateService(repo, new ObjectMapper(), messageService);
+        service = new PrintTemplateService(repo, new ObjectMapper(), messageService, tenantContext);
         // Stub messages whose content is asserted in exception tests
         lenient().when(messageService.getMessage(eq("error.printTemplate.wrongType"), any(Object[].class)))
                 .thenReturn("Template does not belong to type RECEIPT");

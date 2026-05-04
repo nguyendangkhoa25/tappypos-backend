@@ -13,7 +13,6 @@ import com.knp.service.MessageService;
 import com.knp.service.audit.ActivityLogService;
 import com.knp.service.notification.NotificationService;
 
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -62,8 +61,8 @@ public class AgentService {
         String actorFullName = userRepository.findByUsernameTenantScoped(actorUsername)
                 .map(u -> u.getFullName()).orElse(actorUsername);
         activityLogService.logAsync("master", actorUsername, actorFullName,
-                ActivityAction.VENDOR_CREATED, "VENDOR", String.valueOf(saved.getId()),
-                "Created agent: " + saved.getName(), null);
+                ActivityAction.AGENT_CREATED, "AGENT", String.valueOf(saved.getId()),
+                "Tạo đại lý: " + saved.getName(), null);
         String title = messageService.getMessage("notification.master.vendor.created.title");
         String msg = messageService.getMessage("notification.master.vendor.created.message",
                 saved.getName(), actorUsername);
@@ -81,7 +80,14 @@ public class AgentService {
         agent.setContactEmail(request.getContactEmail());
         agent.setContactPhone(request.getContactPhone());
         agent.setNotes(request.getNotes());
-        return toDTO(agentRepository.save(agent));
+        Agent updated = agentRepository.save(agent);
+
+        String actorUsername = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync("master", actorUsername, null,
+                ActivityAction.AGENT_UPDATED, "AGENT", String.valueOf(updated.getId()),
+                "Cập nhật đại lý: " + updated.getName(), null);
+
+        return toDTO(updated);
     }
 
     public void delete(Long id) {

@@ -1,5 +1,6 @@
 package com.knp.service.tenant;
 
+import com.knp.model.dto.tenant.InitialShopConfigRequest;
 import com.knp.model.dto.tenant.RoleSetupRequest;
 import com.knp.model.entity.auth.Role;
 import com.knp.model.entity.customer.Customer;
@@ -69,6 +70,23 @@ public class TenantProvisioningService {
         SHOP_TYPE_WIDGET_DEFAULTS = Collections.unmodifiableMap(m);
     }
 
+    private static final Map<ShopType, String> SHOP_TYPE_NAV_DEFAULTS;
+    static {
+        Map<ShopType, String> m = new EnumMap<>(ShopType.class);
+        m.put(ShopType.JEWELRY,            "home,pawn,pos,customers,orders,dashboard,users");
+        m.put(ShopType.PAWN_SHOP,          "home,pawn,customers,orders,dashboard,users");
+        m.put(ShopType.CONVENIENCE_STORE,  "home,pos,orders,customers,dashboard,users");
+        m.put(ShopType.PHARMACY,           "home,pos,orders,customers,dashboard,users");
+        m.put(ShopType.ELECTRONICS,        "home,pos,orders,customers,dashboard,users");
+        m.put(ShopType.FOOD_BEVERAGE,      "home,orders,pos,customers,dashboard,users");
+        m.put(ShopType.FASHION,            "home,pos,orders,customers,dashboard,users");
+        m.put(ShopType.BARBER_SHOP,        "home,orders,customers,dashboard,users");
+        m.put(ShopType.COFFEE_SHOP,        "home,orders,pos,customers,dashboard,users");
+        m.put(ShopType.RESTAURANT,         "home,orders,pos,customers,dashboard,users");
+        m.put(ShopType.OTHER,              "home,pos,orders,customers,dashboard,users");
+        SHOP_TYPE_NAV_DEFAULTS = Collections.unmodifiableMap(m);
+    }
+
     // Role → list of feature keys the role receives by default
     private static final Map<String, List<String>> ROLE_FEATURES;
     static {
@@ -120,7 +138,8 @@ public class TenantProvisioningService {
     }
 
     public void provision(Tenant tenant, String adminUsername, String adminPassword,
-                          List<RoleSetupRequest> roleSetups, String shopAddress) {
+                          List<RoleSetupRequest> roleSetups, String shopAddress,
+                          InitialShopConfigRequest initialConfig) {
         log.info("Provisioning default data for tenant: {}", tenant.getTenantId());
 
         String tenantId = tenant.getTenantId();
@@ -137,6 +156,9 @@ public class TenantProvisioningService {
 
         try { seedDefaultConfig(tenant.getShopType()); }
         catch (Exception e) { log.warn("seedDefaultConfig failed for tenant {}: {}", tenantId, e.getMessage()); }
+
+        try { applyInitialConfig(initialConfig); }
+        catch (Exception e) { log.warn("applyInitialConfig failed for tenant {}: {}", tenantId, e.getMessage()); }
 
         try { seedWalkInCustomer(tenantId); }
         catch (Exception e) { log.warn("seedWalkInCustomer failed for tenant {}: {}", tenantId, e.getMessage()); }
@@ -221,7 +243,22 @@ public class TenantProvisioningService {
         String widgetDefault = SHOP_TYPE_WIDGET_DEFAULTS.getOrDefault(shopType,
                 "ORDERS,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");
         shopConfigService.seedIfAbsent(ShopConfigKey.DASHBOARD_WIDGETS, widgetDefault);
+        String navDefault = SHOP_TYPE_NAV_DEFAULTS.getOrDefault(shopType,
+                "home,pos,orders,customers,dashboard,users");
+        shopConfigService.seedIfAbsent(ShopConfigKey.NAV_CONFIG, navDefault);
         log.debug("Seeded default shop_config for shopType: {}", shopType);
+    }
+
+    private void applyInitialConfig(InitialShopConfigRequest cfg) {
+        if (cfg == null) return;
+        if (cfg.getPosMode() != null && !cfg.getPosMode().isBlank()) {
+            shopConfigService.set(ShopConfigKey.POS_MODE, cfg.getPosMode());
+            log.debug("Applied initial POS_MODE: {}", cfg.getPosMode());
+        }
+        if (cfg.getPawnCategoryConfig() != null && !cfg.getPawnCategoryConfig().isBlank()) {
+            shopConfigService.set(ShopConfigKey.PAWN_CATEGORY_CONFIG, cfg.getPawnCategoryConfig());
+            log.debug("Applied initial PAWN_CATEGORY_CONFIG");
+        }
     }
 
     private void seedWalkInCustomer(String tenantId) {

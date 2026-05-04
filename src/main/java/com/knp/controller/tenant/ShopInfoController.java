@@ -159,6 +159,20 @@ public class ShopInfoController {
         return ResponseEntity.ok(ApiResponse.success(widgetIds, "Dashboard widgets updated successfully"));
     }
 
+    @GetMapping("/nav-config")
+    public ResponseEntity<ApiResponse<List<String>>> getNavConfig() {
+        log.info("Endpoint: GET /shop-info/nav-config");
+        List<String> items = shopConfigService.getNavConfig();
+        return ResponseEntity.ok(ApiResponse.success(items, "Nav config retrieved successfully"));
+    }
+
+    @PutMapping("/nav-config")
+    public ResponseEntity<ApiResponse<List<String>>> updateNavConfig(@RequestBody List<String> items) {
+        log.info("Endpoint: PUT /shop-info/nav-config - count: {}", items == null ? 0 : items.size());
+        shopConfigService.setNavConfig(items);
+        return ResponseEntity.ok(ApiResponse.success(items, "Nav config updated successfully"));
+    }
+
     @RequiresFeature("DASHBOARD")
     @GetMapping("/public")
     public ResponseEntity<ApiResponse<PublicShopInfoDTO>> getPublicShopInfo() {

@@ -46,8 +46,14 @@ public class PawnRequest {
     private boolean visitingGuest;
     private String customerName;
     private List<Long> deletedRequestIds;
-    private Integer interestDaysPerMonth;
+    private String interestCalcMode;
     private String requestType = "";
     private long heldDays;
     private boolean visible = true;
+    private String pawnCategory;
+    private PawnElectronicsDetail electronicsDetail;
+    private PawnVehicleDetail vehicleDetail;
+    private PawnWatchDetail watchDetail;
+    private PawnRealEstateDetail realEstateDetail;
+    private PawnGeneralDetail generalDetail;
 }

@@ -44,6 +44,7 @@ public class ActivityLogServiceImpl implements ActivityLogService {
 
         try {
             ActivityLog entry = ActivityLog.builder()
+                    .tenantId(isMaster ? null : tenantId)
                     .actorUsername(actorUsername)
                     .actorFullName(actorFullName)
                     .action(action.name())

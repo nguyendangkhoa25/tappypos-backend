@@ -26,9 +26,13 @@ public enum ShopConfigKey {
     PAWN_INTEREST_TYPE("pawn_interest_type", "PAWN", false),
     PAWN_DUE_DATE("pawn_due_date", "PAWN", false),
     PAWN_EXCLUDE_VISIBLE_ITEM("pawn_exclude_visible_item", "PAWN", false),
+    PAWN_CATEGORY_CONFIG("pawn_category_config", "PAWN", false),
 
     // DASHBOARD
     DASHBOARD_WIDGETS("dashboard_widgets", "DASHBOARD", false),
+
+    // NAVIGATION
+    NAV_CONFIG("nav_config", "GENERAL", false),
 
     // PRICING
     PRICE_BOARD_CODE("price_board_code", "PRICING", false);

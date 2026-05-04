@@ -37,6 +37,7 @@ public class ShopInfoDTO {
     private Integer pawnInterestType;
     private Integer pawnDueDate;
     private Boolean excludeVisibleItem;
+    private String pawnCategoryConfig;
 
     private String priceBoardCode;
 }

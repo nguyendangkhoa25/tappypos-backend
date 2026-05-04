@@ -2,6 +2,8 @@ package com.knp.service.feedback;
 
 import com.knp.config.AuthContext;
 import com.knp.exception.ResourceNotFoundException;
+import com.knp.service.audit.ActivityLogService;
+import com.knp.model.enums.ActivityAction;
 import com.knp.model.dto.feedback.CreateFeedbackRequest;
 import com.knp.model.dto.feedback.FeedbackDTO;
 import com.knp.model.dto.feedback.UpdateFeedbackRequest;
@@ -36,6 +38,7 @@ public class FeedbackServiceImpl implements FeedbackService {
     private final NotificationService notificationService;
     private final AgentRepository agentRepository;
     private final UserRepository userRepository;
+    private final ActivityLogService activityLogService;
 
     @Override
     @Transactional
@@ -99,7 +102,12 @@ public class FeedbackServiceImpl implements FeedbackService {
         if (request.getStatus() == FeedbackStatus.RESOLVED || request.getStatus() == FeedbackStatus.CLOSED) {
             feedback.setResolvedAt(LocalDateTime.now());
         }
-        return toDTO(feedbackRepository.save(feedback));
+        UserFeedback saved = feedbackRepository.save(feedback);
+        String reviewer = authContext.getCurrentUsername();
+        activityLogService.logAsync("master", reviewer, null,
+                ActivityAction.FEEDBACK_REVIEWED, "FEEDBACK", String.valueOf(id),
+                "Xử lý phản hồi #" + id + " → " + request.getStatus().getDisplayName(), null);
+        return toDTO(saved);
     }
 
     // After tenantContext.clear() — we are in master context; notifications are saved with tenant_id=null

@@ -160,10 +160,8 @@ public class AuthService {
         sessionRegistry.register(tenantKey, user.getUsername(),
                 new SessionInfo(sessionId, clientIp, userAgent, LocalDateTime.now()));
 
-        if (!isMasterUser) {
-            activityLogService.logAsync(tenantKey, user.getUsername(), user.getFullName(),
-                    ActivityAction.LOGIN, null, null, "Logged in", clientIp);
-        }
+        activityLogService.logAsync(tenantKey, user.getUsername(), user.getFullName(),
+                ActivityAction.LOGIN, null, null, "Đăng nhập", clientIp);
 
         if (StringUtils.isNotEmpty(user.getRequireAction())) {
             log.info("User {} requires action: {}", loginRequest.getUsername(), user.getRequireAction());
@@ -320,6 +318,9 @@ public class AuthService {
                 ? SessionRegistry.MASTER_KEY
                 : tenantContext.getCurrentTenant().getTenantId();
         sessionRegistry.remove(tenantKey, username);
+
+        activityLogService.logAsync(tenantKey, username, user.getFullName(),
+                ActivityAction.LOGOUT, null, null, "Đã đăng xuất", null);
 
         log.info("User logged out: {}", username);
     }

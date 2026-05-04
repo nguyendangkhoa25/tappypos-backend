@@ -6,6 +6,7 @@ import com.knp.model.dto.vendor.SaveVendorRequest;
 import com.knp.model.dto.vendor.VendorDTO;
 import com.knp.model.entity.vendor.Vendor;
 import com.knp.repository.vendor.VendorRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.Collections;
 import java.util.List;
@@ -27,7 +31,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
+import com.knp.multitenant.TenantContext;
 import com.knp.service.MessageService;
+import com.knp.service.audit.ActivityLogService;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("VendorService Unit Tests")
@@ -39,6 +45,12 @@ class VendorServiceTest {
     @Mock
     private MessageService messageService;
 
+    @Mock
+    private ActivityLogService activityLogService;
+
+    @Mock
+    private TenantContext tenantContext;
+
     @InjectMocks
     private VendorService vendorService;
 
@@ -46,8 +58,19 @@ class VendorServiceTest {
     private SaveVendorRequest saveRequest;
     private Pageable pageable;
 
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
     @BeforeEach
     void setUp() {
+        Authentication authentication = mock(Authentication.class);
+        SecurityContext securityContext = mock(SecurityContext.class);
+        lenient().when(securityContext.getAuthentication()).thenReturn(authentication);
+        lenient().when(authentication.getName()).thenReturn("testuser");
+        SecurityContextHolder.setContext(securityContext);
+
         vendor = Vendor.builder()
                 .name("Công ty Vàng Bạc ABC")
                 .code("ABC")

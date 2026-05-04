@@ -8,10 +8,7 @@ import com.knp.service.MessageService;
 import com.knp.exception.ResourceNotFoundException;
 import com.knp.model.dto.customer.CustomerDTO;
 import com.knp.model.dto.pawn.*;
-import com.knp.model.entity.pawn.PawnAuditEntity;
-import com.knp.model.entity.pawn.PawnEntity;
-import com.knp.model.entity.pawn.PawnQuery;
-import com.knp.model.entity.pawn.ReqMoneyEntity;
+import com.knp.model.entity.pawn.*;
 import com.knp.model.enums.ActivityAction;
 import com.knp.model.enums.PawnStatus;
 import com.knp.model.mapper.PawnMapper;
@@ -19,10 +16,7 @@ import com.knp.model.spec.PawnSpecification;
 import com.knp.model.spec.PawnSpecificationBuilder;
 import com.knp.multitenant.TenantContext;
 import com.knp.repository.customer.CustomerRepository;
-import com.knp.repository.pawn.PawnAuditRepository;
-import com.knp.repository.pawn.PawnQueryRepository;
-import com.knp.repository.pawn.PawnRepository;
-import com.knp.repository.pawn.ReqMoneyRepository;
+import com.knp.repository.pawn.*;
 import com.knp.util.DateTimeUtil;
 import com.knp.util.FastExcelHelper;
 import jakarta.validation.constraints.NotBlank;
@@ -45,16 +39,14 @@ import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import com.knp.model.enums.PawnInterestCalculation;
 import static com.knp.model.spec.PawnSpecification.excludeOldRedeemedItems;
-import static com.knp.model.enums.PawnInterestCalculation.INTEREST_BY_DAY_25DAY_PER_MONTH;
-import static com.knp.model.enums.PawnInterestCalculation.INTEREST_BY_DAY_FULL_MONTH;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@Transactional
 public class PawnServiceImpl implements PawnService {
-    private static final int INTEREST_DAY_PER_MONTH = 30;
-
     private final PawnRepository pawnRepository;
     private final PawnQueryRepository queryRepository;
     private final PawnMapper pawnMapper;
@@ -66,6 +58,11 @@ public class PawnServiceImpl implements PawnService {
     private final ShopInfoService shopInfoService;
     private final TenantContext tenantContext;
     private final MessageService messageService;
+    private final PawnElectronicsRepository electronicsRepository;
+    private final PawnVehicleRepository vehicleRepository;
+    private final PawnWatchRepository watchRepository;
+    private final PawnRealEstateRepository realEstateRepository;
+    private final PawnGeneralRepository generalRepository;
 
     @Value("${schedule.cleanup.pawn.cutoffMonths:3}")
     private int cutoffMonths;
@@ -75,19 +72,24 @@ public class PawnServiceImpl implements PawnService {
         log.info("Creating pawn for customer {}", pawnRequest.getCustomerId());
         if (pawnRequest.isVisitingGuest() && (pawnRequest.getCustomerId() == null || pawnRequest.getCustomerId() == 0)) {
             String guestName = StringUtils.isNotEmpty(pawnRequest.getCustomerName()) ? pawnRequest.getCustomerName() : "Khách vãng lai";
-            String guestPhone = "0000000000";
-            Long customerId = customerRepository.findByName(guestName)
+            Long customerId = customerRepository.findByPhone("0000000000")
                     .map(c -> c.getId())
                     .orElseGet(() -> {
                         com.knp.model.entity.customer.Customer guest = com.knp.model.entity.customer.Customer.builder()
                                 .name(guestName)
-                                .phone(guestPhone + System.currentTimeMillis() % 10000)
+                                .phone("0000000000")
                                 .build();
+                        guest.setTenantId(tenantContext.getCurrentTenantId());
                         return customerRepository.save(guest).getId();
                     });
             pawnRequest.setCustomerId(customerId);
+            // Store the per-pawn guest name so it isn't lost when the shared
+            // walk-in customer record already exists with a different name.
+            pawnRequest.setCustomerName(guestName);
         }
         PawnEntity savingPawnEntity = pawnMapper.fromPawnRequest(pawnRequest);
+        savingPawnEntity.setTenantId(tenantContext.getCurrentTenantId());
+        savingPawnEntity.setCustomerName(pawnRequest.getCustomerName());
         savingPawnEntity.setPawnDate(DateTimeUtil.fromLocalDateTime(pawnRequest.getPawnDate()));
         savingPawnEntity.setPawnDueDate(DateTimeUtil.fromLocalDateTime(pawnRequest.getPawnDueDate()));
         savingPawnEntity.setCreatedAt(LocalDateTime.now());
@@ -97,6 +99,7 @@ public class PawnServiceImpl implements PawnService {
         savingPawnEntity.setPawnStatus(PawnStatus.PAWNED);
         savingPawnEntity.setVisible(true);
         PawnEntity savedEntity = pawnRepository.save(savingPawnEntity);
+        saveItemDetail(savedEntity.getPawnId(), tenantContext.getCurrentTenantId(), pawnRequest);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.PAWN_CREATED, "PAWN", String.valueOf(savedEntity.getPawnId()),
                 messageService.getMessage("activity.pawn.created", savedEntity.getItemName()), null);
@@ -104,15 +107,17 @@ public class PawnServiceImpl implements PawnService {
     }
 
     @Override
-    public Page<PawnResponse> getPawns(Pageable pageable, SearchPawnRequest searchRequest) {
+    public PawnSearchResponse getPawns(Pageable pageable, SearchPawnRequest searchRequest) {
         LocalDateTime threeMonthsAgo = LocalDateTime.now().minusMonths(cutoffMonths);
         var specifications = new PawnSpecificationBuilder().buildPawnSpecifications(searchRequest).and(excludeOldRedeemedItems(threeMonthsAgo));
         if (shopInfoService.getExcludeVisibleItemFlag()) {
             specifications = specifications.and(PawnSpecification.includeVisibleStatus());
         }
-        Page<PawnQuery> pawnsPage = queryRepository.findAll(specifications, pageable);
         log.info("Applying Specification: {}", specifications);
-        return pawnsPage.map(pawnMapper::fromPawnQuery);
+        Page<PawnResponse> responsePage = queryRepository.findAll(specifications, pageable).map(pawnMapper::fromPawnQuery);
+        batchEnrichWithItemDetail(responsePage.getContent());
+        PawnSummary summary = queryRepository.getSummary(specifications);
+        return PawnSearchResponse.from(responsePage, summary);
     }
 
     @Override
@@ -125,6 +130,7 @@ public class PawnServiceImpl implements PawnService {
             reqMoneyRepository.deleteAllById(pawnRequest.getDeletedRequestIds());
         }
         PawnEntity savedEntity = pawnRepository.save(pawnEntity);
+        saveItemDetail(savedEntity.getPawnId(), tenantContext.getCurrentTenantId(), pawnRequest);
         ActivityAction activityAction = ActivityAction.PAWN_UPDATED;
         if (StringUtils.isNotEmpty(pawnRequest.getRequestType()) && pawnRequest.getRequestType().equalsIgnoreCase("REDEEMED")) {
             activityAction = ActivityAction.PAWN_REDEEMED;
@@ -157,8 +163,9 @@ public class PawnServiceImpl implements PawnService {
         pawnEntity.setInterestAmount(pawnRequest.getInterestAmount());
         pawnEntity.setPawnStatus(pawnRequest.getPawnStatus());
         pawnEntity.setGemWeight(pawnRequest.getGemWeight());
-        pawnEntity.setInterestDaysPerMonth(pawnRequest.getInterestDaysPerMonth());
-        pawnEntity.setHeldDays(pawnEntity.getHeldDays());
+        pawnEntity.setInterestCalcMode(pawnRequest.getInterestCalcMode());
+        pawnEntity.setHeldDays((int) pawnRequest.getHeldDays());
+        pawnEntity.setPawnCategory(pawnRequest.getPawnCategory());
     }
 
     @Override
@@ -176,11 +183,15 @@ public class PawnServiceImpl implements PawnService {
                     .phone(customer.getPhone())
                     .build();
             pawnResponse.setCustomer(customerDTO);
-            pawnResponse.setCustomerName(customer.getName());
+            // Prefer the name stored on the pawn itself (set at creation for visiting guests).
+            String resolvedName = StringUtils.isNotEmpty(pawnEntity.getCustomerName())
+                    ? pawnEntity.getCustomerName() : customer.getName();
+            pawnResponse.setCustomerName(resolvedName);
             pawnResponse.setPhone(customer.getPhone());
         });
+        enrichWithItemDetail(pawnResponse, pawnId, pawnEntity.getPawnCategory());
         List<PawnAuditEntity> auditEntities = auditRepository.findByPawnIdOrderByActionIdAsc(pawnId);
-        List<PawnAudit> pawnAudits = auditEntities.parallelStream().map(pawnMapper::auditFromPawnAuditEntity).toList();
+        List<PawnAudit> pawnAudits = auditEntities.stream().map(pawnMapper::auditFromPawnAuditEntity).toList();
         pawnResponse.setAudits(pawnAudits);
         return pawnResponse;
     }
@@ -189,6 +200,14 @@ public class PawnServiceImpl implements PawnService {
     public void deletePawnByPawnIds(List<Long> pawnIds) {
         log.info("Process deleting pawns by given PawnIds {}", pawnIds);
         List<PawnEntity> pawnEntities = pawnRepository.findAllById(pawnIds);
+        // Clean up category-specific child tables first — deleteAllByIdInBatch
+        // issues a direct SQL DELETE and bypasses JPA cascade, so orphans must
+        // be removed explicitly.
+        electronicsRepository.deleteByPawnIdIn(pawnIds);
+        vehicleRepository.deleteByPawnIdIn(pawnIds);
+        watchRepository.deleteByPawnIdIn(pawnIds);
+        realEstateRepository.deleteByPawnIdIn(pawnIds);
+        generalRepository.deleteByPawnIdIn(pawnIds);
         pawnRepository.deleteAllByIdInBatch(pawnIds);
         if (CollectionUtils.isNotEmpty(pawnEntities)) {
             pawnEntities.forEach(pawnEntity -> activityLogService.logAsync(
@@ -224,6 +243,10 @@ public class PawnServiceImpl implements PawnService {
         log.info("Process forfeiting pawn by given PawnId {}", pawnId);
         PawnEntity pawnEntity = pawnRepository.findById(pawnId).orElseThrow(ResourceNotFoundException::new);
         validateForfeitStatus(pawnEntity);
+        if (forfeitRequest.getInterestAmount() == null || forfeitRequest.getInterestAmount().compareTo(BigDecimal.ZERO) < 0
+                || forfeitRequest.getTotalAmount() == null || forfeitRequest.getTotalAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException(messageService.getMessage("error.pawn.invalidForfeitAmount"));
+        }
         pawnEntity.setPawnStatus(PawnStatus.FORFEITED);
         pawnEntity.setForfeitedReason(forfeitRequest.getForfeitedReason());
         pawnEntity.setForfeitedDate(DateTimeUtil.fromLocalDateTime(forfeitRequest.getForfeitedDate()));
@@ -259,22 +282,27 @@ public class PawnServiceImpl implements PawnService {
                     .phone(customer.getPhone())
                     .build();
             pawnResponse.setCustomer(customerDTO);
-            pawnResponse.setCustomerName(customer.getName());
+            String resolvedName = StringUtils.isNotEmpty(pawnEntity.getCustomerName())
+                    ? pawnEntity.getCustomerName() : customer.getName();
+            pawnResponse.setCustomerName(resolvedName);
             pawnResponse.setPhone(customer.getPhone());
         });
         if (redeemRequest != null && redeemRequest.getRedeemDate() != null) {
             redeemDate = DateTimeUtil.fromLocalDateTime(redeemRequest.getRedeemDate());
         }
         long pawnedDays = calculateHeldDays(redeemDate, pawnResponse.getPawnDate(), isExtending);
-        int interestDaysPerMonth = getInterestDaysPerMonth(pawnEntity.getInterestDaysPerMonth());
-        BigDecimal mainInterestAmount = calculateInterestAmount(pawnedDays, interestDaysPerMonth, pawnResponse.getInterestRate(), pawnResponse.getPawnAmount());
+        String calcModeCode = (redeemRequest != null && StringUtils.isNotEmpty(redeemRequest.getInterestCalcMode()))
+                ? redeemRequest.getInterestCalcMode()
+                : pawnEntity.getInterestCalcMode();
+        PawnInterestCalculation calcMode = PawnInterestCalculation.fromCode(calcModeCode);
+        BigDecimal mainInterestAmount = calculateInterestAmount(pawnedDays, calcMode, pawnResponse.getInterestRate(), pawnResponse.getPawnAmount());
         pawnResponse.setMainInterestAmount(mainInterestAmount);
         BigDecimal interestAmount = pawnResponse.getMainInterestAmount();
         BigDecimal requestedAmount = pawnResponse.getPawnAmount();
         Set<ReqMoneyResponse> reqMoneys = new HashSet<>();
         for (ReqMoneyEntity reqMoneyEntity : pawnEntity.getReqMoneys()) {
             long heldDays = calculateHeldDays(redeemDate, reqMoneyEntity.getRequestDate(), isExtending);
-            BigDecimal subInterestAmount = calculateInterestAmount(heldDays, interestDaysPerMonth, pawnResponse.getInterestRate(), reqMoneyEntity.getRequestAmount());
+            BigDecimal subInterestAmount = calculateInterestAmount(heldDays, calcMode, pawnResponse.getInterestRate(), reqMoneyEntity.getRequestAmount());
             BigDecimal subRequestedAmount = reqMoneyEntity.getRequestAmount();
             requestedAmount = subRequestedAmount.add(requestedAmount);
             interestAmount = subInterestAmount.add(interestAmount);
@@ -289,13 +317,9 @@ public class PawnServiceImpl implements PawnService {
         pawnResponse.setHeldDays(pawnedDays);
         pawnResponse.setTotalAmount(requestedAmount.add(interestAmount).setScale(0, RoundingMode.UP));
         List<PawnAuditEntity> auditEntities = auditRepository.findByPawnIdOrderByActionIdAsc(pawnId);
-        List<PawnAudit> pawnAudits = auditEntities.parallelStream().map(pawnMapper::auditFromPawnAuditEntity).toList();
+        List<PawnAudit> pawnAudits = auditEntities.stream().map(pawnMapper::auditFromPawnAuditEntity).toList();
         pawnResponse.setAudits(pawnAudits);
         return pawnResponse;
-    }
-
-    private int getInterestDaysPerMonth(Integer interestDaysPerMonth) {
-        return interestDaysPerMonth != null ? interestDaysPerMonth : INTEREST_DAY_PER_MONTH;
     }
 
     private void validateRedeemStatus(PawnEntity pawnEntity) {
@@ -310,31 +334,119 @@ public class PawnServiceImpl implements PawnService {
         }
     }
 
-    private BigDecimal calculateInterestAmount(long pawnedDays, int interestDaysPerMonth, BigDecimal interestRate, BigDecimal pawnAmount) {
-        BigDecimal dayRate = interestRate.divide(BigDecimal.valueOf(100), 5, RoundingMode.HALF_UP);
-        BigDecimal rateAmountPerDay = pawnAmount.multiply(dayRate).divide(BigDecimal.valueOf(INTEREST_DAY_PER_MONTH), 5, RoundingMode.HALF_UP);
-        if (interestDaysPerMonth == INTEREST_BY_DAY_25DAY_PER_MONTH.code) {
-            long fullPeriods = pawnedDays / 30;
-            long remainingDays = pawnedDays % 30;
-            BigDecimal interestForFullPeriods = rateAmountPerDay.multiply(BigDecimal.valueOf(INTEREST_BY_DAY_25DAY_PER_MONTH.code)).multiply(BigDecimal.valueOf(fullPeriods));
-            BigDecimal interestForRemainingDays = BigDecimal.ZERO;
-            if (remainingDays > 0 && remainingDays <= INTEREST_BY_DAY_25DAY_PER_MONTH.code) {
-                interestForRemainingDays = rateAmountPerDay.multiply(BigDecimal.valueOf(remainingDays));
-            } else if (remainingDays > INTEREST_BY_DAY_25DAY_PER_MONTH.code) {
-                interestForRemainingDays = rateAmountPerDay.multiply(BigDecimal.valueOf(INTEREST_BY_DAY_25DAY_PER_MONTH.code));
+    /**
+     * Calculates the interest owed on a pawn loan.
+     *
+     * Inputs
+     * ------
+     * - pawnAmount    : principal loaned to the customer (VND)
+     * - interestRate  : monthly rate entered by staff, e.g. 3 = 3 % per month
+     * - pawnedDays    : held days computed by calculateHeldDays()
+     * - calcMode      : one of the four PawnInterestCalculation modes
+     *
+     * Shared pre-step (all modes)
+     * ---------------------------
+     *   monthlyRate = interestRate / 100
+     *   (e.g. 3 % → 0.03)
+     *
+     * Mode: DAILY_30  — charge every actual held day; month normalised to 30 days
+     * -------------------------------------------------------------------------
+     *   dailyRate = pawnAmount × monthlyRate / 30
+     *   interest  = dailyRate × pawnedDays
+     *
+     *   Example: 10,000,000 ₫ · 3 % · 15 days
+     *     dailyRate = 10,000,000 × 0.03 / 30 = 10,000 ₫/day
+     *     interest  = 10,000 × 15 = 150,000 ₫
+     *
+     * Mode: DAILY_25  — same daily rate but cap chargeable days at 25 per 30-day period
+     * ---------------------------------------------------------------------------------
+     *   dailyRate      = pawnAmount × monthlyRate / 30   (same formula as DAILY_30)
+     *   fullPeriods    = pawnedDays / 30                  (integer division)
+     *   remainingDays  = pawnedDays % 30
+     *   interest = dailyRate × 25 × fullPeriods
+     *            + dailyRate × min(remainingDays, 25)
+     *
+     *   Example: 10,000,000 ₫ · 3 % · 45 days
+     *     dailyRate     = 10,000 ₫/day
+     *     fullPeriods   = 1,  remainingDays = 15
+     *     interest = 10,000 × 25 × 1 + 10,000 × 15 = 250,000 + 150,000 = 400,000 ₫
+     *     (vs DAILY_30: 10,000 × 45 = 450,000 ₫ — DAILY_25 saves the customer 50,000 ₫)
+     *
+     * Mode: MONTHLY  — round partial months UP to the next full month
+     * ---------------------------------------------------------------
+     *   months   = ceil(pawnedDays / 30)   implemented as (pawnedDays + 29) / 30
+     *   interest = pawnAmount × monthlyRate × months
+     *
+     *   Example: 10,000,000 ₫ · 3 % · 31 days  → 2 months
+     *     interest = 10,000,000 × 0.03 × 2 = 600,000 ₫
+     *
+     * Mode: BIWEEKLY  — round partial 15-day periods UP to the next half-month
+     * -------------------------------------------------------------------------
+     *   halfMonths = ceil(pawnedDays / 15)   implemented as (pawnedDays + 14) / 15
+     *   interest   = pawnAmount × monthlyRate × halfMonths / 2
+     *
+     *   Example: 10,000,000 ₫ · 3 % · 16 days  → 2 half-months (= 1 full month)
+     *     interest = 10,000,000 × 0.03 × 2 / 2 = 300,000 ₫
+     *
+     * Multi-disbursement pawns (reqMoney)
+     * ------------------------------------
+     * When a customer borrows additional money mid-contract (lấy thêm tiền), each
+     * disbursement is tracked as a separate ReqMoneyEntity with its own requestDate.
+     * Interest is calculated independently for each disbursement using the same
+     * calcMode and interestRate but with its own heldDays (redeemDate – requestDate).
+     * The total interest returned is the sum of all per-disbursement amounts.
+     *
+     * Rounding
+     * ---------
+     * Intermediate divisions use HALF_UP with 5 decimal places.
+     * The final total is rounded UP to the nearest whole VND (RoundingMode.UP).
+     */
+    private BigDecimal calculateInterestAmount(long pawnedDays, PawnInterestCalculation calcMode, BigDecimal interestRate, BigDecimal pawnAmount) {
+        BigDecimal monthlyRate = interestRate.divide(BigDecimal.valueOf(100), 5, RoundingMode.HALF_UP);
+        return switch (calcMode) {
+            case DAILY_30 -> {
+                BigDecimal ratePerDay = pawnAmount.multiply(monthlyRate).divide(BigDecimal.valueOf(30), 5, RoundingMode.HALF_UP);
+                yield ratePerDay.multiply(BigDecimal.valueOf(pawnedDays));
             }
-            return interestForFullPeriods.add(interestForRemainingDays);
-        } else if (interestDaysPerMonth == INTEREST_BY_DAY_FULL_MONTH.code) {
-            return rateAmountPerDay.multiply(BigDecimal.valueOf(pawnedDays));
-        } else {
-            if ((pawnedDays - interestDaysPerMonth) > 0 && (pawnedDays - INTEREST_DAY_PER_MONTH) > 0) {
-                return rateAmountPerDay.multiply(BigDecimal.valueOf(interestDaysPerMonth)).add(rateAmountPerDay.multiply(BigDecimal.valueOf(pawnedDays - INTEREST_DAY_PER_MONTH)));
-            } else {
-                return rateAmountPerDay.multiply(BigDecimal.valueOf(pawnedDays));
+            case DAILY_25 -> {
+                BigDecimal ratePerDay = pawnAmount.multiply(monthlyRate).divide(BigDecimal.valueOf(30), 5, RoundingMode.HALF_UP);
+                long fullPeriods = pawnedDays / 30;
+                long remainingDays = pawnedDays % 30;
+                BigDecimal fullPeriodsInterest = ratePerDay.multiply(BigDecimal.valueOf(25)).multiply(BigDecimal.valueOf(fullPeriods));
+                BigDecimal remainingInterest = ratePerDay.multiply(BigDecimal.valueOf(Math.min(remainingDays, 25)));
+                yield fullPeriodsInterest.add(remainingInterest);
             }
-        }
+            case MONTHLY -> {
+                long months = (pawnedDays + 29) / 30;
+                yield pawnAmount.multiply(monthlyRate).multiply(BigDecimal.valueOf(months));
+            }
+            case BIWEEKLY -> {
+                long halfMonths = (pawnedDays + 14) / 15;
+                yield pawnAmount.multiply(monthlyRate).multiply(BigDecimal.valueOf(halfMonths)).divide(BigDecimal.valueOf(2), 5, RoundingMode.HALF_UP);
+            }
+        };
     }
 
+    /**
+     * Counts the number of chargeable held days between pawnDate and redeemDate.
+     *
+     * Counting rule
+     * -------------
+     * Same-day redemption (dateBetween == 0): charge 1 day minimum.
+     *
+     * Redeeming (isExtending = false):
+     *   Both the pawn day AND the redeem day are counted, so we add 1.
+     *   Example: pawned on 01/05, redeemed on 03/05 → 3 days (1, 2, 3).
+     *   dateBetween = 2 → return 2 + 1 = 3.
+     *
+     * Extending / closing interest (isExtending = true):
+     *   Only the days already elapsed are counted; the new contract starts fresh
+     *   from the extend date, so we do NOT add the extra day.
+     *   Example: pawned 01/05, closing interest on 03/05 → 2 days elapsed.
+     *   dateBetween = 2 → return 2.
+     *
+     * Negative dateBetween (redeemDate before pawnDate): returns 0 — caller's guard.
+     */
     private long calculateHeldDays(LocalDateTime redeemDate, LocalDateTime pawnDate, boolean isExtending) {
         long dateBetween = ChronoUnit.DAYS.between(pawnDate.toLocalDate(), redeemDate.toLocalDate());
         if (dateBetween == 0) return 1;
@@ -346,24 +458,28 @@ public class PawnServiceImpl implements PawnService {
     @Override
     public ReqMoneyResponse requestMoreMoney(Long pawnId, ReqMoneyRequest reqMoneyRequest) {
         PawnEntity pawnEntity = pawnRepository.findById(pawnId).orElseThrow(ResourceNotFoundException::new);
+        validateReqMoneyStatus(pawnEntity);
         ReqMoneyEntity reqMoneyEntity = ReqMoneyEntity.builder()
+                .tenantId(tenantContext.getCurrentTenantId())
                 .requestAmount(reqMoneyRequest.getRequestAmount())
                 .pawnId(pawnId)
                 .requestDate(reqMoneyRequest.getRequestDate() != null ? reqMoneyRequest.getRequestDate().atTime(LocalTime.now()) : null)
                 .createdBy(authContext.getCurrentUsername())
                 .build();
-        ReqMoneyEntity savedEntity = reqMoneyRepository.save(reqMoneyEntity);
-        PawnEntity pawnActivityEntity = getPawnActivity(pawnEntity, reqMoneyEntity);
+        reqMoneyRepository.save(reqMoneyEntity);
+        pawnEntity.setUpdatedBy(authContext.getCurrentUsername());
+        pawnEntity.setUpdatedAt(LocalDateTime.now());
+        pawnRepository.save(pawnEntity);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.PAWN_REQUEST_MONEY, "PAWN", String.valueOf(pawnEntity.getPawnId()),
                 messageService.getMessage("activity.pawn.request_money", pawnEntity.getItemName()), null);
-        return pawnMapper.fromReqMoneyEntity(savedEntity);
+        return pawnMapper.fromReqMoneyEntity(reqMoneyEntity);
     }
 
-    private PawnEntity getPawnActivity(PawnEntity pawnEntity, ReqMoneyEntity reqMoneyEntity) {
-        pawnEntity.setUpdatedBy(reqMoneyEntity.getCreatedBy());
-        pawnEntity.setPawnAmount(reqMoneyEntity.getRequestAmount());
-        return pawnEntity;
+    private void validateReqMoneyStatus(PawnEntity pawnEntity) {
+        invalidPawnStatus(PawnStatus.CANCELLED, pawnEntity);
+        invalidPawnStatus(PawnStatus.REDEEMED, pawnEntity);
+        invalidPawnStatus(PawnStatus.FORFEITED, pawnEntity);
     }
 
     @Override
@@ -371,6 +487,7 @@ public class PawnServiceImpl implements PawnService {
         log.info("Extending Pawn for id: {}", pawnId);
         PawnEntity pawnEntity = pawnRepository.findById(pawnId).orElseThrow(ResourceNotFoundException::new);
         PawnEntity extendingPawn = createExtendPawn(pawnEntity, pawnRequest);
+        extendingPawn.setTenantId(tenantContext.getCurrentTenantId());
         extendingPawn.setCreatedAt(LocalDateTime.now());
         extendingPawn.setUpdatedAt(LocalDateTime.now());
         extendingPawn.setCreatedBy(authContext.getCurrentUsername());
@@ -405,13 +522,14 @@ public class PawnServiceImpl implements PawnService {
                 .itemName(pawnEntity.getItemName())
                 .gemWeight(pawnEntity.getGemWeight())
                 .itemWeight(pawnEntity.getItemWeight())
-                .interestDaysPerMonth(pawnEntity.getInterestDaysPerMonth())
+                .interestCalcMode(PawnInterestCalculation.fromCode(pawnEntity.getInterestCalcMode()).name())
                 .originalId(pawnEntity.getPawnId())
                 .pawnStatus(PawnStatus.PAWNED)
                 .createdBy(authContext.getCurrentUsername())
                 .pawnAmount(requestedAmount)
                 .pawnDate(DateTimeUtil.fromLocalDateTime(extendRequest.getExtendDate()))
                 .pawnDueDate(DateTimeUtil.fromLocalDateTime(extendRequest.getExtendDueDate()))
+                .pawnCategory(pawnEntity.getPawnCategory())
                 .build();
         extendingPawn.setOriginalId(pawnEntity.getOriginalId() != null ? pawnEntity.getOriginalId() : pawnEntity.getPawnId());
         return extendingPawn;
@@ -550,6 +668,9 @@ public class PawnServiceImpl implements PawnService {
         log.info("Export PAWNs data file {}", searchRequest);
         String excelFilePath = FastExcelHelper.getExportFileFullDir(UUID.randomUUID() + ".xlsx");
         var specifications = new PawnSpecificationBuilder().buildPawnSpecifications(searchRequest);
+        if (shopInfoService.getExcludeVisibleItemFlag()) {
+            specifications = specifications.and(PawnSpecification.includeVisibleStatus());
+        }
         List<PawnQuery> pawnQueries = queryRepository.findAll(specifications);
         FastExcelHelper.exportPawnDataToExcel(excelFilePath, pawnQueries);
         return FastExcelHelper.downloadFile(excelFilePath);
@@ -635,5 +756,81 @@ public class PawnServiceImpl implements PawnService {
     @Override
     public PawnSetting getPawnSetting() {
         return shopInfoService.getPawnSetting();
+    }
+
+    private void batchEnrichWithItemDetail(List<PawnResponse> responses) {
+        if (responses.isEmpty()) return;
+        List<Long> electronicIds  = responses.stream().filter(r -> "ELECTRONICS".equals(r.getPawnCategory())).map(PawnResponse::getPawnId).toList();
+        List<Long> vehicleIds     = responses.stream().filter(r -> "MOTORBIKE".equals(r.getPawnCategory()) || "CAR".equals(r.getPawnCategory())).map(PawnResponse::getPawnId).toList();
+        List<Long> watchIds       = responses.stream().filter(r -> "WATCH".equals(r.getPawnCategory())).map(PawnResponse::getPawnId).toList();
+        List<Long> realEstateIds  = responses.stream().filter(r -> "REAL_ESTATE".equals(r.getPawnCategory())).map(PawnResponse::getPawnId).toList();
+        List<Long> generalIds     = responses.stream().filter(r -> "GENERAL".equals(r.getPawnCategory())).map(PawnResponse::getPawnId).toList();
+
+        Map<Long, PawnElectronicsDetail> electronicsMap = electronicsRepository.findByPawnIdIn(electronicIds).stream().collect(Collectors.toMap(PawnElectronicsEntity::getPawnId, pawnMapper::fromElectronicsEntity));
+        Map<Long, PawnVehicleDetail>     vehicleMap     = vehicleRepository.findByPawnIdIn(vehicleIds).stream().collect(Collectors.toMap(PawnVehicleEntity::getPawnId, pawnMapper::fromVehicleEntity));
+        Map<Long, PawnWatchDetail>       watchMap       = watchRepository.findByPawnIdIn(watchIds).stream().collect(Collectors.toMap(PawnWatchEntity::getPawnId, pawnMapper::fromWatchEntity));
+        Map<Long, PawnRealEstateDetail>  realEstateMap  = realEstateRepository.findByPawnIdIn(realEstateIds).stream().collect(Collectors.toMap(PawnRealEstateEntity::getPawnId, pawnMapper::fromRealEstateEntity));
+        Map<Long, PawnGeneralDetail>     generalMap     = generalRepository.findByPawnIdIn(generalIds).stream().collect(Collectors.toMap(PawnGeneralEntity::getPawnId, pawnMapper::fromGeneralEntity));
+
+        for (PawnResponse r : responses) {
+            if (electronicsMap.containsKey(r.getPawnId()))  r.setElectronicsDetail(electronicsMap.get(r.getPawnId()));
+            if (vehicleMap.containsKey(r.getPawnId()))      r.setVehicleDetail(vehicleMap.get(r.getPawnId()));
+            if (watchMap.containsKey(r.getPawnId()))        r.setWatchDetail(watchMap.get(r.getPawnId()));
+            if (realEstateMap.containsKey(r.getPawnId()))   r.setRealEstateDetail(realEstateMap.get(r.getPawnId()));
+            if (generalMap.containsKey(r.getPawnId()))      r.setGeneralDetail(generalMap.get(r.getPawnId()));
+        }
+    }
+
+    private void saveItemDetail(Long pawnId, String tenantId, PawnRequest req) {
+        String category = req.getPawnCategory();
+        if (StringUtils.isEmpty(category)) return;
+        switch (category) {
+            case "ELECTRONICS" -> {
+                electronicsRepository.deleteByPawnId(pawnId);
+                if (req.getElectronicsDetail() != null) {
+                    electronicsRepository.save(pawnMapper.toElectronicsEntity(tenantId, pawnId, req.getElectronicsDetail()));
+                }
+            }
+            case "MOTORBIKE", "CAR" -> {
+                vehicleRepository.deleteByPawnId(pawnId);
+                if (req.getVehicleDetail() != null) {
+                    vehicleRepository.save(pawnMapper.toVehicleEntity(tenantId, pawnId, req.getVehicleDetail()));
+                }
+            }
+            case "WATCH" -> {
+                watchRepository.deleteByPawnId(pawnId);
+                if (req.getWatchDetail() != null) {
+                    watchRepository.save(pawnMapper.toWatchEntity(tenantId, pawnId, req.getWatchDetail()));
+                }
+            }
+            case "REAL_ESTATE" -> {
+                realEstateRepository.deleteByPawnId(pawnId);
+                if (req.getRealEstateDetail() != null) {
+                    realEstateRepository.save(pawnMapper.toRealEstateEntity(tenantId, pawnId, req.getRealEstateDetail()));
+                }
+            }
+            case "GENERAL" -> {
+                generalRepository.deleteByPawnId(pawnId);
+                if (req.getGeneralDetail() != null) {
+                    generalRepository.save(pawnMapper.toGeneralEntity(tenantId, pawnId, req.getGeneralDetail()));
+                }
+            }
+        }
+    }
+
+    private void enrichWithItemDetail(PawnResponse response, Long pawnId, String category) {
+        if (StringUtils.isEmpty(category)) return;
+        switch (category) {
+            case "ELECTRONICS" -> electronicsRepository.findByPawnId(pawnId)
+                    .ifPresent(e -> response.setElectronicsDetail(pawnMapper.fromElectronicsEntity(e)));
+            case "MOTORBIKE", "CAR" -> vehicleRepository.findByPawnId(pawnId)
+                    .ifPresent(e -> response.setVehicleDetail(pawnMapper.fromVehicleEntity(e)));
+            case "WATCH" -> watchRepository.findByPawnId(pawnId)
+                    .ifPresent(e -> response.setWatchDetail(pawnMapper.fromWatchEntity(e)));
+            case "REAL_ESTATE" -> realEstateRepository.findByPawnId(pawnId)
+                    .ifPresent(e -> response.setRealEstateDetail(pawnMapper.fromRealEstateEntity(e)));
+            case "GENERAL" -> generalRepository.findByPawnId(pawnId)
+                    .ifPresent(e -> response.setGeneralDetail(pawnMapper.fromGeneralEntity(e)));
+        }
     }
 }

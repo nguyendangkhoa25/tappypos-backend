@@ -30,6 +30,7 @@ import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -46,6 +47,7 @@ class NotificationServiceTest {
     @Mock private com.knp.repository.tenant.TenantRepository tenantRepository;
     @Mock private com.knp.multitenant.TenantContext tenantContext;
     @Mock private MessageService messageService;
+    @Mock private com.knp.config.FeatureContext featureContext;
 
     @InjectMocks
     private NotificationService notificationService;
@@ -208,6 +210,9 @@ class NotificationServiceTest {
                 .userId("user2").enabledTypes("SYSTEM,BILLING").build();
         when(preferenceRepository.findByUserIdIn(List.of("user1", "user2", "user3")))
                 .thenReturn(List.of(pref));
+        // user1 and user3 have no pref row; stub feature check so they are not filtered out
+        when(userRepository.findUsernamesWithFeature(anyList(), eq("ORDER")))
+                .thenReturn(Set.of("user1", "user3"));
         when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
 
         List<NotificationDTO> result = notificationService.create(req);
@@ -485,11 +490,12 @@ class NotificationServiceTest {
     class GetPreferences {
 
         @Test
-        @DisplayName("returns ALL when no preference row exists")
+        @DisplayName("returns default types when no preference row exists")
         void noRow_returnsAll() {
             when(preferenceRepository.findByUserId("testuser")).thenReturn(Optional.empty());
 
-            assertThat(notificationService.getPreferences()).containsExactly("ALL");
+            List<String> result = notificationService.getPreferences();
+            assertThat(result).containsAll(List.of("SYSTEM", "ANNOUNCEMENT", "INFO", "MARKETING", "BILLING"));
         }
 
         @Test

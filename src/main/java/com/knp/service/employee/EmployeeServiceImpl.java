@@ -12,11 +12,14 @@ import com.knp.model.enums.EmployeePosition;
 import com.knp.repository.employee.EmployeeRepository;
 import com.knp.repository.auth.UserRepository;
 import com.knp.multitenant.TenantContext;
+import com.knp.service.audit.ActivityLogService;
+import com.knp.model.enums.ActivityAction;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +36,7 @@ public class EmployeeServiceImpl implements EmployeeService {
     private final UserRepository userRepository;
     private final MessageService messageService;
     private final TenantContext tenantContext;
+    private final ActivityLogService activityLogService;
 
     @Override
     public Page<EmployeeDTO> getAll(String search, int page, int size) {
@@ -99,6 +103,12 @@ public class EmployeeServiceImpl implements EmployeeService {
 
         Employee saved = employeeRepository.save(employee);
         log.info("Employee created with id: {}", saved.getId());
+
+        String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.EMPLOYEE_CREATED, "EMPLOYEE", String.valueOf(saved.getId()),
+                "Thêm nhân viên: " + saved.getFullName(), null);
+
         return toDTO(saved);
     }
 
@@ -140,7 +150,14 @@ public class EmployeeServiceImpl implements EmployeeService {
             }
         }
 
-        return toDTO(employeeRepository.save(employee));
+        Employee updated = employeeRepository.save(employee);
+
+        String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.EMPLOYEE_UPDATED, "EMPLOYEE", String.valueOf(updated.getId()),
+                "Cập nhật nhân viên: " + updated.getFullName(), null);
+
+        return toDTO(updated);
     }
 
     @Override

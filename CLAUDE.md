@@ -151,6 +151,54 @@ Some features need **within-module** access differentiation — e.g., all staff 
 
 When adding new side-effects, follow this same pattern.
 
+### Activity Logging — Coverage & Conventions
+
+Every mutating service method must call `activityLogService.logAsync(...)` after a successful save. The call is fire-and-forget; exceptions are swallowed inside `logAsync`.
+
+**Signature:**
+```java
+activityLogService.logAsync(tenantId, actorUsername, actorFullName, action, targetType, targetId, description, ipAddress);
+```
+
+**`tenantId` rules — critical for RLS correctness:**
+- Shop operations: pass `tenantContext.getCurrentTenantId()` — stored as the actual tenant ID in the DB.
+- Master/agent operations: pass `"master"` — `ActivityLogServiceImpl` translates this to `NULL` before saving. This is intentional: the `activity_log` RLS policy uses `IS NOT DISTINCT FROM current_tenant_id()`, so master-context queries (where `current_tenant_id()` = NULL) correctly see `tenant_id IS NULL` rows.
+- Never pass `null` directly — the method returns early if `tenantId == null`.
+
+**Capture `actorUsername` before any async boundary:**
+```java
+// In the calling service (main thread, SecurityContextHolder is populated)
+String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null, ...);
+```
+For services that use `AuthContext`, use `authContext.getCurrentUsername()` instead.
+
+**Checklist when adding a new service method:**
+1. Add the action to `ActivityAction` enum if it doesn't exist.
+2. Call `logAsync` after the successful repository save (not before, not in a finally block).
+3. Use Vietnamese for `description` — it appears directly in the UI.
+4. Add the action to `ACTION_OPTIONS` and `ACTION_COLORS` in `ActivityLogPage.jsx` (frontend).
+5. Add Vietnamese + English translations in `src/i18n/features/activityLog.js`.
+
+**Currently logged actions by module:**
+
+| Module | Actions |
+|--------|---------|
+| Auth | `LOGIN`, `LOGOUT` (shop + master + agent) |
+| Master: Tenants | `TENANT_CREATED`, `TENANT_UPDATED` |
+| Master: Agents | `AGENT_CREATED`, `AGENT_UPDATED` |
+| Master: Feedback | `FEEDBACK_REVIEWED` |
+| Orders (via Cart checkout) | `ORDER_CREATED`, `ORDER_COMPLETED`, `ORDER_CANCELLED`, `ORDER_VOIDED` |
+| Products | `PRODUCT_CREATED`, `PRODUCT_UPDATED`, `PRODUCT_DELETED` |
+| Customers | `CUSTOMER_CREATED`, `CUSTOMER_UPDATED` |
+| Employees | `EMPLOYEE_CREATED`, `EMPLOYEE_UPDATED` |
+| Vendors | `VENDOR_CREATED`, `VENDOR_UPDATED` |
+| Purchase Orders | `PURCHASE_ORDER_CREATED`, `PURCHASE_ORDER_RECEIVED` |
+| Inventory | `INVENTORY_ADJUSTED` |
+| Expenses | `EXPENSE_CREATED` |
+| Pawn | `PAWN_CREATED`, `PAWN_UPDATED`, `PAWN_DELETED`, `PAWN_CANCEL`, `PAWN_FORFEIT`, `PAWN_REDEEMED`, `PAWN_EXTEND`, `PAWN_REQUEST_MONEY` |
+| Users | `USER_CREATED` |
+
 ### Product System (EAV)
 
 Products use Entity-Attribute-Value to support 18+ types (Food, Beverage, Drug, Electronics, etc.) without schema changes:
@@ -412,7 +460,7 @@ All user-facing strings go through `MessageService` (wraps Spring `MessageSource
 |----------|---------|------|
 | `jwt.secret` | hardcoded default | Override in prod |
 | `jwt.expiration` | 86400000 (24h) | Access token TTL ms |
-| `jwt.refresh-expiration` | 604800000 (7d) | Refresh token TTL ms |
+| `jwt.refresh-expiration` | 2592000000 (30d) | Refresh token TTL ms |
 | `APP_ENCRYPTION_KEY` | empty | Required for e-invoice features |
 | `system.corsAllowedOrigin` | `https://quanlycuahang.com/` | CORS origin |
 

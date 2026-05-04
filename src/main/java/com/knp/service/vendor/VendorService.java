@@ -2,15 +2,19 @@ package com.knp.service.vendor;
 
 import com.knp.exception.BadRequestException;
 import com.knp.service.MessageService;
+import com.knp.service.audit.ActivityLogService;
 import com.knp.exception.ResourceNotFoundException;
 import com.knp.model.dto.vendor.SaveVendorRequest;
 import com.knp.model.dto.vendor.VendorDTO;
 import com.knp.model.entity.vendor.Vendor;
+import com.knp.model.enums.ActivityAction;
+import com.knp.multitenant.TenantContext;
 import com.knp.repository.vendor.VendorRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,6 +29,8 @@ public class VendorService {
 
     private final VendorRepository vendorRepository;
     private final MessageService messageService;
+    private final ActivityLogService activityLogService;
+    private final TenantContext tenantContext;
 
     public Page<VendorDTO> getAll(String keyword, Pageable pageable) {
         if (keyword != null && !keyword.isBlank()) {
@@ -63,7 +69,12 @@ public class VendorService {
                 .isActive(req.getIsActive() != null ? req.getIsActive() : true)
                 .notes(req.getNotes())
                 .build();
-        return mapToDTO(vendorRepository.save(vendor));
+        Vendor saved = vendorRepository.save(vendor);
+        String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.VENDOR_CREATED, "VENDOR", String.valueOf(saved.getId()),
+                "Thêm nhà cung cấp: " + saved.getName(), null);
+        return mapToDTO(saved);
     }
 
     @Transactional
@@ -90,7 +101,12 @@ public class VendorService {
         if (req.getIsActive() != null) vendor.setIsActive(req.getIsActive());
         if (req.getNotes() != null) vendor.setNotes(req.getNotes());
 
-        return mapToDTO(vendorRepository.save(vendor));
+        Vendor updated = vendorRepository.save(vendor);
+        String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.VENDOR_UPDATED, "VENDOR", String.valueOf(updated.getId()),
+                "Cập nhật nhà cung cấp: " + updated.getName(), null);
+        return mapToDTO(updated);
     }
 
     @Transactional

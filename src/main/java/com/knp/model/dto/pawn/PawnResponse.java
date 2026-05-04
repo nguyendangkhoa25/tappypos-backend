@@ -42,7 +42,13 @@ public class PawnResponse {
     private BigDecimal forfeitedAmount;
     private CustomerDTO customer;
     private Set<ReqMoneyResponse> reqMoneys;
-    private Integer interestDaysPerMonth;
+    private String interestCalcMode;
     private Boolean visible;
     private List<PawnAudit> audits;
+    private String pawnCategory;
+    private PawnElectronicsDetail electronicsDetail;
+    private PawnVehicleDetail vehicleDetail;
+    private PawnWatchDetail watchDetail;
+    private PawnRealEstateDetail realEstateDetail;
+    private PawnGeneralDetail generalDetail;
 }

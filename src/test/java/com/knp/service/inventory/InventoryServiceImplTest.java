@@ -11,6 +11,7 @@ import com.knp.model.entity.product.ProductType;
 import com.knp.multitenant.TenantContext;
 import com.knp.repository.inventory.InventoryRepository;
 import com.knp.repository.product.ProductRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -22,6 +23,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -32,10 +36,9 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.*;
 import com.knp.service.MessageService;
+import com.knp.service.audit.ActivityLogService;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("InventoryService Unit Tests")
@@ -53,6 +56,9 @@ class InventoryServiceImplTest {
     @Mock
     private MessageService messageService;
 
+    @Mock
+    private ActivityLogService activityLogService;
+
     @InjectMocks
     private InventoryServiceImpl inventoryService;
 
@@ -61,8 +67,19 @@ class InventoryServiceImplTest {
     private Inventory inventory;
     private Product product;
 
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
     @BeforeEach
     void setUp() {
+        Authentication authentication = mock(Authentication.class);
+        SecurityContext securityContext = mock(SecurityContext.class);
+        lenient().when(securityContext.getAuthentication()).thenReturn(authentication);
+        lenient().when(authentication.getName()).thenReturn("testuser");
+        SecurityContextHolder.setContext(securityContext);
+
         // Initialize test data
         ProductType productType = ProductType.builder()
                 .id(1L)

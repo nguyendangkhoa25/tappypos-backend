@@ -3,10 +3,13 @@ package com.knp.service.customer;
 import com.knp.exception.BadRequestException;
 import com.knp.exception.ResourceNotFoundException;
 import com.knp.service.MessageService;
+import com.knp.service.audit.ActivityLogService;
 import com.knp.model.dto.customer.CreateCustomerRequest;
 import com.knp.model.dto.customer.CustomerDTO;
 import com.knp.model.dto.customer.UpdateCustomerRequest;
 import com.knp.model.entity.customer.Customer;
+import com.knp.model.enums.ActivityAction;
+import com.knp.multitenant.TenantContext;
 import com.knp.repository.customer.CustomerRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,6 +17,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,6 +29,8 @@ public class CustomerService {
 
     private final CustomerRepository customerRepository;
     private final MessageService messageService;
+    private final ActivityLogService activityLogService;
+    private final TenantContext tenantContext;
 
     public CustomerDTO createCustomer(CreateCustomerRequest request) {
         log.info("Request: Create new customer - name: {}, phone: {}, email: {}",
@@ -48,9 +54,16 @@ public class CustomerService {
                 .idCardIssuedPlace(request.getIdCardIssuedPlace())
                 .permanentAddress(request.getPermanentAddress())
                 .build();
+        customer.setTenantId(tenantContext.getCurrentTenantId());
 
         Customer saved = customerRepository.save(customer);
         log.info("Customer created successfully - id: {}, name: {}", saved.getId(), saved.getName());
+
+        String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.CUSTOMER_CREATED, "CUSTOMER", String.valueOf(saved.getId()),
+                "Thêm khách hàng: " + saved.getName(), null);
+
         return mapToDTO(saved);
     }
 
@@ -184,6 +197,12 @@ public class CustomerService {
 
         Customer updated = customerRepository.save(customer);
         log.info("Customer updated successfully - id: {}, name: {}", updated.getId(), updated.getName());
+
+        String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.CUSTOMER_UPDATED, "CUSTOMER", String.valueOf(updated.getId()),
+                "Cập nhật khách hàng: " + updated.getName(), null);
+
         return mapToDTO(updated);
     }
 

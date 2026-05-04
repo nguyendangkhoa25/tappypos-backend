@@ -111,8 +111,8 @@ public class PawnAuditEntity {
     @Column(name = "original_id")
     private Long originalId;
 
-    @Column(name = "interest_days_per_month")
-    private Integer interestDaysPerMonth;
+    @Column(name = "interest_calc_mode")
+    private String interestCalcMode;
 
     @Column(name = "created_by")
     private String createdBy;

@@ -47,6 +47,7 @@ class FeedbackServiceImplTest {
     @Mock private NotificationService notificationService;
     @Mock private AgentRepository agentRepository;
     @Mock private UserRepository userRepository;
+    @Mock private com.knp.service.audit.ActivityLogService activityLogService;
 
     @InjectMocks
     private FeedbackServiceImpl feedbackService;

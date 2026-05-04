@@ -12,6 +12,7 @@ import com.knp.repository.vendor.PurchaseOrderItemRepository;
 import com.knp.repository.vendor.PurchaseOrderRepository;
 import com.knp.repository.vendor.VendorRepository;
 import com.knp.service.MessageService;
+import com.knp.service.audit.ActivityLogService;
 import com.knp.service.inventory.InventoryService;
 import com.knp.model.dto.inventory.InventoryDTO;
 import org.junit.jupiter.api.AfterEach;
@@ -50,6 +51,8 @@ class PurchaseOrderServiceTest {
     @Mock private VendorRepository vendorRepository;
     @Mock private InventoryService inventoryService;
     @Mock private MessageService messageService;
+    @Mock private com.knp.multitenant.TenantContext tenantContext;
+    @Mock private ActivityLogService activityLogService;
 
     @InjectMocks
     private PurchaseOrderService purchaseOrderService;

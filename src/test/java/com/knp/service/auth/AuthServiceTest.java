@@ -348,7 +348,7 @@ class AuthServiceTest {
         }
 
         @Test
-        @DisplayName("Should not log activity for master user login")
+        @DisplayName("Should log activity with 'master' tenant key for master user login")
         void success_noActivityLogForMasterUser() {
             when(tenantContext.getCurrentTenant()).thenReturn(null);
             when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
@@ -361,7 +361,7 @@ class AuthServiceTest {
 
             authService.authenticateUser(loginRequest, "127.0.0.1", "agent");
 
-            verify(activityLogService, never()).logAsync(any(), any(), any(), any(), any(), any(), any(), any());
+            verify(activityLogService).logAsync(eq("master"), eq("testuser"), any(), any(), any(), any(), any(), any());
         }
     }
 

@@ -628,7 +628,7 @@ class OrderServiceImplTest {
     void testGetMyWorkStats() {
         when(orderRepository.countActiveByCreatedBy(eq("cashier01"), any())).thenReturn(3L);
         Object[] statsRow = new Object[]{ 10L, new BigDecimal("500000") };
-        when(orderRepository.getMyCompletedStats(eq("cashier01"), any(), any())).thenReturn(statsRow);
+        when(orderRepository.getMyCompletedStats(eq("cashier01"), any(), any())).thenReturn(Collections.singletonList(statsRow));
 
         var result = orderService.getMyWorkStats("DAY", null, null, null);
 

@@ -2,6 +2,8 @@ package com.knp.service.finance;
 
 import com.knp.config.AuthContext;
 import com.knp.exception.ResourceNotFoundException;
+import com.knp.service.audit.ActivityLogService;
+import com.knp.model.enums.ActivityAction;
 import com.knp.model.dto.finance.ExpenseCategoryBreakdownDTO;
 import com.knp.model.dto.finance.ShopExpenseDTO;
 import com.knp.model.dto.finance.ShopExpenseRequest;
@@ -30,6 +32,7 @@ public class ShopExpenseServiceImpl implements ShopExpenseService {
     private final ShopExpenseRepository expenseRepository;
     private final AuthContext authContext;
     private final TenantContext tenantContext;
+    private final ActivityLogService activityLogService;
 
     @Override
     @Transactional
@@ -44,7 +47,11 @@ public class ShopExpenseServiceImpl implements ShopExpenseService {
                 .referenceNumber(request.getReferenceNumber())
                 .createdBy(authContext.getCurrentUsername())
                 .build();
-        return toDTO(expenseRepository.save(expense));
+        ShopExpenseDTO saved = toDTO(expenseRepository.save(expense));
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.EXPENSE_CREATED, "EXPENSE", String.valueOf(saved.getId()),
+                "Ghi chi phí: " + request.getDescription() + " — " + request.getAmount() + "đ", null);
+        return saved;
     }
 
     @Override

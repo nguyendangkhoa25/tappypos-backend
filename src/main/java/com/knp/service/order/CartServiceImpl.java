@@ -47,6 +47,8 @@ import com.knp.service.inventory.InventoryService;
 import com.knp.service.product.ProductService;
 import com.knp.service.tenant.ShopInfoService;
 import com.knp.service.customer.LoyaltyService;
+import com.knp.service.audit.ActivityLogService;
+import com.knp.model.enums.ActivityAction;
 import com.knp.multitenant.TenantContext;
 
 /**
@@ -79,6 +81,7 @@ public class CartServiceImpl implements CartService {
     private final ShopInfoService shopInfoService;
     private final PromotionService promotionService;
     private final LoyaltyService loyaltyService;
+    private final ActivityLogService activityLogService;
     private final TenantContext tenantContext;
 
     /**
@@ -621,7 +624,7 @@ public class CartServiceImpl implements CartService {
             resolvedCustomerName = request.getCustomerName().trim();
         }
         if (resolvedCustomer == null) {
-            resolvedCustomer = customerRepository.findByName("Khách Lẻ").orElse(null);
+            resolvedCustomer = customerRepository.findByPhone("0000000000").orElse(null);
             if (resolvedCustomer != null && resolvedCustomerName == null) {
                 resolvedCustomerName = resolvedCustomer.getName();
             }
@@ -728,6 +731,10 @@ public class CartServiceImpl implements CartService {
         order.setOrderItems(orderItems);
         Order savedOrder = orderRepository.save(order);
         log.info("Order created: {} (total={})", orderNumber, total);
+
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), currentUser, null,
+                ActivityAction.ORDER_CREATED, "ORDER", savedOrder.getOrderNumber(),
+                "Tạo đơn hàng #" + savedOrder.getOrderNumber(), null);
 
         // --- Mark cart completed ---
         cart.setStatus(CartStatus.COMPLETED);

@@ -115,14 +115,20 @@ public class PawnEntity {
     @Column(name = "original_id")
     private Long originalId;
 
-    @Column(name = "interest_days_per_month")
-    private Integer interestDaysPerMonth;
+    @Column(name = "interest_calc_mode")
+    private String interestCalcMode;
 
     @Column(name = "pawned_days")
     private Integer heldDays;
 
     @Column(name = "visible")
     private Boolean visible;
+
+    @Column(name = "pawn_category")
+    private String pawnCategory;
+
+    @Column(name = "customer_name")
+    private String customerName;
 
     @Builder.Default
     @OneToMany(cascade = CascadeType.REMOVE, orphanRemoval = true)

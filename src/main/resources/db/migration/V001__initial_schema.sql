@@ -140,9 +140,9 @@ CREATE TABLE IF NOT EXISTS gold_brands (
 -- ════════════════════════════════════════════════════════════
 
 -- 3.1 features
+-- Platform-defined master data; no tenant_id — shared by all tenants, no RLS needed.
 CREATE TABLE IF NOT EXISTS features (
     id           BIGSERIAL    PRIMARY KEY,
-    tenant_id    VARCHAR(100) DEFAULT NULL,
     name         VARCHAR(50)  NOT NULL,
     display_name VARCHAR(100) NOT NULL,
     description  VARCHAR(500) DEFAULT NULL,
@@ -150,11 +150,9 @@ CREATE TABLE IF NOT EXISTS features (
     created_at   TIMESTAMP    DEFAULT NOW(),
     updated_at   TIMESTAMP    DEFAULT NOW(),
     deleted      BOOLEAN      NOT NULL DEFAULT FALSE,
-    deleted_at   TIMESTAMP    DEFAULT NULL
+    deleted_at   TIMESTAMP    DEFAULT NULL,
+    CONSTRAINT uq_features_name UNIQUE (name)
 );
--- Unique name per scope (NULL scope = master, value scope = tenant)
-CREATE UNIQUE INDEX IF NOT EXISTS uq_features_name_master ON features (name) WHERE tenant_id IS NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS uq_features_name_tenant ON features (name, tenant_id) WHERE tenant_id IS NOT NULL;
 
 -- 3.2 roles
 CREATE TABLE IF NOT EXISTS roles (
@@ -200,7 +198,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_users_username_tenant ON users (username, t
 CREATE TABLE IF NOT EXISTS user_roles (
     user_id   BIGINT NOT NULL,
     role_id   BIGINT NOT NULL,
-    tenant_id VARCHAR(100) DEFAULT NULL,
     PRIMARY KEY (user_id, role_id),
     CONSTRAINT fk_ur_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
     CONSTRAINT fk_ur_role FOREIGN KEY (role_id) REFERENCES roles (id) ON DELETE CASCADE
@@ -209,7 +206,6 @@ CREATE TABLE IF NOT EXISTS user_roles (
 -- 3.5 role_features
 CREATE TABLE IF NOT EXISTS role_features (
     id         BIGSERIAL PRIMARY KEY,
-    tenant_id  VARCHAR(100) DEFAULT NULL,
     role_id    BIGINT       NOT NULL,
     feature_id BIGINT       NOT NULL,
     created_at TIMESTAMP    DEFAULT NOW(),
@@ -221,7 +217,6 @@ CREATE TABLE IF NOT EXISTS role_features (
 -- 3.6 refresh_tokens
 CREATE TABLE IF NOT EXISTS refresh_tokens (
     id          BIGSERIAL    PRIMARY KEY,
-    tenant_id   VARCHAR(100) DEFAULT NULL,
     user_id     BIGINT       NOT NULL,
     token       VARCHAR(500) NOT NULL,
     expiry_date BIGINT       NOT NULL,
@@ -530,6 +525,7 @@ CREATE TABLE IF NOT EXISTS customers (
     permanent_address           VARCHAR(500)   DEFAULT NULL,
     loyalty_points              INT            NOT NULL DEFAULT 0,
     total_spent                 DECIMAL(15,2)  NOT NULL DEFAULT 0.00,
+    legacy_id                   BIGINT         DEFAULT NULL,
     created_at                  TIMESTAMP      DEFAULT NOW(),
     updated_at                  TIMESTAMP      DEFAULT NOW(),
     deleted                     BOOLEAN        NOT NULL DEFAULT FALSE,
@@ -587,6 +583,7 @@ CREATE TABLE IF NOT EXISTS orders (
     loyalty_discount        DECIMAL(10,2)  NOT NULL DEFAULT 0.00,
     table_label             VARCHAR(100)   DEFAULT NULL,
     source                  VARCHAR(20)    NOT NULL DEFAULT 'POS',
+    legacy_id               BIGINT         DEFAULT NULL,
     created_at              TIMESTAMP      DEFAULT NOW(),
     updated_at              TIMESTAMP      DEFAULT NOW(),
     deleted                 BOOLEAN        NOT NULL DEFAULT FALSE,
@@ -835,11 +832,20 @@ CREATE TABLE IF NOT EXISTS employees (
     commission_rate DECIMAL(5,2)   DEFAULT NULL,
     notes           TEXT           DEFAULT NULL,
     avatar          VARCHAR(512)   DEFAULT NULL,
-    user_id         BIGINT         DEFAULT NULL,
-    created_at      TIMESTAMP      NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMP      DEFAULT NOW(),
-    deleted         BOOLEAN        NOT NULL DEFAULT FALSE,
-    deleted_at      TIMESTAMP      DEFAULT NULL,
+    user_id                BIGINT         DEFAULT NULL,
+    id_card_number         VARCHAR(20)    DEFAULT NULL,
+    date_of_birth          DATE           DEFAULT NULL,
+    gender                 VARCHAR(10)    DEFAULT NULL,
+    permanent_address      TEXT           DEFAULT NULL,
+    id_card_issued_date    DATE           DEFAULT NULL,
+    id_card_issued_place   VARCHAR(255)   DEFAULT NULL,
+    id_card_front_image    TEXT           DEFAULT NULL,
+    id_card_back_image     TEXT           DEFAULT NULL,
+    legacy_id              BIGINT         DEFAULT NULL,
+    created_at             TIMESTAMP      NOT NULL DEFAULT NOW(),
+    updated_at             TIMESTAMP      DEFAULT NOW(),
+    deleted                BOOLEAN        NOT NULL DEFAULT FALSE,
+    deleted_at             TIMESTAMP      DEFAULT NULL,
     CONSTRAINT fk_employee_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL
 );
 
@@ -980,9 +986,11 @@ CREATE TABLE IF NOT EXISTS pawn (
     forfeited_amount         DECIMAL(15,2)  DEFAULT NULL,
     forfeited_date           TIMESTAMP      DEFAULT NULL,
     original_id              BIGINT         DEFAULT NULL,
-    interest_days_per_month  INT            DEFAULT NULL,
+    interest_calc_mode       VARCHAR(20)    DEFAULT 'DAILY_30',
     pawned_days              INT            DEFAULT NULL,
-    visible                  BOOLEAN        NOT NULL DEFAULT TRUE
+    visible                  BOOLEAN        NOT NULL DEFAULT TRUE,
+    pawn_category            VARCHAR(50)    DEFAULT NULL,
+    legacy_id                BIGINT         DEFAULT NULL
 );
 
 -- 4.32 pawn_audit
@@ -1013,7 +1021,7 @@ CREATE TABLE IF NOT EXISTS pawn_audit (
     forfeited_amount         DECIMAL(15,2)  DEFAULT NULL,
     forfeited_date           TIMESTAMP      DEFAULT NULL,
     original_id              BIGINT         DEFAULT NULL,
-    interest_days_per_month  INT            DEFAULT NULL,
+    interest_calc_mode       VARCHAR(20)    DEFAULT NULL,
     created_by               VARCHAR(100)   DEFAULT NULL,
     created_at               TIMESTAMP      DEFAULT NULL,
     updated_by               VARCHAR(100)   DEFAULT NULL,
@@ -1030,7 +1038,8 @@ CREATE TABLE IF NOT EXISTS pawn_req_money (
     created_by     VARCHAR(100)   DEFAULT NULL,
     created_at     TIMESTAMP      DEFAULT NULL,
     updated_by     VARCHAR(100)   DEFAULT NULL,
-    updated_at     TIMESTAMP      DEFAULT NULL
+    updated_at     TIMESTAMP      DEFAULT NULL,
+    legacy_id      BIGINT         DEFAULT NULL
 );
 
 -- 4.34 pawn_req_money_audit
@@ -1049,7 +1058,68 @@ CREATE TABLE IF NOT EXISTS pawn_req_money_audit (
     updated_at     TIMESTAMP      DEFAULT NULL
 );
 
--- 4.35 shop_info
+-- 4.35 pawn_item_electronics
+CREATE TABLE IF NOT EXISTS pawn_item_electronics (
+    id          BIGSERIAL    PRIMARY KEY,
+    tenant_id   VARCHAR(100) NOT NULL,
+    pawn_id     BIGINT       NOT NULL UNIQUE REFERENCES pawn(pawn_id) ON DELETE CASCADE,
+    brand       VARCHAR(100),
+    model       VARCHAR(100),
+    imei        VARCHAR(100),
+    storage     VARCHAR(50),
+    color       VARCHAR(50),
+    condition   VARCHAR(50)
+);
+
+-- 4.36 pawn_item_vehicle (covers MOTORBIKE + CAR)
+CREATE TABLE IF NOT EXISTS pawn_item_vehicle (
+    id             BIGSERIAL    PRIMARY KEY,
+    tenant_id      VARCHAR(100) NOT NULL,
+    pawn_id        BIGINT       NOT NULL UNIQUE REFERENCES pawn(pawn_id) ON DELETE CASCADE,
+    brand          VARCHAR(100),
+    model          VARCHAR(100),
+    year           INTEGER,
+    license_plate  VARCHAR(20),
+    engine_number  VARCHAR(100),
+    chassis_number VARCHAR(100),
+    color          VARCHAR(50),
+    condition      VARCHAR(50)
+);
+
+-- 4.37 pawn_item_watch
+CREATE TABLE IF NOT EXISTS pawn_item_watch (
+    id          BIGSERIAL    PRIMARY KEY,
+    tenant_id   VARCHAR(100) NOT NULL,
+    pawn_id     BIGINT       NOT NULL UNIQUE REFERENCES pawn(pawn_id) ON DELETE CASCADE,
+    brand       VARCHAR(100),
+    model       VARCHAR(100),
+    material    VARCHAR(100),
+    condition   VARCHAR(50)
+);
+
+-- 4.38 pawn_item_real_estate
+CREATE TABLE IF NOT EXISTS pawn_item_real_estate (
+    id                 BIGSERIAL    PRIMARY KEY,
+    tenant_id          VARCHAR(100) NOT NULL,
+    pawn_id            BIGINT       NOT NULL UNIQUE REFERENCES pawn(pawn_id) ON DELETE CASCADE,
+    certificate_number VARCHAR(100),
+    certificate_type   VARCHAR(50),
+    owner_name         VARCHAR(200),
+    address            TEXT,
+    area_sqm           DECIMAL(12,2),
+    condition          VARCHAR(50)
+);
+
+-- 4.39 pawn_item_general (miscellaneous items)
+CREATE TABLE IF NOT EXISTS pawn_item_general (
+    id            BIGSERIAL    PRIMARY KEY,
+    tenant_id     VARCHAR(100) NOT NULL,
+    pawn_id       BIGINT       NOT NULL UNIQUE REFERENCES pawn(pawn_id) ON DELETE CASCADE,
+    serial_number VARCHAR(100),
+    condition     VARCHAR(50)
+);
+
+-- 4.40 shop_info
 CREATE TABLE IF NOT EXISTS shop_info (
     id               BIGSERIAL    PRIMARY KEY,
     tenant_id        VARCHAR(100) NOT NULL,
@@ -1246,7 +1316,6 @@ CREATE INDEX IF NOT EXISTS idx_banks_sort_order ON banks (sort_order);
 CREATE INDEX IF NOT EXISTS idx_banks_active     ON banks (is_active);
 
 -- features
-CREATE INDEX IF NOT EXISTS idx_features_tenant_id ON features (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_features_active     ON features (active);
 CREATE INDEX IF NOT EXISTS idx_features_deleted    ON features (deleted);
 
@@ -1262,17 +1331,14 @@ CREATE INDEX IF NOT EXISTS idx_users_active_uname ON users (active, username);
 -- user_roles
 CREATE INDEX IF NOT EXISTS idx_ur_user_id   ON user_roles (user_id);
 CREATE INDEX IF NOT EXISTS idx_ur_role_id   ON user_roles (role_id);
-CREATE INDEX IF NOT EXISTS idx_ur_tenant_id ON user_roles (tenant_id);
 
 -- role_features
 CREATE INDEX IF NOT EXISTS idx_rf_role_id    ON role_features (role_id);
 CREATE INDEX IF NOT EXISTS idx_rf_feature_id ON role_features (feature_id);
-CREATE INDEX IF NOT EXISTS idx_rf_tenant_id  ON role_features (tenant_id);
 
 -- refresh_tokens
 CREATE INDEX IF NOT EXISTS idx_rt_user_id   ON refresh_tokens (user_id);
 CREATE INDEX IF NOT EXISTS idx_rt_active    ON refresh_tokens (active);
-CREATE INDEX IF NOT EXISTS idx_rt_tenant_id ON refresh_tokens (tenant_id);
 
 -- active_sessions
 CREATE INDEX IF NOT EXISTS idx_as_tenant_id ON active_sessions (tenant_id);
@@ -1375,6 +1441,27 @@ CREATE INDEX IF NOT EXISTS idx_bb_customer_id ON buyback_orders (customer_id);
 CREATE INDEX IF NOT EXISTS idx_pawn_tenant_id   ON pawn (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_pawn_customer_id ON pawn (customer_id);
 CREATE INDEX IF NOT EXISTS idx_pawn_status      ON pawn (status);
+CREATE INDEX IF NOT EXISTS idx_pawn_category    ON pawn (tenant_id, pawn_category);
+
+-- legacy_id migration-support indexes (partial — only rows where legacy_id is populated)
+CREATE INDEX IF NOT EXISTS idx_pawn_legacy_id           ON pawn           (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_pawn_req_money_legacy_id ON pawn_req_money (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_customers_legacy_id      ON customers      (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_employees_legacy_id      ON employees      (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_orders_legacy_id         ON orders         (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+
+-- pawn typed detail tables
+CREATE INDEX IF NOT EXISTS idx_pie_tenant_pawn   ON pawn_item_electronics (tenant_id, pawn_id);
+CREATE INDEX IF NOT EXISTS idx_pie_brand         ON pawn_item_electronics (tenant_id, brand);
+CREATE INDEX IF NOT EXISTS idx_pie_imei          ON pawn_item_electronics (tenant_id, imei);
+CREATE INDEX IF NOT EXISTS idx_piv_tenant_pawn   ON pawn_item_vehicle     (tenant_id, pawn_id);
+CREATE INDEX IF NOT EXISTS idx_piv_brand         ON pawn_item_vehicle     (tenant_id, brand);
+CREATE INDEX IF NOT EXISTS idx_piv_license_plate ON pawn_item_vehicle     (tenant_id, license_plate);
+CREATE INDEX IF NOT EXISTS idx_piw_tenant_pawn   ON pawn_item_watch       (tenant_id, pawn_id);
+CREATE INDEX IF NOT EXISTS idx_piw_brand         ON pawn_item_watch       (tenant_id, brand);
+CREATE INDEX IF NOT EXISTS idx_pire_tenant_pawn  ON pawn_item_real_estate (tenant_id, pawn_id);
+CREATE INDEX IF NOT EXISTS idx_pire_cert         ON pawn_item_real_estate (tenant_id, certificate_number);
+CREATE INDEX IF NOT EXISTS idx_pig_tenant_pawn   ON pawn_item_general     (tenant_id, pawn_id);
 
 -- shop_expense
 CREATE INDEX IF NOT EXISTS idx_expense_tenant_id ON shop_expense (tenant_id);
@@ -1422,6 +1509,7 @@ BEGIN
     'shop_info','shop_config','print_templates','bank_accounts','shop_expense',
     'gold_price','jewelry_counters','user_feedback',
     'contact_leads','product_catalog'
+    -- pawn typed detail tables have no updated_at — excluded intentionally
   ]
   LOOP
     EXECUTE format(
@@ -1460,11 +1548,11 @@ $$;
 -- IS NOT DISTINCT FROM handles NULL equality correctly:
 --   master context (NULL) sees rows where tenant_id IS NULL
 --   tenant context ('x')  sees rows where tenant_id = 'x'
-
-ALTER TABLE features        ENABLE ROW LEVEL SECURITY;
-ALTER TABLE features        FORCE  ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON features
-  USING (tenant_id IS NOT DISTINCT FROM current_tenant_id());
+--
+-- features, user_roles, role_features, refresh_tokens have NO RLS:
+--   features — global platform data, no tenant_id column.
+--   user_roles/role_features — tenant isolation enforced via FK to users/roles.
+--   refresh_tokens — no tenant_id column.
 
 ALTER TABLE roles           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE roles           FORCE  ROW LEVEL SECURITY;
@@ -1474,21 +1562,6 @@ CREATE POLICY tenant_isolation ON roles
 ALTER TABLE users           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users           FORCE  ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON users
-  USING (tenant_id IS NOT DISTINCT FROM current_tenant_id());
-
-ALTER TABLE user_roles      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_roles      FORCE  ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON user_roles
-  USING (tenant_id IS NOT DISTINCT FROM current_tenant_id());
-
-ALTER TABLE role_features   ENABLE ROW LEVEL SECURITY;
-ALTER TABLE role_features   FORCE  ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON role_features
-  USING (tenant_id IS NOT DISTINCT FROM current_tenant_id());
-
-ALTER TABLE refresh_tokens  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE refresh_tokens  FORCE  ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON refresh_tokens
   USING (tenant_id IS NOT DISTINCT FROM current_tenant_id());
 
 ALTER TABLE active_sessions ENABLE ROW LEVEL SECURITY;
@@ -1529,6 +1602,8 @@ BEGIN
     'purchase_orders','purchase_order_items',
     'market_prices','buyback_orders','buyback_order_items',
     'pawn','pawn_audit','pawn_req_money','pawn_req_money_audit',
+    'pawn_item_electronics','pawn_item_vehicle','pawn_item_watch',
+    'pawn_item_real_estate','pawn_item_general',
     'shop_info','shop_config','print_templates',
     'bank_accounts','shop_expense','api_audit_log',
     'gold_price','jewelry_counters'
@@ -1559,46 +1634,48 @@ $$;
 -- ════════════════════════════════════════════════════════════
 
 -- ── 1. Platform features ──────────────────────────────────────
-INSERT INTO features (id, tenant_id, name, display_name, description, active, deleted)
+INSERT INTO features (id, name, display_name, description, active, deleted)
 VALUES
     -- Shop management
-    (202601001, NULL, 'DASHBOARD',        'Bảng Điều Khiển',          'Xem tổng quan và thống kê chính của cửa hàng',                   TRUE,  FALSE),
-    (202601002, NULL, 'ORDER',            'Đơn Hàng',                  'Quản lý đơn hàng, theo dõi trạng thái và lịch sử đơn hàng',      TRUE,  FALSE),
-    (202601003, NULL, 'MY_WORK',          'Công Việc Của Tôi',         'Xem công việc được giao cho nhân viên hiện tại',                  TRUE,  FALSE),
-    (202601004, NULL, 'PRODUCT',          'Sản Phẩm & Dịch Vụ',       'Quản lý danh sách sản phẩm, dịch vụ, giá cả',                    TRUE,  FALSE),
-    (202601005, NULL, 'PROMOTION',        'Khuyến Mãi',                'Tạo và quản lý các chương trình khuyến mãi, giảm giá',            TRUE,  FALSE),
-    (202601006, NULL, 'EMPLOYEE',         'Nhân Viên',                 'Quản lý nhân viên, chức vụ, lương cơ bản',                       TRUE,  FALSE),
-    (202601007, NULL, 'SALARY',           'Lương Nhân Viên',           'Quản lý bảng lương, tính toán lương, chi trả',                   TRUE,  FALSE),
-    (202601008, NULL, 'CUSTOMER',         'Khách Hàng',                'Quản lý thông tin khách hàng, lịch sử mua hàng, tích điểm',      TRUE,  FALSE),
-    (202601009, NULL, 'INVOICE',          'Hóa Đơn',                   'Quản lý hóa đơn, xuất hóa đơn điện tử',                         TRUE,  FALSE),
-    (202601010, NULL, 'REVENUE',          'Doanh Thu',                 'Xem báo cáo doanh thu, lợi nhuận, chi phí',                      TRUE,  FALSE),
-    (202601011, NULL, 'USER',             'Người Dùng',                'Quản lý tài khoản người dùng, quyền truy cập',                   TRUE,  FALSE),
-    (202601012, NULL, 'SHOP_INFO',        'Thông Tin Cửa Hàng',        'Cập nhật thông tin cửa hàng, cấu hình hệ thống',                 TRUE,  FALSE),
+    (202601001, 'DASHBOARD',        'Bảng Điều Khiển',          'Xem tổng quan và thống kê chính của cửa hàng',                   TRUE, FALSE),
+    (202601002, 'ORDER',            'Đơn Hàng',                  'Quản lý đơn hàng, theo dõi trạng thái và lịch sử đơn hàng',      TRUE, FALSE),
+    (202601003, 'MY_WORK',          'Công Việc Của Tôi',         'Xem công việc được giao cho nhân viên hiện tại',                  TRUE, FALSE),
+    (202601004, 'PRODUCT',          'Sản Phẩm & Dịch Vụ',       'Quản lý danh sách sản phẩm, dịch vụ, giá cả',                    TRUE, FALSE),
+    (202601005, 'PROMOTION',        'Khuyến Mãi',                'Tạo và quản lý các chương trình khuyến mãi, giảm giá',            TRUE, FALSE),
+    (202601006, 'EMPLOYEE',         'Nhân Viên',                 'Quản lý nhân viên, chức vụ, lương cơ bản',                       TRUE, FALSE),
+    (202601007, 'SALARY',           'Lương Nhân Viên',           'Quản lý bảng lương, tính toán lương, chi trả',                   TRUE, FALSE),
+    (202601008, 'CUSTOMER',         'Khách Hàng',                'Quản lý thông tin khách hàng, lịch sử mua hàng, tích điểm',      TRUE, FALSE),
+    (202601009, 'INVOICE',          'Hóa Đơn',                   'Quản lý hóa đơn, xuất hóa đơn điện tử',                         TRUE, FALSE),
+    (202601010, 'REVENUE',          'Doanh Thu',                 'Xem báo cáo doanh thu, lợi nhuận, chi phí',                      TRUE, FALSE),
+    (202601011, 'USER',             'Người Dùng',                'Quản lý tài khoản người dùng, quyền truy cập',                   TRUE, FALSE),
+    (202601012, 'SHOP_INFO',        'Thông Tin Cửa Hàng',        'Cập nhật thông tin cửa hàng, cấu hình hệ thống',                 TRUE, FALSE),
     -- Master / system management
-    (202601013, NULL, 'TENANT_MGMT',      'Quản Lý Cửa Hàng',         'Tạo, kích hoạt và quản lý các cửa hàng trong hệ thống',          TRUE,  FALSE),
+    (202601013, 'TENANT_MGMT',      'Quản Lý Cửa Hàng',         'Tạo, kích hoạt và quản lý các cửa hàng trong hệ thống',          TRUE, FALSE),
     -- Supply chain
-    (202601014, NULL, 'VENDOR',           'Nhà Cung Cấp',              'Quản lý nhà cung cấp và đơn đặt hàng nhập',                      TRUE,  FALSE),
-    (202601015, NULL, 'AGENT_MGMT',       'Đại Lý',                    'Super admin quản lý đại lý và giao shop',                        TRUE,  FALSE),
+    (202601014, 'VENDOR',           'Nhà Cung Cấp',              'Quản lý nhà cung cấp và đơn đặt hàng nhập',                      TRUE, FALSE),
+    (202601015, 'AGENT_MGMT',       'Đại Lý',                    'Super admin quản lý đại lý và giao shop',                        TRUE, FALSE),
     -- Operations
-    (202601016, NULL, 'INVENTORY',        'Quản Lý Kho',               'Quản lý tồn kho, nhập xuất kho và kiểm kho',                     TRUE,  FALSE),
-    (202601017, NULL, 'POS',              'Điểm Bán Hàng',             'Bán hàng tại quầy, thanh toán và in hóa đơn',                    TRUE,  FALSE),
-    (202601018, NULL, 'ACTIVITY_LOG',     'Nhật Ký Hoạt Động',         'Xem nhật ký hoạt động của người dùng trong cửa hàng',            TRUE,  FALSE),
-    (202601019, NULL, 'PAWN',             'Cầm Đồ',                    'Quản lý hợp đồng cầm đồ, lãi suất và thanh lý tài sản',          TRUE,  FALSE),
-    (202601020, NULL, 'FEEDBACK_MGMT',    'Quản Lý Phản Hồi',          'Xem và xử lý phản hồi, góp ý từ người dùng toàn hệ thống',       TRUE,  FALSE),
-    (202601021, NULL, 'MASTER_DASHBOARD', 'Bảng Điều Khiển Hệ Thống', 'Xem tổng quan và thống kê của hệ thống master',                  TRUE,  FALSE),
-    (202601022, NULL, 'LOYALTY',          'Tích Điểm Khách Hàng',      'Chương trình tích điểm và phần thưởng khách hàng',               TRUE,  FALSE),
-    (202601023, NULL, 'EXPENSE',          'Chi Phí',                   'Theo dõi và quản lý chi phí hoạt động cửa hàng',                 TRUE,  FALSE),
-    (202601024, NULL, 'NOTIFICATION',     'Thông Báo',                 'Nhận thông báo và nhắc nhở từ hệ thống',                         TRUE,  FALSE),
-    (202601025, NULL, 'FEEDBACK',         'Góp Ý',                     'Gửi phản hồi và đề xuất đến quản trị hệ thống',                  TRUE,  FALSE),
-    (202601026, NULL, 'PRINT_TEMPLATE',   'Mẫu In',                    'Quản lý mẫu in biên nhận và hóa đơn',                            TRUE,  FALSE),
-    (202601027, NULL, 'BANK_ACCOUNT',     'Tài Khoản Ngân Hàng',       'Quản lý tài khoản ngân hàng của cửa hàng',                       TRUE,  FALSE),
-    (202601028, NULL, 'ACCOUNTING',       'Kế Toán',                   'Xem báo cáo kế toán tổng hợp',                                   TRUE,  FALSE),
+    (202601016, 'INVENTORY',        'Quản Lý Kho',               'Quản lý tồn kho, nhập xuất kho và kiểm kho',                     TRUE, FALSE),
+    (202601017, 'POS',              'Điểm Bán Hàng',             'Bán hàng tại quầy, thanh toán và in hóa đơn',                    TRUE, FALSE),
+    (202601018, 'ACTIVITY_LOG',     'Nhật Ký Hoạt Động',         'Xem nhật ký hoạt động của người dùng trong cửa hàng',            TRUE, FALSE),
+    (202601019, 'PAWN',             'Cầm Đồ',                    'Quản lý hợp đồng cầm đồ, lãi suất và thanh lý tài sản',          TRUE, FALSE),
+    (202601020, 'FEEDBACK_MGMT',    'Quản Lý Phản Hồi',          'Xem và xử lý phản hồi, góp ý từ người dùng toàn hệ thống',       TRUE, FALSE),
+    (202601021, 'MASTER_DASHBOARD', 'Bảng Điều Khiển Hệ Thống', 'Xem tổng quan và thống kê của hệ thống master',                  TRUE, FALSE),
+    (202601022, 'LOYALTY',          'Tích Điểm Khách Hàng',      'Chương trình tích điểm và phần thưởng khách hàng',               TRUE, FALSE),
+    (202601023, 'EXPENSE',          'Chi Phí',                   'Theo dõi và quản lý chi phí hoạt động cửa hàng',                 TRUE, FALSE),
+    (202601024, 'NOTIFICATION',     'Thông Báo',                 'Nhận thông báo và nhắc nhở từ hệ thống',                         TRUE, FALSE),
+    (202601025, 'FEEDBACK',         'Góp Ý',                     'Gửi phản hồi và đề xuất đến quản trị hệ thống',                  TRUE, FALSE),
+    (202601026, 'PRINT_TEMPLATE',   'Mẫu In',                    'Quản lý mẫu in biên nhận và hóa đơn',                            TRUE, FALSE),
+    (202601027, 'BANK_ACCOUNT',     'Tài Khoản Ngân Hàng',       'Quản lý tài khoản ngân hàng của cửa hàng',                       TRUE, FALSE),
+    (202601028, 'ACCOUNTING',       'Kế Toán',                   'Xem báo cáo kế toán tổng hợp',                                   TRUE, FALSE),
     -- Master-only management features
-    (202601029, NULL, 'CONTACT_LEAD_MGMT','Đăng Ký Dùng Thử',          'Xem và quản lý các yêu cầu đăng ký dùng thử từ trang chủ',       TRUE,  FALSE),
-    (202601030, NULL, 'PRODUCT_CATALOG',  'Danh Mục Sản Phẩm',         'Quản lý danh mục sản phẩm dùng chung toàn hệ thống',             TRUE,  FALSE)
+    (202601029, 'CONTACT_LEAD_MGMT','Đăng Ký Dùng Thử',          'Xem và quản lý các yêu cầu đăng ký dùng thử từ trang chủ',       TRUE, FALSE),
+    (202601030, 'PRODUCT_CATALOG',  'Danh Mục Sản Phẩm',         'Quản lý danh mục sản phẩm dùng chung toàn hệ thống',             TRUE, FALSE),
+    -- Sub-feature: granular order visibility within the ORDER module
+    (202601031, 'ORDER_VIEW_ALL',   'Xem Tất Cả Đơn Hàng',       'Xem đơn hàng của tất cả nhân viên; nếu không có quyền này, chỉ xem được đơn hàng tự tạo', TRUE, FALSE)
 ON CONFLICT (id) DO NOTHING;
 
-SELECT setval(pg_get_serial_sequence('features', 'id'), 202601030, true);
+SELECT setval(pg_get_serial_sequence('features', 'id'), 202601031, true);
 
 -- ── 2. Master roles ───────────────────────────────────────────
 INSERT INTO roles (id, tenant_id, name, description, deleted)
@@ -1610,22 +1687,22 @@ ON CONFLICT (id) DO NOTHING;
 SELECT setval(pg_get_serial_sequence('roles', 'id'), 202600002, true);
 
 -- ── 3. Role-feature mappings (master roles) ───────────────────
-INSERT INTO role_features (tenant_id, role_id, feature_id)
+INSERT INTO role_features (role_id, feature_id)
 VALUES
     -- MASTER_TENANT: full master feature set
-    (NULL, 202600001, 202601011),   -- USER
-    (NULL, 202600001, 202601013),   -- TENANT_MGMT
-    (NULL, 202600001, 202601015),   -- AGENT_MGMT
-    (NULL, 202600001, 202601018),   -- ACTIVITY_LOG
-    (NULL, 202600001, 202601020),   -- FEEDBACK_MGMT
-    (NULL, 202600001, 202601021),   -- MASTER_DASHBOARD
-    (NULL, 202600001, 202601024),   -- NOTIFICATION
-    (NULL, 202600001, 202601029),   -- CONTACT_LEAD_MGMT
-    (NULL, 202600001, 202601030),   -- PRODUCT_CATALOG
+    (202600001, 202601011),   -- USER
+    (202600001, 202601013),   -- TENANT_MGMT
+    (202600001, 202601015),   -- AGENT_MGMT
+    (202600001, 202601018),   -- ACTIVITY_LOG
+    (202600001, 202601020),   -- FEEDBACK_MGMT
+    (202600001, 202601021),   -- MASTER_DASHBOARD
+    (202600001, 202601024),   -- NOTIFICATION
+    (202600001, 202601029),   -- CONTACT_LEAD_MGMT
+    (202600001, 202601030),   -- PRODUCT_CATALOG
     -- AGENT: tenant management + master dashboard + notifications
-    (NULL, 202600002, 202601013),   -- TENANT_MGMT
-    (NULL, 202600002, 202601021),   -- MASTER_DASHBOARD
-    (NULL, 202600002, 202601024)    -- NOTIFICATION
+    (202600002, 202601013),   -- TENANT_MGMT
+    (202600002, 202601021),   -- MASTER_DASHBOARD
+    (202600002, 202601024)    -- NOTIFICATION
 ON CONFLICT (role_id, feature_id) DO NOTHING;
 
 -- ── 4. Default admin user ─────────────────────────────────────
@@ -1640,8 +1717,8 @@ ON CONFLICT (id) DO NOTHING;
 
 SELECT setval(pg_get_serial_sequence('users', 'id'), 79260001, true);
 
-INSERT INTO user_roles (user_id, role_id, tenant_id)
-VALUES (79260001, 202600001, NULL)
+INSERT INTO user_roles (user_id, role_id)
+VALUES (79260001, 202600001)
 ON CONFLICT (user_id, role_id) DO NOTHING;
 
 -- ── 5. Vietnamese bank list (VietQR BIN reference) ───────────────
@@ -1704,7 +1781,32 @@ INSERT INTO banks (code, bin, name, short_name, sort_order) VALUES
 ('ANZ',      '970421', 'Ngân hàng ANZ Việt Nam',                                            'ANZ Vietnam',          58)
 ON CONFLICT (code) DO NOTHING;
 
--- ── 6. Product catalog seed data (common Vietnamese consumer products) ──────────
+-- ── 6. Backfill default POS_RECEIPT print template for existing active tenants ──
+-- On a fresh install there are no tenants yet, so this loop is a no-op.
+-- It exists so the migration is safe to apply against a database that was
+-- previously bootstrapped without print_template seeding in the DML scripts.
+DO $$
+DECLARE
+    v_tenant_id TEXT;
+    v_config    TEXT := '{"headerText":"","footerText":"Cảm ơn quý khách!\nHẹn gặp lại!","showAddress":true,"showTaxId":false,"showOrderNumber":true,"showDateTime":true,"showCustomer":true,"showTaxBreakdown":false,"showCashDetails":true,"paperWidth":"80mm","autoClose":true,"showVietQr":false}';
+BEGIN
+    FOR v_tenant_id IN
+        SELECT tenant_id FROM tenants WHERE active = TRUE
+    LOOP
+        PERFORM set_config('app.current_tenant', v_tenant_id, true);
+        IF NOT EXISTS (
+            SELECT 1 FROM print_templates
+            WHERE template_type = 'POS_RECEIPT' AND deleted = FALSE
+        ) THEN
+            INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_default)
+            VALUES (v_tenant_id, 'POS_RECEIPT', 'Mặc định', v_config, TRUE)
+            ON CONFLICT DO NOTHING;
+        END IF;
+    END LOOP;
+    PERFORM set_config('app.current_tenant', '', true);
+END $$;
+
+-- ── 7. Product catalog seed data (common Vietnamese consumer products) ──────────
 INSERT INTO product_catalog (barcode, name, brand, category_hint, unit, description, source) VALUES
     ('8934563143326', 'Mì Hảo Hảo Tôm Chua Cay 75g',           'Acecook',       'Thực phẩm',        'Gói',  'Mì ăn liền tôm chua cay',                    'SEED'),
     ('8934563141841', 'Mì Hảo Hảo Sườn Heo Xào 75g',           'Acecook',       'Thực phẩm',        'Gói',  'Mì ăn liền sườn heo xào',                    'SEED'),

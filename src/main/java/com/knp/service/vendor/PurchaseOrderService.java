@@ -8,6 +8,8 @@ import com.knp.model.entity.vendor.PurchaseOrder;
 import com.knp.model.entity.vendor.PurchaseOrderItem;
 import com.knp.model.entity.vendor.Vendor;
 import com.knp.multitenant.TenantContext;
+import com.knp.service.audit.ActivityLogService;
+import com.knp.model.enums.ActivityAction;
 import com.knp.repository.vendor.PurchaseOrderItemRepository;
 import com.knp.repository.vendor.PurchaseOrderRepository;
 import com.knp.repository.vendor.VendorRepository;
@@ -39,6 +41,7 @@ public class PurchaseOrderService {
     private final InventoryService inventoryService;
     private final MessageService messageService;
     private final TenantContext tenantContext;
+    private final ActivityLogService activityLogService;
 
     public Page<PurchaseOrderDTO> getAll(String status, Pageable pageable) {
         if (status != null && !status.isBlank()) {
@@ -98,6 +101,11 @@ public class PurchaseOrderService {
 
         PurchaseOrder saved = poRepository.save(po);
         log.info("Created purchase order {} for vendor {}", poNumber, vendor.getName());
+
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), currentUser, null,
+                ActivityAction.PURCHASE_ORDER_CREATED, "PURCHASE_ORDER", saved.getPoNumber(),
+                "Tạo đơn nhập hàng " + saved.getPoNumber() + " từ " + vendor.getName(), null);
+
         return mapToDTOWithItems(saved);
     }
 
@@ -171,7 +179,12 @@ public class PurchaseOrderService {
             po.setStatus(PurchaseOrder.PoStatus.PARTIALLY_RECEIVED);
         }
 
-        return mapToDTOWithItems(poRepository.save(po));
+        PurchaseOrder saved = poRepository.save(po);
+        String currentUser = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), currentUser, null,
+                ActivityAction.PURCHASE_ORDER_RECEIVED, "PURCHASE_ORDER", saved.getPoNumber(),
+                "Nhận hàng đơn nhập " + saved.getPoNumber(), null);
+        return mapToDTOWithItems(saved);
     }
 
     @Transactional

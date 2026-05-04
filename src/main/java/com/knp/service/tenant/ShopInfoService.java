@@ -61,6 +61,7 @@ public class ShopInfoService {
         if (dto.getPawnInterestType() != null) shopConfigService.set(ShopConfigKey.PAWN_INTEREST_TYPE, dto.getPawnInterestType());
         if (dto.getPawnDueDate() != null)      shopConfigService.set(ShopConfigKey.PAWN_DUE_DATE, dto.getPawnDueDate());
         if (dto.getExcludeVisibleItem() != null) shopConfigService.set(ShopConfigKey.PAWN_EXCLUDE_VISIBLE_ITEM, dto.getExcludeVisibleItem());
+        if (dto.getPawnCategoryConfig() != null)  shopConfigService.set(ShopConfigKey.PAWN_CATEGORY_CONFIG, dto.getPawnCategoryConfig());
         // priceBoardCode may be explicitly cleared — always write
         shopConfigService.set(ShopConfigKey.PRICE_BOARD_CODE, dto.getPriceBoardCode());
 
@@ -148,6 +149,7 @@ public class ShopInfoService {
                 .pawnInterestType(shopConfigService.getInt(ShopConfigKey.PAWN_INTEREST_TYPE, 30))
                 .pawnDueDate(shopConfigService.getInt(ShopConfigKey.PAWN_DUE_DATE, 30))
                 .excludeVisibleItem(shopConfigService.getBoolean(ShopConfigKey.PAWN_EXCLUDE_VISIBLE_ITEM, false))
+                .pawnCategoryConfig(shopConfigService.getString(ShopConfigKey.PAWN_CATEGORY_CONFIG))
                 .priceBoardCode(shopConfigService.getString(ShopConfigKey.PRICE_BOARD_CODE))
                 .createdAt(shopInfo.getCreatedAt())
                 .updatedAt(shopInfo.getUpdatedAt())

@@ -2,12 +2,9 @@ package com.knp.model.spec;
 
 import com.knp.model.dto.pawn.DateFilterRequest;
 import com.knp.model.entity.customer.Customer;
-import com.knp.model.entity.pawn.PawnQuery;
-import com.knp.model.entity.pawn.ReqMoneyEntity;
+import com.knp.model.entity.pawn.*;
 import com.knp.model.enums.PawnStatus;
-import jakarta.persistence.criteria.Join;
-import jakarta.persistence.criteria.JoinType;
-import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.*;
 import lombok.NoArgsConstructor;
 import org.springframework.data.jpa.domain.Specification;
 
@@ -234,6 +231,75 @@ public class PawnSpecification {
                     }));
         }
         return spec;
+    }
+
+    public static Specification<PawnQuery> filterByPawnCategory(String category) {
+        return (root, query, cb) -> cb.equal(root.get("pawnCategory"), category);
+    }
+
+    public static Specification<PawnQuery> filterByElectronicsAttribute(String field, String value) {
+        return (root, query, cb) -> {
+            Subquery<Long> sub = query.subquery(Long.class);
+            Root<PawnElectronicsEntity> e = sub.from(PawnElectronicsEntity.class);
+            sub.select(e.get("pawnId"))
+               .where(cb.and(
+                   cb.equal(e.get("pawnId"), root.get("pawnId")),
+                   cb.like(cb.lower(e.get(field)), "%" + value.toLowerCase() + "%")
+               ));
+            return cb.exists(sub);
+        };
+    }
+
+    public static Specification<PawnQuery> filterByVehicleAttribute(String field, String value) {
+        return (root, query, cb) -> {
+            Subquery<Long> sub = query.subquery(Long.class);
+            Root<PawnVehicleEntity> e = sub.from(PawnVehicleEntity.class);
+            sub.select(e.get("pawnId"))
+               .where(cb.and(
+                   cb.equal(e.get("pawnId"), root.get("pawnId")),
+                   cb.like(cb.lower(e.get(field)), "%" + value.toLowerCase() + "%")
+               ));
+            return cb.exists(sub);
+        };
+    }
+
+    public static Specification<PawnQuery> filterByWatchAttribute(String field, String value) {
+        return (root, query, cb) -> {
+            Subquery<Long> sub = query.subquery(Long.class);
+            Root<PawnWatchEntity> e = sub.from(PawnWatchEntity.class);
+            sub.select(e.get("pawnId"))
+               .where(cb.and(
+                   cb.equal(e.get("pawnId"), root.get("pawnId")),
+                   cb.like(cb.lower(e.get(field)), "%" + value.toLowerCase() + "%")
+               ));
+            return cb.exists(sub);
+        };
+    }
+
+    public static Specification<PawnQuery> filterByRealEstateAttribute(String field, String value) {
+        return (root, query, cb) -> {
+            Subquery<Long> sub = query.subquery(Long.class);
+            Root<PawnRealEstateEntity> e = sub.from(PawnRealEstateEntity.class);
+            sub.select(e.get("pawnId"))
+               .where(cb.and(
+                   cb.equal(e.get("pawnId"), root.get("pawnId")),
+                   cb.like(cb.lower(e.get(field)), "%" + value.toLowerCase() + "%")
+               ));
+            return cb.exists(sub);
+        };
+    }
+
+    public static Specification<PawnQuery> filterByGeneralAttribute(String field, String value) {
+        return (root, query, cb) -> {
+            Subquery<Long> sub = query.subquery(Long.class);
+            Root<PawnGeneralEntity> e = sub.from(PawnGeneralEntity.class);
+            sub.select(e.get("pawnId"))
+               .where(cb.and(
+                   cb.equal(e.get("pawnId"), root.get("pawnId")),
+                   cb.like(cb.lower(e.get(field)), "%" + value.toLowerCase() + "%")
+               ));
+            return cb.exists(sub);
+        };
     }
 
     public static Specification<PawnQuery> excludeOldRedeemedItems(LocalDateTime cutoffDate) {

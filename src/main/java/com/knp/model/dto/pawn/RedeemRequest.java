@@ -10,4 +10,5 @@ public class RedeemRequest {
     private LocalDateTime redeemDate;
     private BigDecimal additionalAmount;
     private boolean extendingRequest = false;
+    private String interestCalcMode;
 }

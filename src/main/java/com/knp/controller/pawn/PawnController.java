@@ -7,7 +7,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.FileSystemResource;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -39,9 +38,9 @@ public class PawnController {
     }
 
     @PostMapping("/find")
-    public ResponseEntity<ApiResponse<Page<PawnResponse>>> getPawns(Pageable pageable, @RequestBody SearchPawnRequest searchRequest) {
+    public ResponseEntity<ApiResponse<PawnSearchResponse>> getPawns(Pageable pageable, @RequestBody SearchPawnRequest searchRequest) {
         log.info("Request: Search pawns with criteria");
-        Page<PawnResponse> response = pawnService.getPawns(pageable, searchRequest);
+        PawnSearchResponse response = pawnService.getPawns(pageable, searchRequest);
         log.info("Found {} pawns", response.getTotalElements());
         return ResponseEntity.ok(
                 ApiResponse.success(response, "Pawns retrieved successfully")

@@ -104,8 +104,8 @@ public class PawnQuery {
     @Column(name = "interest_amount")
     private BigDecimal interestAmount;
 
-    @Column(name = "interest_days_per_month")
-    private Integer interestDaysPerMonth;
+    @Column(name = "interest_calc_mode")
+    private String interestCalcMode;
 
     @Column(name = "forfeited_reason")
     private String forfeitedReason;
@@ -123,4 +123,7 @@ public class PawnQuery {
 
     @Column(name = "visible")
     private Boolean visible;
+
+    @Column(name = "pawn_category")
+    private String pawnCategory;
 }

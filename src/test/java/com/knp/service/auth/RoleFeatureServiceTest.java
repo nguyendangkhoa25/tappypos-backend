@@ -2,7 +2,9 @@ package com.knp.service.auth;
 
 import com.knp.model.dto.auth.PermissionsMatrixDTO;
 import com.knp.model.entity.auth.Feature;
+import com.knp.model.entity.auth.Role;
 import com.knp.repository.auth.RoleFeatureRepository;
+import com.knp.repository.auth.RoleRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,6 +28,8 @@ class RoleFeatureServiceTest {
 
     @Mock
     private RoleFeatureRepository roleFeatureRepository;
+    @Mock
+    private RoleRepository roleRepository;
 
     @InjectMocks
     private RoleFeatureService roleFeatureService;
@@ -632,6 +636,7 @@ class RoleFeatureServiceTest {
     @DisplayName("getPermissionsMatrix: returns features and role permissions")
     void testGetPermissionsMatrix_Success() {
         when(roleFeatureRepository.findAllActiveFeatures()).thenReturn(List.of(dashboardFeature, orderFeature));
+        when(roleRepository.findAll()).thenReturn(List.of(new Role("SHOP_OWNER", ""), new Role("CASHIER", "")));
         lenient().when(roleFeatureRepository.findActiveFeatureNamesByRoleName(anyString())).thenReturn(List.of("DASHBOARD"));
 
         PermissionsMatrixDTO matrix = roleFeatureService.getPermissionsMatrix();
@@ -644,6 +649,7 @@ class RoleFeatureServiceTest {
     @DisplayName("getPermissionsMatrix: SHOP_OWNER gets all features")
     void testGetPermissionsMatrix_ShopOwnerGetsAll() {
         when(roleFeatureRepository.findAllActiveFeatures()).thenReturn(List.of(dashboardFeature, orderFeature));
+        when(roleRepository.findAll()).thenReturn(List.of(new Role("SHOP_OWNER", ""), new Role("CASHIER", "")));
         lenient().when(roleFeatureRepository.findActiveFeatureNamesByRoleName(anyString())).thenReturn(List.of());
 
         PermissionsMatrixDTO matrix = roleFeatureService.getPermissionsMatrix();

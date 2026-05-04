@@ -6,5 +6,5 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface PawnQueryRepository extends JpaRepository<PawnQuery, Long>, JpaSpecificationExecutor<PawnQuery> {
+public interface PawnQueryRepository extends JpaRepository<PawnQuery, Long>, JpaSpecificationExecutor<PawnQuery>, PawnQueryRepositoryCustom {
 }

@@ -37,6 +37,7 @@ class ShopExpenseServiceImplTest {
     @Mock private TenantContext tenantContext;
     @Mock private ShopExpenseRepository expenseRepository;
     @Mock private AuthContext authContext;
+    @Mock private com.knp.service.audit.ActivityLogService activityLogService;
 
     @InjectMocks
     private ShopExpenseServiceImpl service;

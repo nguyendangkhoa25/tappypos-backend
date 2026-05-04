@@ -12,6 +12,7 @@ import com.knp.multitenant.TenantContext;
 import com.knp.repository.employee.EmployeeRepository;
 import com.knp.repository.auth.UserRepository;
 import com.knp.service.MessageService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
 import java.util.Locale;
@@ -30,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
+import com.knp.service.audit.ActivityLogService;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("EmployeeServiceImpl Unit Tests")
@@ -39,14 +44,26 @@ class EmployeeServiceImplTest {
     @Mock private EmployeeRepository employeeRepository;
     @Mock private UserRepository userRepository;
     @Mock private MessageService messageService;
+    @Mock private ActivityLogService activityLogService;
 
     @InjectMocks
     private EmployeeServiceImpl employeeService;
 
     private Employee employee;
 
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
     @BeforeEach
     void setUp() {
+        Authentication authentication = mock(Authentication.class);
+        SecurityContext securityContext = mock(SecurityContext.class);
+        lenient().when(securityContext.getAuthentication()).thenReturn(authentication);
+        lenient().when(authentication.getName()).thenReturn("testuser");
+        SecurityContextHolder.setContext(securityContext);
+
         employee = Employee.builder()
                 .fullName("Nguyen Van A")
                 .phone("0901234567")

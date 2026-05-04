@@ -60,5 +60,8 @@ public class CreateTenantRequest {
 
     /** Master admin only: assign the AGENT (by agent id) who will manage this shop. */
     private Long vendorId;
+
+    /** Optional feature-specific defaults to seed into shop_config at creation time. */
+    private InitialShopConfigRequest initialConfig;
 }
 

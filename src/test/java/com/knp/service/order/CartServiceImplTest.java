@@ -52,6 +52,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import com.knp.service.MessageService;
+import com.knp.service.audit.ActivityLogService;
 import com.knp.service.inventory.InventoryService;
 import com.knp.service.tenant.ShopInfoService;
 import com.knp.service.customer.LoyaltyService;
@@ -95,6 +96,9 @@ class CartServiceImplTest {
     @Mock
     private TenantContext tenantContext;
 
+    @Mock
+    private ActivityLogService activityLogService;
+
     private CartServiceImpl cartService;
     private ObjectMapper objectMapper;
 
@@ -126,6 +130,7 @@ class CartServiceImplTest {
             shopInfoService,
             promotionService,
             loyaltyService,
+            activityLogService,
             tenantContext
         );
     }
@@ -1079,7 +1084,7 @@ class CartServiceImplTest {
         savedOrder.setTotalAmount(new BigDecimal("33000"));
 
         when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
-        when(customerRepository.findByName("Khách Lẻ")).thenReturn(Optional.empty());
+
         when(inventoryService.getInventoryByProductId(eq(1L), any()))
                 .thenReturn(new PageImpl<>(List.of(InventoryDTO.builder().id(5L).quantityInStock(10L).build())));
         when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
@@ -1141,7 +1146,7 @@ class CartServiceImplTest {
         savedOrder.setTotalAmount(new BigDecimal("29700"));
 
         when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
-        when(customerRepository.findByName("Khách Lẻ")).thenReturn(Optional.empty());
+
         when(inventoryService.getInventoryByProductId(eq(1L), any()))
                 .thenReturn(new PageImpl<>(List.of(InventoryDTO.builder().id(5L).quantityInStock(10L).build())));
         when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
@@ -1170,7 +1175,7 @@ class CartServiceImplTest {
         savedOrder.setTotalAmount(new BigDecimal("27500"));
 
         when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
-        when(customerRepository.findByName("Khách Lẻ")).thenReturn(Optional.empty());
+
         when(inventoryService.getInventoryByProductId(eq(1L), any()))
                 .thenReturn(new PageImpl<>(List.of(InventoryDTO.builder().id(5L).quantityInStock(10L).build())));
         when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
@@ -1201,7 +1206,7 @@ class CartServiceImplTest {
         savedOrder.setStatus(Order.OrderStatus.COMPLETED);
 
         when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
-        when(customerRepository.findByName("Khách Lẻ")).thenReturn(Optional.empty());
+
         when(inventoryService.getInventoryByProductId(eq(1L), any()))
                 .thenReturn(new PageImpl<>(List.of(InventoryDTO.builder().id(5L).quantityInStock(10L).build())));
         when(orderRepository.findById(50L)).thenReturn(Optional.of(pendingOrder));
@@ -1344,7 +1349,7 @@ class CartServiceImplTest {
         savedOrder.setStatus(Order.OrderStatus.COMPLETED);
 
         when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
-        when(customerRepository.findByName("Khách Lẻ")).thenReturn(Optional.empty());
+
         when(promotionService.applyAtCheckout(eq("PROMO10"), any())).thenReturn(new BigDecimal("3000"));
         when(inventoryService.getInventoryByProductId(eq(1L), any()))
                 .thenReturn(new PageImpl<>(List.of(InventoryDTO.builder().id(5L).quantityInStock(10L).build())));
@@ -1411,7 +1416,7 @@ class CartServiceImplTest {
         savedOrder.setStatus(Order.OrderStatus.COMPLETED);
 
         when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
-        when(customerRepository.findByName("Khách Lẻ")).thenReturn(Optional.of(khachLe));
+        when(customerRepository.findByPhone("0000000000")).thenReturn(Optional.of(khachLe));
         when(inventoryService.getInventoryByProductId(eq(1L), any()))
                 .thenReturn(new PageImpl<>(List.of(InventoryDTO.builder().id(5L).quantityInStock(10L).build())));
         when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
@@ -1420,7 +1425,7 @@ class CartServiceImplTest {
         CheckoutResponse response = cartService.checkout("cart-001", request);
 
         assertThat(response).isNotNull();
-        verify(customerRepository).findByName("Khách Lẻ");
+        verify(customerRepository).findByPhone("0000000000");
     }
 
     // ── sendToKitchen — customer name from request ────────────────────────────

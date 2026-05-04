@@ -11,10 +11,13 @@ import com.knp.model.entity.product.Product;
 import com.knp.repository.inventory.InventoryRepository;
 import com.knp.repository.product.ProductRepository;
 import com.knp.multitenant.TenantContext;
+import com.knp.service.audit.ActivityLogService;
+import com.knp.model.enums.ActivityAction;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +35,7 @@ public class InventoryServiceImpl implements InventoryService {
     private final ProductRepository productRepository;
     private final MessageService messageService;
     private final TenantContext tenantContext;
+    private final ActivityLogService activityLogService;
 
     @Override
     public InventoryDTO createInventory(CreateInventoryRequest request) {
@@ -152,6 +156,12 @@ public class InventoryServiceImpl implements InventoryService {
 
         Inventory updated = inventoryRepository.save(inventory);
         log.info("Inventory updated successfully - id: {}, productId: {}", updated.getId(), updated.getProduct().getId());
+
+        String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.INVENTORY_ADJUSTED, "INVENTORY", String.valueOf(updated.getId()),
+                "Điều chỉnh tồn kho: " + updated.getProduct().getName() + " → " + updated.getQuantityInStock(), null);
+
         return InventoryDTO.fromEntity(updated);
     }
 

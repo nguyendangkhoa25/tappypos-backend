@@ -115,7 +115,7 @@ public class FastExcelHelper {
         writeData(worksheet, rowIndex, PAWN_EXCEL_MATRIX.get(REQUEST_MORE).getIndex(), String.valueOf(pawnQuery.getPawnId()));
         writeData(worksheet, rowIndex, PAWN_EXCEL_MATRIX.get(ITEM_VALUE).getIndex(), NumberUtil.amountToString(pawnQuery.getItemValue()));
         writeData(worksheet, rowIndex, PAWN_EXCEL_MATRIX.get(INTEREST_RATE).getIndex(), NumberUtil.amountToString(pawnQuery.getInterestRate()));
-        writeData(worksheet, rowIndex, PAWN_EXCEL_MATRIX.get(INTEREST_CAL_TYPE).getIndex(), PawnUtil.getPawnInterestCalculation(pawnQuery.getInterestDaysPerMonth()));
+        writeData(worksheet, rowIndex, PAWN_EXCEL_MATRIX.get(INTEREST_CAL_TYPE).getIndex(), PawnUtil.getPawnInterestCalculation(pawnQuery.getInterestCalcMode()));
         writeData(worksheet, rowIndex, PAWN_EXCEL_MATRIX.get(STATUS).getIndex(), pawnQuery.getPawnStatus() != null ? pawnQuery.getPawnStatus().label : "");
         writeData(worksheet, rowIndex, PAWN_EXCEL_MATRIX.get(REDEEM_DATE).getIndex(), DateTimeUtil.localDateTimeToString(pawnQuery.getRedeemDate()));
         writeData(worksheet, rowIndex, PAWN_EXCEL_MATRIX.get(INTEREST_AMOUNT).getIndex(), NumberUtil.amountToString(pawnQuery.getInterestAmount()));

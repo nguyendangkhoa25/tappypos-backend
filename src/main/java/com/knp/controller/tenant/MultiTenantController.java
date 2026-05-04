@@ -14,6 +14,8 @@ import com.knp.model.entity.tenant.Tenant;
 import com.knp.multitenant.TenantContext;
 import com.knp.repository.tenant.AgentRepository;
 import com.knp.service.MessageService;
+import com.knp.service.audit.ActivityLogService;
+import com.knp.model.enums.ActivityAction;
 import com.knp.service.auth.RoleFeatureService;
 import com.knp.service.notification.NotificationService;
 import com.knp.service.tenant.ShopConfigService;
@@ -56,6 +58,7 @@ public class MultiTenantController {
     private final MessageService messageService;
     private final AgentRepository agentRepository;
     private final RoleFeatureService roleFeatureService;
+    private final ActivityLogService activityLogService;
 
     /**
      * GET /api/multi-tenants/stats
@@ -117,7 +120,8 @@ public class MultiTenantController {
         try {
             tenantProvisioningService.provision(tenantEntity,
                     request.getAdminUsername(), request.getAdminPassword(),
-                    request.getRoleSetups(), request.getShopAddress());
+                    request.getRoleSetups(), request.getShopAddress(),
+                    request.getInitialConfig());
             try {
                 tenantSeedService.seed(request.getShopType());
             } catch (Exception e) {
@@ -134,6 +138,9 @@ public class MultiTenantController {
         // Notify all MASTER_TENANT users asynchronously — username captured here (main thread)
         // before the async call since SecurityContextHolder is thread-local.
         String createdBy = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync("master", createdBy, null,
+                ActivityAction.TENANT_CREATED, "TENANT", tenant.getTenantId(),
+                "Tạo cửa hàng: " + tenant.getName() + " (" + tenant.getTenantId() + ")", null);
         Locale vi = new Locale("vi");
         String notifTitle = messageService.getMessage("notification.master.tenant.created.title", vi);
         String notifMsg = messageService.getMessage("notification.master.tenant.created.message", vi,
@@ -191,6 +198,11 @@ public class MultiTenantController {
                 }
             }
         }
+
+        String updatedBy = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync("master", updatedBy, null,
+                ActivityAction.TENANT_UPDATED, "TENANT", tenantId,
+                "Cập nhật cửa hàng: " + tenant.getName() + " (" + tenantId + ")", null);
 
         return ResponseEntity.ok(ApiResponse.success(tenant, "Tenant updated successfully"));
     }
