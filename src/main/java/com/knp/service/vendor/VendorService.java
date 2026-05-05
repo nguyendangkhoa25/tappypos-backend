@@ -58,6 +58,7 @@ public class VendorService {
             throw new BadRequestException(messageService.getMessage("error.vendor.code.exists", code));
         }
         Vendor vendor = Vendor.builder()
+                .tenantId(tenantContext.getCurrentTenantId())
                 .name(req.getName().trim())
                 .code(code)
                 .contactName(req.getContactName())

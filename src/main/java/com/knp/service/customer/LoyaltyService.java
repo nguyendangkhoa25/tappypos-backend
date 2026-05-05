@@ -13,6 +13,7 @@ import com.knp.repository.customer.LoyaltyProgramRepository;
 import com.knp.repository.customer.LoyaltyTierRepository;
 import com.knp.repository.customer.LoyaltyTransactionRepository;
 import com.knp.service.MessageService;
+import com.knp.multitenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -36,6 +37,7 @@ public class LoyaltyService {
     private final LoyaltyTransactionRepository transactionRepository;
     private final CustomerRepository customerRepository;
     private final MessageService messageService;
+    private final TenantContext tenantContext;
 
     // ── Program ──────────────────────────────────────────────────────────────
 
@@ -172,6 +174,7 @@ public class LoyaltyService {
         customerRepository.save(customer);
 
         transactionRepository.save(LoyaltyTransaction.builder()
+                .tenantId(tenantContext.getCurrentTenantId())
                 .customerId(customerId)
                 .orderId(orderId)
                 .type(LoyaltyTransactionType.EARNED)
@@ -199,6 +202,7 @@ public class LoyaltyService {
         customerRepository.save(customer);
 
         LoyaltyTransaction tx = transactionRepository.save(LoyaltyTransaction.builder()
+                .tenantId(tenantContext.getCurrentTenantId())
                 .customerId(customerId)
                 .type(LoyaltyTransactionType.ADJUSTED)
                 .points(points)
@@ -238,6 +242,7 @@ public class LoyaltyService {
         customerRepository.save(customer);
 
         transactionRepository.save(LoyaltyTransaction.builder()
+                .tenantId(tenantContext.getCurrentTenantId())
                 .customerId(customerId)
                 .orderId(orderId)
                 .type(LoyaltyTransactionType.REDEEMED)

@@ -26,8 +26,12 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -213,5 +217,166 @@ class EmployeeServiceImplTest {
 
         assertThatThrownBy(() -> employeeService.delete(99L))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── getAll ────────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getAll: returns paged employee DTOs")
+    void getAll_returnsPaged() {
+        Page<Employee> page = new PageImpl<>(List.of(employee), PageRequest.of(0, 10), 1);
+        when(employeeRepository.findAllWithSearch("", PageRequest.of(0, 10))).thenReturn(page);
+
+        Page<EmployeeDTO> result = employeeService.getAll("", 0, 10);
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getFullName()).isEqualTo("Nguyen Van A");
+    }
+
+    // ── getAllActive ───────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getAllActive: returns list of all active employee DTOs")
+    void getAllActive_returnsList() {
+        when(employeeRepository.findAllActive()).thenReturn(List.of(employee));
+
+        List<EmployeeDTO> result = employeeService.getAllActive();
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getPhone()).isEqualTo("0901234567");
+    }
+
+    // ── getByUserId ───────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getByUserId: returns DTO for employee linked to userId")
+    void getByUserId_success() {
+        when(employeeRepository.findByUserId(5L)).thenReturn(Optional.of(employee));
+
+        EmployeeDTO dto = employeeService.getByUserId(5L);
+
+        assertThat(dto.getFullName()).isEqualTo("Nguyen Van A");
+    }
+
+    @Test
+    @DisplayName("getByUserId: throws ResourceNotFoundException when no employee linked")
+    void getByUserId_notFound() {
+        when(employeeRepository.findByUserId(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> employeeService.getByUserId(99L))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── getById edge cases ────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getById: throws when employee is soft-deleted")
+    void getById_softDeleted() {
+        employee.softDelete();
+        when(employeeRepository.findById(1L)).thenReturn(Optional.of(employee));
+
+        assertThatThrownBy(() -> employeeService.getById(1L))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── update edge cases ─────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("update: throws when employee not found")
+    void update_notFound() {
+        when(employeeRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> employeeService.update(99L, new UpdateEmployeeRequest()))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("update: skips user re-link when same userId provided")
+    void update_sameUserId_noChange() {
+        employee.setUserId(5L);
+        when(employeeRepository.findById(1L)).thenReturn(Optional.of(employee));
+        when(employeeRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        UpdateEmployeeRequest req = new UpdateEmployeeRequest();
+        req.setUserId(5L);
+
+        employeeService.update(1L, req);
+
+        verify(employeeRepository, never()).existsByUserId(anyLong());
+    }
+
+    @Test
+    @DisplayName("update: throws when new linked userId user does not exist")
+    void update_newUserId_userNotFound() {
+        employee.setUserId(3L);
+        when(employeeRepository.findById(1L)).thenReturn(Optional.of(employee));
+        when(employeeRepository.existsByUserId(8L)).thenReturn(false);
+        when(userRepository.findById(8L)).thenReturn(Optional.empty());
+
+        UpdateEmployeeRequest req = new UpdateEmployeeRequest();
+        req.setUserId(8L);
+
+        assertThatThrownBy(() -> employeeService.update(1L, req))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("update: applies invalid position update throws BadRequestException")
+    void update_invalidPosition() {
+        when(employeeRepository.findById(1L)).thenReturn(Optional.of(employee));
+
+        UpdateEmployeeRequest req = new UpdateEmployeeRequest();
+        req.setPosition("INVALID_ROLE");
+
+        assertThatThrownBy(() -> employeeService.update(1L, req))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    // ── create edge cases ─────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("create: throws ResourceNotFoundException when linked userId user does not exist")
+    void create_withLinkedUser_userNotFound() {
+        CreateEmployeeRequest req = new CreateEmployeeRequest();
+        req.setFullName("Test User");
+        req.setPhone("0900000000");
+        req.setPosition("RECEPTIONIST");
+        req.setUserId(99L);
+
+        when(employeeRepository.existsByUserId(99L)).thenReturn(false);
+        when(userRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> employeeService.create(req))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── toDTO: linked user lookup coverage ───────────────────────────────────
+
+    @Test
+    @DisplayName("getById: maps username from linked user")
+    void getById_withLinkedUser_mapsUsername() {
+        employee.setUserId(5L);
+        User user = User.builder().username("linked_user").build();
+        user.setId(5L);
+        when(employeeRepository.findById(1L)).thenReturn(Optional.of(employee));
+        when(userRepository.findById(5L)).thenReturn(Optional.of(user));
+
+        EmployeeDTO dto = employeeService.getById(1L);
+
+        assertThat(dto.getUserId()).isEqualTo(5L);
+        assertThat(dto.getUsername()).isEqualTo("linked_user");
+    }
+
+    @Test
+    @DisplayName("getById: returns null username when linked user not found")
+    void getById_withLinkedUser_userMissing() {
+        employee.setUserId(5L);
+        when(employeeRepository.findById(1L)).thenReturn(Optional.of(employee));
+        when(userRepository.findById(5L)).thenReturn(Optional.empty());
+
+        EmployeeDTO dto = employeeService.getById(1L);
+
+        assertThat(dto.getUserId()).isEqualTo(5L);
+        assertThat(dto.getUsername()).isNull();
     }
 }

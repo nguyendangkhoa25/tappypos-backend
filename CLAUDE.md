@@ -206,6 +206,28 @@ Products use Entity-Attribute-Value to support 18+ types (Food, Beverage, Drug, 
 
 Base `Product` holds SKU, price, cost, unit, vendor, shelf location, and status. Dynamic attributes live in `ProductAttributeValue`.
 
+#### Dynamic-Price Product Types
+
+`DynamicPriceProductTypes` (`com.knp.model.enums`) — currently `CODES = Set.of("JEWELRY")`.
+
+For these types the `price` column on `Product` is stored as `0`. The real sell price is computed at cart-add time in `CartServiceImpl.calculateDynamicUnitPrice()`:
+
+```
+unitPrice = gold_weight (EAV) × GoldPriceService.getPriceForCategory(categoryId).sell
+          + sell_proc_price (EAV, falls back to proc_price)
+```
+
+`CartServiceImpl.addItemToCart()` resolves `unitPrice` before building the `CartItemEntity`:
+```java
+BigDecimal resolvedUnitPrice = DynamicPriceProductTypes.isDynamicPrice(productTypeCode)
+    ? calculateDynamicUnitPrice(product)
+    : product.getPrice();
+```
+
+Throws `BadRequestException` (with Vietnamese message) if the product has no category or no gold price is configured for that category.
+
+**To add a new dynamic-price type:** add its code to `DynamicPriceProductTypes.CODES`; extend `calculateDynamicUnitPrice()` if the formula differs from gold.
+
 ### Tenant Provisioning
 
 `POST /api/multi-tenants` (master-only) calls `TenantProvisioningService.provision()` which:
@@ -411,6 +433,34 @@ ON CONFLICT (product_type_id, code) DO UPDATE SET name = EXCLUDED.name;
 ```
 
 Always join on `ag.code`, never on `ag.name`. Vietnamese names in `name` column. Use PostgreSQL `ON CONFLICT … DO UPDATE/DO NOTHING` — never MySQL's `ON DUPLICATE KEY UPDATE`.
+
+### External / Legacy ID Convention
+
+Every major tenant entity table has a `legacy_id VARCHAR(50) DEFAULT NULL` column. Its purpose is to store the original primary key from **any external or legacy system** — the old platform's integer ID, a third-party UUID, an ERP code, or any opaque string key we don't know the shape of yet.
+
+**Design decisions:**
+- `VARCHAR(50)` instead of `BIGINT` — accepts integers, UUIDs, and arbitrary string keys without a schema change when a new source system appears.
+- `DEFAULT NULL` — existing rows are unaffected; only migrated or synced rows carry a value.
+- **Partial index** on `(tenant_id, legacy_id) WHERE legacy_id IS NOT NULL` — efficient reverse-lookup (old ID → new UUID) with no overhead on the majority of rows that have no legacy ID.
+
+**Tables that already have this column:**
+
+| Table | Index |
+|---|---|
+| `product` | `idx_product_legacy_id` |
+| `customers` | `idx_customers_legacy_id` |
+| `orders` | `idx_orders_legacy_id` |
+| `employees` | `idx_employees_legacy_id` |
+| `pawn` | `idx_pawn_legacy_id` |
+| `pawn_req_money` | `idx_pawn_req_money_legacy_id` |
+
+**When to add `legacy_id` to a new table:**
+1. Add `legacy_id VARCHAR(50) DEFAULT NULL` in a new Flyway migration.
+2. Add the partial index: `CREATE INDEX IF NOT EXISTS idx_<table>_legacy_id ON <table> (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;`
+3. Add `@Column(name = "legacy_id", length = 50) private String legacyId;` to the entity class.
+4. Expose it in the DTO if the migration script or import API needs to read it back.
+
+**Usage pattern in migration scripts:** populate `legacy_id` during the INSERT/UPDATE that creates the new-platform row. After migration, use `SELECT id FROM <table> WHERE tenant_id = ? AND legacy_id = ?` to resolve old IDs to new UUIDs in any cross-reference joins.
 
 ### Database Schema Management
 

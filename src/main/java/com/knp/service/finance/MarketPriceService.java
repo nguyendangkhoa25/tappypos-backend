@@ -5,6 +5,7 @@ import com.knp.model.dto.marketprice.MarketPriceDTO;
 import com.knp.model.dto.marketprice.SaveMarketPriceRequest;
 import com.knp.model.entity.finance.MarketPrice;
 import com.knp.repository.finance.MarketPriceRepository;
+import com.knp.multitenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -20,6 +21,7 @@ import java.util.stream.Collectors;
 public class MarketPriceService {
 
     private final MarketPriceRepository repository;
+    private final TenantContext tenantContext;
 
     public List<MarketPriceDTO> getAll() {
         return repository.findAllActive().stream().map(this::mapToDTO).collect(Collectors.toList());
@@ -28,6 +30,7 @@ public class MarketPriceService {
     @Transactional
     public MarketPriceDTO create(SaveMarketPriceRequest req) {
         MarketPrice mp = MarketPrice.builder()
+                .tenantId(tenantContext.getCurrentTenantId())
                 .name(req.getName()).unit(req.getUnit())
                 .buyPrice(req.getBuyPrice()).sellPrice(req.getSellPrice())
                 .isActive(req.getIsActive() != null ? req.getIsActive() : true)

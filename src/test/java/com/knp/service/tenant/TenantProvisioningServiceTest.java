@@ -161,7 +161,7 @@ class TenantProvisioningServiceTest {
     void testProvision_SeedsDefaultConfig() {
         tenantProvisioningService.provision(tenant, "admin", "password", null, null, null);
 
-        verify(shopConfigService).seedIfAbsent(ShopConfigKey.DEFAULT_TAX_RATE, 0.0);
+        verify(shopConfigService).seedIfAbsent(ShopConfigKey.DEFAULT_TAX_RATE, 0.1);
         verify(shopConfigService).seedIfAbsent(ShopConfigKey.POS_MODE, "STANDARD");
     }
 

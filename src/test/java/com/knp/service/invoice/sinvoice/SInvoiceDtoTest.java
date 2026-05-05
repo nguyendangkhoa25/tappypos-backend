@@ -170,4 +170,380 @@ class SInvoiceDtoTest {
         assertThat(request.getSupplierTaxCode()).isEqualTo("1234567890");
         assertThat(request.getTransactionUuid()).isEqualTo("new-uuid");
     }
+
+    // ── SInvoiceStatusRequest: equals / hashCode / toString ───────────────────
+
+    @Test
+    @DisplayName("SInvoiceStatusRequest: equals returns false for null")
+    void sInvoiceStatusRequest_equalsNull() {
+        SInvoiceStatusRequest r = SInvoiceStatusRequest.builder().supplierTaxCode("A").build();
+        assertThat(r.equals(null)).isFalse();
+    }
+
+    @Test
+    @DisplayName("SInvoiceStatusRequest: equals returns false for different type")
+    void sInvoiceStatusRequest_equalsDifferentType() {
+        SInvoiceStatusRequest r = SInvoiceStatusRequest.builder().build();
+        assertThat(r.equals("string")).isFalse();
+    }
+
+    @Test
+    @DisplayName("SInvoiceStatusRequest: equals returns false when supplierTaxCode differs")
+    void sInvoiceStatusRequest_equalsDifferentSupplier() {
+        SInvoiceStatusRequest r1 = SInvoiceStatusRequest.builder().supplierTaxCode("A").build();
+        SInvoiceStatusRequest r2 = SInvoiceStatusRequest.builder().supplierTaxCode("B").build();
+        assertThat(r1).isNotEqualTo(r2);
+    }
+
+    @Test
+    @DisplayName("SInvoiceStatusRequest: equals returns false when transactionUuid differs")
+    void sInvoiceStatusRequest_equalsDifferentUuid() {
+        SInvoiceStatusRequest r1 = SInvoiceStatusRequest.builder().transactionUuid("uuid-1").build();
+        SInvoiceStatusRequest r2 = SInvoiceStatusRequest.builder().transactionUuid("uuid-2").build();
+        assertThat(r1).isNotEqualTo(r2);
+    }
+
+    @Test
+    @DisplayName("SInvoiceStatusRequest: equals handles null field on one side")
+    void sInvoiceStatusRequest_equalsOneNull() {
+        SInvoiceStatusRequest r1 = SInvoiceStatusRequest.builder().supplierTaxCode("A").build();
+        SInvoiceStatusRequest r2 = SInvoiceStatusRequest.builder().build();
+        assertThat(r1).isNotEqualTo(r2);
+        assertThat(r2).isNotEqualTo(r1);
+    }
+
+    @Test
+    @DisplayName("SInvoiceStatusRequest: hashCode consistent across calls")
+    void sInvoiceStatusRequest_hashCode() {
+        SInvoiceStatusRequest r = SInvoiceStatusRequest.builder()
+                .supplierTaxCode("0123456789").transactionUuid("uuid-abc").build();
+        assertThat(r.hashCode()).isEqualTo(r.hashCode());
+    }
+
+    @Test
+    @DisplayName("SInvoiceStatusRequest: hashCode differs for null vs non-null field")
+    void sInvoiceStatusRequest_hashCodeNullVsNonNull() {
+        SInvoiceStatusRequest r1 = SInvoiceStatusRequest.builder().supplierTaxCode("A").build();
+        SInvoiceStatusRequest r2 = SInvoiceStatusRequest.builder().build();
+        assertThat(r1.hashCode()).isNotEqualTo(r2.hashCode());
+    }
+
+    @Test
+    @DisplayName("SInvoiceStatusRequest: toString contains field names")
+    void sInvoiceStatusRequest_toString() {
+        SInvoiceStatusRequest r = SInvoiceStatusRequest.builder()
+                .supplierTaxCode("0123").transactionUuid("tx-1").build();
+        assertThat(r.toString()).contains("supplierTaxCode").contains("transactionUuid");
+    }
+
+    // ── FileInvoiceRequest: untested fields and equals / hashCode / toString ──
+
+    @Test
+    @DisplayName("FileInvoiceRequest: invoiceNo, templateCode, transactionUuid getters")
+    void fileInvoiceRequest_allFields() {
+        FileInvoiceRequest r = FileInvoiceRequest.builder()
+                .supplierTaxCode("0123456789")
+                .invoiceNo("INV-TEST")
+                .templateCode("01GTKT")
+                .transactionUuid("uuid-xyz")
+                .fileType("pdf")
+                .build();
+        assertThat(r.getInvoiceNo()).isEqualTo("INV-TEST");
+        assertThat(r.getTemplateCode()).isEqualTo("01GTKT");
+        assertThat(r.getTransactionUuid()).isEqualTo("uuid-xyz");
+    }
+
+    @Test
+    @DisplayName("FileInvoiceRequest: equals returns false for null")
+    void fileInvoiceRequest_equalsNull() {
+        FileInvoiceRequest r = FileInvoiceRequest.builder().build();
+        assertThat(r.equals(null)).isFalse();
+    }
+
+    @Test
+    @DisplayName("FileInvoiceRequest: equals returns false for different type")
+    void fileInvoiceRequest_equalsDifferentType() {
+        FileInvoiceRequest r = FileInvoiceRequest.builder().build();
+        assertThat(r.equals(42)).isFalse();
+    }
+
+    @Test
+    @DisplayName("FileInvoiceRequest: equals returns false when invoiceNo differs")
+    void fileInvoiceRequest_equalsDifferentInvoiceNo() {
+        FileInvoiceRequest r1 = FileInvoiceRequest.builder().invoiceNo("INV-A").build();
+        FileInvoiceRequest r2 = FileInvoiceRequest.builder().invoiceNo("INV-B").build();
+        assertThat(r1).isNotEqualTo(r2);
+    }
+
+    @Test
+    @DisplayName("FileInvoiceRequest: equals returns false when one field is null")
+    void fileInvoiceRequest_equalsNullVsNonNull() {
+        FileInvoiceRequest r1 = FileInvoiceRequest.builder().templateCode("01GTKT").build();
+        FileInvoiceRequest r2 = FileInvoiceRequest.builder().build();
+        assertThat(r1).isNotEqualTo(r2);
+        assertThat(r2).isNotEqualTo(r1);
+    }
+
+    @Test
+    @DisplayName("FileInvoiceRequest: equals true for same reference")
+    void fileInvoiceRequest_equalsSameRef() {
+        FileInvoiceRequest r = FileInvoiceRequest.builder().supplierTaxCode("A").build();
+        assertThat(r).isEqualTo(r);
+    }
+
+    @Test
+    @DisplayName("FileInvoiceRequest: hashCode consistent")
+    void fileInvoiceRequest_hashCode() {
+        FileInvoiceRequest r = FileInvoiceRequest.builder()
+                .supplierTaxCode("A").invoiceNo("B").build();
+        assertThat(r.hashCode()).isEqualTo(r.hashCode());
+    }
+
+    @Test
+    @DisplayName("FileInvoiceRequest: hashCode differs when transactionUuid differs")
+    void fileInvoiceRequest_hashCodeDiffers() {
+        FileInvoiceRequest r1 = FileInvoiceRequest.builder().transactionUuid("uuid-1").build();
+        FileInvoiceRequest r2 = FileInvoiceRequest.builder().transactionUuid("uuid-2").build();
+        assertThat(r1.hashCode()).isNotEqualTo(r2.hashCode());
+    }
+
+    @Test
+    @DisplayName("FileInvoiceRequest: toString includes field names")
+    void fileInvoiceRequest_toString() {
+        FileInvoiceRequest r = FileInvoiceRequest.builder()
+                .supplierTaxCode("TAX").fileType("xml").build();
+        assertThat(r.toString()).contains("supplierTaxCode").contains("fileType");
+    }
+
+    // ── SInvoiceStatusResponse: equals / hashCode / toString ─────────────────
+
+    @Test
+    @DisplayName("SInvoiceStatusResponse: equals returns false for null")
+    void sInvoiceStatusResponse_equalsNull() {
+        SInvoiceStatusResponse r = new SInvoiceStatusResponse();
+        assertThat(r.equals(null)).isFalse();
+    }
+
+    @Test
+    @DisplayName("SInvoiceStatusResponse: equals returns false for different type")
+    void sInvoiceStatusResponse_equalsDifferentType() {
+        SInvoiceStatusResponse r = new SInvoiceStatusResponse();
+        assertThat(r.equals("string")).isFalse();
+    }
+
+    @Test
+    @DisplayName("SInvoiceStatusResponse: equals false when errorCode differs")
+    void sInvoiceStatusResponse_equalsDifferentErrorCode() {
+        SInvoiceStatusResponse r1 = new SInvoiceStatusResponse();
+        r1.setErrorCode("0");
+        SInvoiceStatusResponse r2 = new SInvoiceStatusResponse();
+        r2.setErrorCode("1");
+        assertThat(r1).isNotEqualTo(r2);
+    }
+
+    @Test
+    @DisplayName("SInvoiceStatusResponse: equals false when one side null field")
+    void sInvoiceStatusResponse_equalsNullField() {
+        SInvoiceStatusResponse r1 = new SInvoiceStatusResponse();
+        r1.setDescription("Success");
+        SInvoiceStatusResponse r2 = new SInvoiceStatusResponse();
+        assertThat(r1).isNotEqualTo(r2);
+    }
+
+    @Test
+    @DisplayName("SInvoiceStatusResponse: hashCode consistent")
+    void sInvoiceStatusResponse_hashCode() {
+        SInvoiceStatusResponse r = new SInvoiceStatusResponse();
+        r.setErrorCode("0");
+        r.setTransactionUuid("tx-123");
+        assertThat(r.hashCode()).isEqualTo(r.hashCode());
+    }
+
+    @Test
+    @DisplayName("SInvoiceStatusResponse: hashCode differs for different values")
+    void sInvoiceStatusResponse_hashCodeDiffers() {
+        SInvoiceStatusResponse r1 = new SInvoiceStatusResponse();
+        r1.setTransactionUuid("tx-1");
+        SInvoiceStatusResponse r2 = new SInvoiceStatusResponse();
+        r2.setTransactionUuid("tx-2");
+        assertThat(r1.hashCode()).isNotEqualTo(r2.hashCode());
+    }
+
+    @Test
+    @DisplayName("SInvoiceStatusResponse: toString contains class info")
+    void sInvoiceStatusResponse_toString() {
+        SInvoiceStatusResponse r = new SInvoiceStatusResponse();
+        r.setErrorCode("0");
+        r.setDescription("OK");
+        assertThat(r.toString()).contains("errorCode").contains("description");
+    }
+
+    // ── SInvoiceFileResponse: additional equals / hashCode / toString ─────────
+
+    @Test
+    @DisplayName("SInvoiceFileResponse: equals false for null")
+    void sInvoiceFileResponse_equalsNull() {
+        SInvoiceFileResponse r = new SInvoiceFileResponse();
+        assertThat(r.equals(null)).isFalse();
+    }
+
+    @Test
+    @DisplayName("SInvoiceFileResponse: equals false for different type")
+    void sInvoiceFileResponse_equalsDifferentType() {
+        SInvoiceFileResponse r = new SInvoiceFileResponse();
+        assertThat(r.equals(42)).isFalse();
+    }
+
+    @Test
+    @DisplayName("SInvoiceFileResponse: equals false when errorCode differs")
+    void sInvoiceFileResponse_equalsDifferentErrorCode() {
+        SInvoiceFileResponse r1 = new SInvoiceFileResponse();
+        r1.setErrorCode(0);
+        SInvoiceFileResponse r2 = new SInvoiceFileResponse();
+        r2.setErrorCode(1);
+        assertThat(r1).isNotEqualTo(r2);
+    }
+
+    @Test
+    @DisplayName("SInvoiceFileResponse: equals false when description differs")
+    void sInvoiceFileResponse_equalsDifferentDescription() {
+        SInvoiceFileResponse r1 = new SInvoiceFileResponse();
+        r1.setDescription("OK");
+        SInvoiceFileResponse r2 = new SInvoiceFileResponse();
+        r2.setDescription("Error");
+        assertThat(r1).isNotEqualTo(r2);
+    }
+
+    @Test
+    @DisplayName("SInvoiceFileResponse: equals false when paymentStatus differs")
+    void sInvoiceFileResponse_equalsDifferentPaymentStatus() {
+        SInvoiceFileResponse r1 = new SInvoiceFileResponse();
+        r1.setPaymentStatus(true);
+        SInvoiceFileResponse r2 = new SInvoiceFileResponse();
+        r2.setPaymentStatus(false);
+        assertThat(r1).isNotEqualTo(r2);
+    }
+
+    @Test
+    @DisplayName("SInvoiceFileResponse: equals false when fileName is null on one side")
+    void sInvoiceFileResponse_equalsNullFileName() {
+        SInvoiceFileResponse r1 = new SInvoiceFileResponse();
+        r1.setFileName("invoice.pdf");
+        SInvoiceFileResponse r2 = new SInvoiceFileResponse();
+        assertThat(r1).isNotEqualTo(r2);
+        assertThat(r2).isNotEqualTo(r1);
+    }
+
+    @Test
+    @DisplayName("SInvoiceFileResponse: hashCode consistent")
+    void sInvoiceFileResponse_hashCode() {
+        SInvoiceFileResponse r = new SInvoiceFileResponse();
+        r.setErrorCode(0);
+        r.setFileName("test.pdf");
+        assertThat(r.hashCode()).isEqualTo(r.hashCode());
+    }
+
+    @Test
+    @DisplayName("SInvoiceFileResponse: toString contains field names")
+    void sInvoiceFileResponse_toString() {
+        SInvoiceFileResponse r = new SInvoiceFileResponse();
+        r.setErrorCode(0);
+        r.setDescription("OK");
+        r.setFileName("invoice.pdf");
+        assertThat(r.toString()).contains("description").contains("fileName");
+    }
+
+    // ── SAccessTokenResponse: additional coverage ─────────────────────────────
+
+    @Test
+    @DisplayName("SAccessTokenResponse: equals false for null")
+    void sAccessTokenResponse_equalsNull() {
+        SAccessTokenResponse t = new SAccessTokenResponse();
+        assertThat(t.equals(null)).isFalse();
+    }
+
+    @Test
+    @DisplayName("SAccessTokenResponse: equals false for different type")
+    void sAccessTokenResponse_equalsDifferentType() {
+        SAccessTokenResponse t = new SAccessTokenResponse();
+        assertThat(t.equals("string")).isFalse();
+    }
+
+    @Test
+    @DisplayName("SAccessTokenResponse: equals false when accessToken differs")
+    void sAccessTokenResponse_equalsDifferentToken() {
+        SAccessTokenResponse t1 = new SAccessTokenResponse();
+        t1.setAccessToken("token-A");
+        SAccessTokenResponse t2 = new SAccessTokenResponse();
+        t2.setAccessToken("token-B");
+        assertThat(t1).isNotEqualTo(t2);
+    }
+
+    @Test
+    @DisplayName("SAccessTokenResponse: equals false when one accessToken is null")
+    void sAccessTokenResponse_equalsNullToken() {
+        SAccessTokenResponse t1 = new SAccessTokenResponse();
+        t1.setAccessToken("token");
+        SAccessTokenResponse t2 = new SAccessTokenResponse();
+        assertThat(t1).isNotEqualTo(t2);
+    }
+
+    @Test
+    @DisplayName("SAccessTokenResponse: equals false when expiresIn differs (primitive int)")
+    void sAccessTokenResponse_equalsDifferentExpiresIn() {
+        SAccessTokenResponse t1 = new SAccessTokenResponse();
+        t1.setExpiresIn(3600);
+        SAccessTokenResponse t2 = new SAccessTokenResponse();
+        t2.setExpiresIn(7200);
+        assertThat(t1).isNotEqualTo(t2);
+    }
+
+    @Test
+    @DisplayName("SAccessTokenResponse: equals false when issuedAt differs (primitive long)")
+    void sAccessTokenResponse_equalsDifferentIssuedAt() {
+        SAccessTokenResponse t1 = new SAccessTokenResponse();
+        t1.setIssuedAt(1000000L);
+        SAccessTokenResponse t2 = new SAccessTokenResponse();
+        t2.setIssuedAt(2000000L);
+        assertThat(t1).isNotEqualTo(t2);
+    }
+
+    @Test
+    @DisplayName("SAccessTokenResponse: equals false when type differs (primitive int)")
+    void sAccessTokenResponse_equalsDifferentType_field() {
+        SAccessTokenResponse t1 = new SAccessTokenResponse();
+        t1.setType(1);
+        SAccessTokenResponse t2 = new SAccessTokenResponse();
+        t2.setType(2);
+        assertThat(t1).isNotEqualTo(t2);
+    }
+
+    @Test
+    @DisplayName("SAccessTokenResponse: hashCode consistent")
+    void sAccessTokenResponse_hashCode_consistent() {
+        SAccessTokenResponse t = new SAccessTokenResponse();
+        t.setAccessToken("token");
+        t.setExpiresIn(3600);
+        assertThat(t.hashCode()).isEqualTo(t.hashCode());
+    }
+
+    @Test
+    @DisplayName("SAccessTokenResponse: hashCode differs for different expiresIn")
+    void sAccessTokenResponse_hashCode_differs() {
+        SAccessTokenResponse t1 = new SAccessTokenResponse();
+        t1.setExpiresIn(3600);
+        SAccessTokenResponse t2 = new SAccessTokenResponse();
+        t2.setExpiresIn(7200);
+        assertThat(t1.hashCode()).isNotEqualTo(t2.hashCode());
+    }
+
+    @Test
+    @DisplayName("SAccessTokenResponse: toString includes field names")
+    void sAccessTokenResponse_toString() {
+        SAccessTokenResponse t = new SAccessTokenResponse();
+        t.setAccessToken("eyJ...");
+        t.setTokenType("Bearer");
+        t.setJwtId("jti-1");
+        assertThat(t.toString()).contains("accessToken").contains("tokenType");
+    }
 }

@@ -34,6 +34,9 @@ public class GoldPrice extends TenantAwareEntity {
     @Builder.Default
     private BigDecimal pawn = BigDecimal.ZERO;
 
+    @Column(name = "vendor_price", precision = 20, scale = 0)
+    private BigDecimal vendorPrice;
+
     @Column(name = "display_order", nullable = false)
     @Builder.Default
     private int displayOrder = 10;

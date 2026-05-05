@@ -79,6 +79,7 @@ public class InventoryController {
      * Get all inventory items with pagination
      * GET /api/v1/inventory
      */
+    @RequiresFeature({"INVENTORY", "POS"})
     @GetMapping
     public ResponseEntity<ApiResponse<Page<InventoryDTO>>> getAllInventory(Pageable pageable) {
         log.info("GET /api/v1/inventory - Get all inventory, page: {}, size: {}", 
@@ -148,6 +149,7 @@ public class InventoryController {
      * Search inventory by keyword
      * GET /api/v1/inventory/search?keyword=value
      */
+    @RequiresFeature({"INVENTORY", "POS"})
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<Page<InventoryDTO>>> searchInventory(
             @RequestParam String keyword,

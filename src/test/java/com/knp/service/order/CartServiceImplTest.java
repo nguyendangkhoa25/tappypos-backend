@@ -51,14 +51,20 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
+import com.knp.model.dto.goldprice.GoldPriceDTO;
+import com.knp.model.dto.order.AddGoldItemRequest;
+import com.knp.model.enums.DynamicPriceProductTypes;
 import com.knp.service.MessageService;
 import com.knp.service.audit.ActivityLogService;
+import com.knp.service.goldprice.GoldPriceService;
 import com.knp.service.inventory.InventoryService;
 import com.knp.service.tenant.ShopConfigService;
 import com.knp.service.tenant.ShopInfoService;
 import com.knp.service.customer.LoyaltyService;
 import com.knp.service.product.ProductService;
 import com.knp.multitenant.TenantContext;
+
+import java.util.Set;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("Cart Service Tests")
@@ -103,6 +109,9 @@ class CartServiceImplTest {
     @Mock
     private ActivityLogService activityLogService;
 
+    @Mock
+    private GoldPriceService goldPriceService;
+
     private CartServiceImpl cartService;
     private ObjectMapper objectMapper;
 
@@ -122,7 +131,7 @@ class CartServiceImplTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
-        when(shopConfigService.getDouble(any(), anyDouble())).thenReturn(0.10);
+        lenient().when(shopConfigService.getDouble(any(), anyDouble())).thenReturn(0.10);
         cartService = new CartServiceImpl(
             cartRepository,
             cartItemRepository,
@@ -137,7 +146,8 @@ class CartServiceImplTest {
             promotionService,
             loyaltyService,
             activityLogService,
-            tenantContext
+            tenantContext,
+            goldPriceService
         );
     }
 
@@ -1511,6 +1521,337 @@ class CartServiceImplTest {
         when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
 
         CartResponse response = cartService.applyPromotion("cart-001", "PROMO1");
+
+        assertThat(response).isNotNull();
+    }
+
+    // ==================== Dynamic-Price (JEWELRY) Tests ====================
+
+    @Test
+    @DisplayName("Should calculate dynamic unit price for JEWELRY product using gold price")
+    void testAddItemToCart_JewelryProduct_DynamicPrice() throws Exception {
+        String cartId = "test-cart";
+        CartRequest request = CartRequest.builder()
+            .productId(1L)
+            .quantity(1)
+            .build();
+
+        CartEntity cart = CartEntity.builder()
+            .id(1L).cartId(cartId).status(CartStatus.ACTIVE)
+            .items(new ArrayList<>()).appliedCoupons("[]").appliedPromotions("[]")
+            .build();
+
+        Map<String, Object> attrs = new HashMap<>();
+        attrs.put("gold_weight", "2.5");
+        attrs.put("sell_proc_price", "300000");
+
+        ProductDTO product = ProductDTO.builder()
+            .id(1L).name("Nhẫn vàng 18K").sku("KV-001")
+            .price(BigDecimal.ZERO).status("ACTIVE")
+            .productTypeCode("JEWELRY")
+            .categoryIds(Set.of(10L))
+            .attributes(attrs)
+            .build();
+
+        InventoryDTO inventory = InventoryDTO.builder()
+            .id(1L).productId(1L).quantityInStock(1L).build();
+
+        GoldPriceDTO goldPrice = GoldPriceDTO.builder()
+            .sell(new BigDecimal("6000000"))
+            .build();
+
+        when(cartRepository.findByCartId(cartId)).thenReturn(Optional.of(cart));
+        when(productService.getProductById(1L)).thenReturn(product);
+        when(inventoryService.getInventoryByProductId(1L, PageRequest.of(0, 1)))
+            .thenReturn(new PageImpl<>(List.of(inventory)));
+        when(goldPriceService.getPriceForCategory(10L)).thenReturn(goldPrice);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CartResponse response = cartService.addItemToCart(cartId, request);
+
+        assertNotNull(response);
+        assertEquals(1, response.getItems().size());
+        // Expected: 2.5 × 6,000,000 + 300,000 = 15,300,000
+        assertEquals(new BigDecimal("15300000"), response.getItems().get(0).getUnitPrice());
+        verify(goldPriceService).getPriceForCategory(10L);
+    }
+
+    @Test
+    @DisplayName("Should throw BadRequestException when JEWELRY product has no category")
+    void testAddItemToCart_JewelryProduct_NoCategory() {
+        String cartId = "test-cart";
+        CartRequest request = CartRequest.builder().productId(1L).quantity(1).build();
+
+        CartEntity cart = CartEntity.builder()
+            .id(1L).cartId(cartId).status(CartStatus.ACTIVE)
+            .items(new ArrayList<>()).build();
+
+        ProductDTO product = ProductDTO.builder()
+            .id(1L).name("Nhẫn vàng").sku("KV-002")
+            .price(BigDecimal.ZERO).status("ACTIVE")
+            .productTypeCode("JEWELRY")
+            .categoryIds(Set.of())
+            .attributes(new HashMap<>())
+            .build();
+
+        when(cartRepository.findByCartId(cartId)).thenReturn(Optional.of(cart));
+        when(productService.getProductById(1L)).thenReturn(product);
+        when(messageService.getMessage("error.product.dynamic.price.no.category"))
+            .thenReturn("Jewelry product must have a gold type category");
+
+        assertThrows(BadRequestException.class, () -> cartService.addItemToCart(cartId, request));
+    }
+
+    @Test
+    @DisplayName("Should throw BadRequestException when no gold price configured for category")
+    void testAddItemToCart_JewelryProduct_NoGoldPrice() {
+        String cartId = "test-cart";
+        CartRequest request = CartRequest.builder().productId(1L).quantity(1).build();
+
+        CartEntity cart = CartEntity.builder()
+            .id(1L).cartId(cartId).status(CartStatus.ACTIVE)
+            .items(new ArrayList<>()).build();
+
+        ProductDTO product = ProductDTO.builder()
+            .id(1L).name("Nhẫn vàng").sku("KV-003")
+            .price(BigDecimal.ZERO).status("ACTIVE")
+            .productTypeCode("JEWELRY")
+            .categoryIds(Set.of(99L))
+            .attributes(new HashMap<>())
+            .build();
+
+        when(cartRepository.findByCartId(cartId)).thenReturn(Optional.of(cart));
+        when(productService.getProductById(1L)).thenReturn(product);
+        when(goldPriceService.getPriceForCategory(99L))
+            .thenThrow(new RuntimeException("No gold price configured"));
+        when(messageService.getMessage("error.product.dynamic.price.no.gold.price"))
+            .thenReturn("No gold price configured for this gold type");
+
+        assertThrows(BadRequestException.class, () -> cartService.addItemToCart(cartId, request));
+    }
+
+    @Test
+    @DisplayName("Should use proc_price fallback when sell_proc_price is absent")
+    void testAddItemToCart_JewelryProduct_ProcPriceFallback() throws Exception {
+        String cartId = "test-cart";
+        CartRequest request = CartRequest.builder().productId(1L).quantity(1).build();
+
+        CartEntity cart = CartEntity.builder()
+            .id(1L).cartId(cartId).status(CartStatus.ACTIVE)
+            .items(new ArrayList<>()).appliedCoupons("[]").appliedPromotions("[]")
+            .build();
+
+        Map<String, Object> attrs = new HashMap<>();
+        attrs.put("gold_weight", "1.0");
+        attrs.put("proc_price", "200000"); // fallback field, no sell_proc_price
+
+        ProductDTO product = ProductDTO.builder()
+            .id(1L).name("Dây chuyền vàng").sku("KV-004")
+            .price(BigDecimal.ZERO).status("ACTIVE")
+            .productTypeCode("JEWELRY")
+            .categoryIds(Set.of(10L))
+            .attributes(attrs)
+            .build();
+
+        InventoryDTO inventory = InventoryDTO.builder()
+            .id(1L).productId(1L).quantityInStock(1L).build();
+
+        GoldPriceDTO goldPrice = GoldPriceDTO.builder()
+            .sell(new BigDecimal("5000000"))
+            .build();
+
+        when(cartRepository.findByCartId(cartId)).thenReturn(Optional.of(cart));
+        when(productService.getProductById(1L)).thenReturn(product);
+        when(inventoryService.getInventoryByProductId(1L, PageRequest.of(0, 1)))
+            .thenReturn(new PageImpl<>(List.of(inventory)));
+        when(goldPriceService.getPriceForCategory(10L)).thenReturn(goldPrice);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CartResponse response = cartService.addItemToCart(cartId, request);
+
+        assertNotNull(response);
+        // Expected: 1.0 × 5,000,000 + 200,000 = 5,200,000
+        assertEquals(new BigDecimal("5200000"), response.getItems().get(0).getUnitPrice());
+    }
+
+    @Test
+    @DisplayName("Should calculate zero proc fee when no fee attributes present")
+    void testAddItemToCart_JewelryProduct_ZeroProcFee() throws Exception {
+        String cartId = "test-cart";
+        CartRequest request = CartRequest.builder().productId(1L).quantity(1).build();
+
+        CartEntity cart = CartEntity.builder()
+            .id(1L).cartId(cartId).status(CartStatus.ACTIVE)
+            .items(new ArrayList<>()).appliedCoupons("[]").appliedPromotions("[]")
+            .build();
+
+        Map<String, Object> attrs = new HashMap<>();
+        attrs.put("gold_weight", "3.0");
+        // no proc fee attributes
+
+        ProductDTO product = ProductDTO.builder()
+            .id(1L).name("Vòng tay vàng").sku("KV-005")
+            .price(BigDecimal.ZERO).status("ACTIVE")
+            .productTypeCode("JEWELRY")
+            .categoryIds(Set.of(10L))
+            .attributes(attrs)
+            .build();
+
+        InventoryDTO inventory = InventoryDTO.builder()
+            .id(1L).productId(1L).quantityInStock(1L).build();
+
+        GoldPriceDTO goldPrice = GoldPriceDTO.builder()
+            .sell(new BigDecimal("4000000"))
+            .build();
+
+        when(cartRepository.findByCartId(cartId)).thenReturn(Optional.of(cart));
+        when(productService.getProductById(1L)).thenReturn(product);
+        when(inventoryService.getInventoryByProductId(1L, PageRequest.of(0, 1)))
+            .thenReturn(new PageImpl<>(List.of(inventory)));
+        when(goldPriceService.getPriceForCategory(10L)).thenReturn(goldPrice);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CartResponse response = cartService.addItemToCart(cartId, request);
+
+        assertNotNull(response);
+        // Expected: 3.0 × 4,000,000 + 0 = 12,000,000
+        assertEquals(new BigDecimal("12000000"), response.getItems().get(0).getUnitPrice());
+    }
+
+    // ==================== DynamicPriceProductTypes Tests ====================
+
+    @Test
+    @DisplayName("DynamicPriceProductTypes.isDynamicPrice returns true for JEWELRY")
+    void testDynamicPriceProductTypes_Jewelry() {
+        assertTrue(DynamicPriceProductTypes.isDynamicPrice("JEWELRY"));
+    }
+
+    @Test
+    @DisplayName("DynamicPriceProductTypes.isDynamicPrice returns false for non-dynamic types")
+    void testDynamicPriceProductTypes_NonDynamic() {
+        assertFalse(DynamicPriceProductTypes.isDynamicPrice("FOOD"));
+        assertFalse(DynamicPriceProductTypes.isDynamicPrice("ELECTRONICS"));
+        assertFalse(DynamicPriceProductTypes.isDynamicPrice("DRUG"));
+    }
+
+    @Test
+    @DisplayName("DynamicPriceProductTypes.isDynamicPrice returns false for null")
+    void testDynamicPriceProductTypes_Null() {
+        assertFalse(DynamicPriceProductTypes.isDynamicPrice(null));
+    }
+
+    @Test
+    @DisplayName("DynamicPriceProductTypes.CODES contains JEWELRY")
+    void testDynamicPriceProductTypes_CodesSet() {
+        assertThat(DynamicPriceProductTypes.CODES).contains("JEWELRY");
+    }
+
+    // ==================== addGoldItem Tests ====================
+
+    @Test
+    @DisplayName("addGoldItem: throws ResourceNotFoundException when cart not found")
+    void addGoldItem_cartNotFound() {
+        when(cartRepository.findByCartId("missing-cart")).thenReturn(Optional.empty());
+
+        AddGoldItemRequest req = new AddGoldItemRequest();
+        req.setItemType(CartItemEntity.ItemType.GOLD_IN);
+        req.setGoldType("Vàng 24K");
+        req.setGoldWeight(new BigDecimal("1.5"));
+        req.setUnitPrice(new BigDecimal("8000000"));
+
+        assertThatThrownBy(() -> cartService.addGoldItem("missing-cart", req))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("addGoldItem: throws BadRequestException when cart is not ACTIVE")
+    void addGoldItem_cartNotActive() {
+        CartEntity cart = CartEntity.builder()
+                .id(1L).cartId("cart-123").status(CartStatus.COMPLETED)
+                .items(new ArrayList<>()).build();
+        when(cartRepository.findByCartId("cart-123")).thenReturn(Optional.of(cart));
+
+        AddGoldItemRequest req = new AddGoldItemRequest();
+        req.setItemType(CartItemEntity.ItemType.GOLD_IN);
+        req.setGoldType("Vàng 24K");
+        req.setGoldWeight(new BigDecimal("1.5"));
+        req.setUnitPrice(new BigDecimal("8000000"));
+
+        assertThatThrownBy(() -> cartService.addGoldItem("cart-123", req))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("addGoldItem: throws BadRequestException when itemType is STANDARD")
+    void addGoldItem_standardItemTypeThrows() {
+        CartEntity cart = CartEntity.builder()
+                .id(1L).cartId("cart-123").status(CartStatus.ACTIVE)
+                .items(new ArrayList<>()).build();
+        when(cartRepository.findByCartId("cart-123")).thenReturn(Optional.of(cart));
+
+        AddGoldItemRequest req = new AddGoldItemRequest();
+        req.setItemType(CartItemEntity.ItemType.STANDARD);
+        req.setGoldType("Vàng 24K");
+        req.setGoldWeight(new BigDecimal("1.5"));
+        req.setUnitPrice(new BigDecimal("8000000"));
+
+        assertThatThrownBy(() -> cartService.addGoldItem("cart-123", req))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("GOLD_IN or GOLD_OUT");
+    }
+
+    @Test
+    @DisplayName("addGoldItem: successfully adds GOLD_IN item to cart")
+    void addGoldItem_goldIn_success() {
+        CartEntity cart = CartEntity.builder()
+                .id(1L).cartId("cart-123").status(CartStatus.ACTIVE)
+                .subtotal(BigDecimal.ZERO).totalDiscount(BigDecimal.ZERO)
+                .totalTax(BigDecimal.ZERO).total(BigDecimal.ZERO)
+                .items(new ArrayList<>()).appliedCoupons("[]").appliedPromotions("[]")
+                .build();
+        when(cartRepository.findByCartId("cart-123")).thenReturn(Optional.of(cart));
+        when(tenantContext.getCurrentTenantId()).thenReturn("tenant1");
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        AddGoldItemRequest req = new AddGoldItemRequest();
+        req.setItemType(CartItemEntity.ItemType.GOLD_IN);
+        req.setGoldType("Vàng SJC 9999");
+        req.setGoldBrand("SJC");
+        req.setGoldWeight(new BigDecimal("2.0"));
+        req.setGemWeight(new BigDecimal("0.1"));
+        req.setProcPrice(new BigDecimal("50000"));
+        req.setUnitPrice(new BigDecimal("8200000"));
+        req.setNotes("Mua từ khách");
+
+        CartResponse response = cartService.addGoldItem("cart-123", req);
+
+        assertThat(response).isNotNull();
+        verify(cartRepository).save(any(CartEntity.class));
+    }
+
+    @Test
+    @DisplayName("addGoldItem: GOLD_OUT item uses null gold brand when none provided")
+    void addGoldItem_goldOut_noBrand() {
+        CartEntity cart = CartEntity.builder()
+                .id(1L).cartId("cart-456").status(CartStatus.ACTIVE)
+                .subtotal(BigDecimal.ZERO).totalDiscount(BigDecimal.ZERO)
+                .totalTax(BigDecimal.ZERO).total(BigDecimal.ZERO)
+                .items(new ArrayList<>()).appliedCoupons("[]").appliedPromotions("[]")
+                .build();
+        when(cartRepository.findByCartId("cart-456")).thenReturn(Optional.of(cart));
+        when(tenantContext.getCurrentTenantId()).thenReturn("tenant1");
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        AddGoldItemRequest req = new AddGoldItemRequest();
+        req.setItemType(CartItemEntity.ItemType.GOLD_OUT);
+        req.setGoldType("Vàng 18K");
+        // goldBrand not set → null
+        req.setGoldWeight(new BigDecimal("1.0"));
+        req.setUnitPrice(new BigDecimal("7500000"));
+        // procPrice not set → defaults to ZERO
+        // gemWeight not set → defaults to ZERO
+
+        CartResponse response = cartService.addGoldItem("cart-456", req);
 
         assertThat(response).isNotNull();
     }

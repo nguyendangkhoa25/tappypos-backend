@@ -1,5 +1,6 @@
 package com.knp.service.tenant;
 
+import com.knp.model.dto.pawn.PawnSetting;
 import com.knp.model.dto.tenant.PublicShopInfoDTO;
 import com.knp.model.dto.tenant.ShopInfoDTO;
 import com.knp.model.entity.tenant.ShopInfo;
@@ -20,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -458,5 +460,183 @@ class ShopInfoServiceTest {
         assertThat(result).isNotNull();
         assertThat(result.getId()).isEqualTo(2L);
         verify(shopInfoRepository).save(any(ShopInfo.class));
+    }
+
+    // ============= getExcludeVisibleItemFlag Tests =============
+
+    @Test
+    @DisplayName("getExcludeVisibleItemFlag: returns true when config flag is true")
+    void testGetExcludeVisibleItemFlag_True() {
+        when(shopConfigService.getBoolean(ShopConfigKey.PAWN_EXCLUDE_VISIBLE_ITEM, false)).thenReturn(true);
+
+        assertThat(shopInfoService.getExcludeVisibleItemFlag()).isTrue();
+    }
+
+    @Test
+    @DisplayName("getExcludeVisibleItemFlag: returns false when config flag is false")
+    void testGetExcludeVisibleItemFlag_False() {
+        when(shopConfigService.getBoolean(ShopConfigKey.PAWN_EXCLUDE_VISIBLE_ITEM, false)).thenReturn(false);
+
+        assertThat(shopInfoService.getExcludeVisibleItemFlag()).isFalse();
+    }
+
+    // ============= updatePawnSetting Tests =============
+
+    @Test
+    @DisplayName("updatePawnSetting: writes all fields when interestRate non-null and type/dueDate > 0")
+    void testUpdatePawnSetting_AllFieldsSet() {
+        PawnSetting setting = PawnSetting.builder()
+                .interestRate(new java.math.BigDecimal("3.5"))
+                .interestType(30)
+                .dueDate(60)
+                .build();
+
+        PawnSetting result = shopInfoService.updatePawnSetting(setting);
+
+        verify(shopConfigService).set(ShopConfigKey.PAWN_INTEREST_RATE, new java.math.BigDecimal("3.5"));
+        verify(shopConfigService).set(ShopConfigKey.PAWN_INTEREST_TYPE, 30);
+        verify(shopConfigService).set(ShopConfigKey.PAWN_DUE_DATE, 60);
+        assertThat(result).isSameAs(setting);
+    }
+
+    @Test
+    @DisplayName("updatePawnSetting: skips writes when interestRate null and type/dueDate are 0")
+    void testUpdatePawnSetting_ZeroValues() {
+        PawnSetting setting = PawnSetting.builder()
+                .interestRate(null)
+                .interestType(0)
+                .dueDate(0)
+                .build();
+
+        shopInfoService.updatePawnSetting(setting);
+
+        verify(shopConfigService, never()).set(eq(ShopConfigKey.PAWN_INTEREST_RATE), any(java.math.BigDecimal.class));
+        verify(shopConfigService, never()).set(eq(ShopConfigKey.PAWN_INTEREST_TYPE), any(Integer.class));
+        verify(shopConfigService, never()).set(eq(ShopConfigKey.PAWN_DUE_DATE), any(Integer.class));
+    }
+
+    // ============= getPawnSetting Tests =============
+
+    @Test
+    @DisplayName("getPawnSetting: returns pawn setting with all fields from config")
+    void testGetPawnSetting_WithInterestRate() {
+        when(shopConfigService.getDecimal(ShopConfigKey.PAWN_INTEREST_RATE))
+                .thenReturn(new java.math.BigDecimal("3.5"));
+        when(shopConfigService.getInt(ShopConfigKey.PAWN_INTEREST_TYPE, 30)).thenReturn(30);
+        when(shopConfigService.getInt(ShopConfigKey.PAWN_DUE_DATE, 30)).thenReturn(60);
+
+        PawnSetting result = shopInfoService.getPawnSetting();
+
+        assertThat(result.getInterestRate()).isEqualByComparingTo("3.5");
+        assertThat(result.getInterestType()).isEqualTo(30);
+        assertThat(result.getDueDate()).isEqualTo(60);
+    }
+
+    @Test
+    @DisplayName("getPawnSetting: returns BigDecimal.ZERO for interestRate when config absent")
+    void testGetPawnSetting_NullInterestRate() {
+        when(shopConfigService.getDecimal(ShopConfigKey.PAWN_INTEREST_RATE)).thenReturn(null);
+        when(shopConfigService.getInt(ShopConfigKey.PAWN_INTEREST_TYPE, 30)).thenReturn(30);
+        when(shopConfigService.getInt(ShopConfigKey.PAWN_DUE_DATE, 30)).thenReturn(30);
+
+        PawnSetting result = shopInfoService.getPawnSetting();
+
+        assertThat(result.getInterestRate()).isEqualByComparingTo(java.math.BigDecimal.ZERO);
+    }
+
+    // ============= updateShopInfo: remaining config fields =============
+
+    @Test
+    @DisplayName("updateShopInfo: writes eInvoicePassword and eInvoiceKey when present")
+    void testUpdateShopInfo_EInvoicePasswordAndKey() {
+        ShopInfoDTO dto = ShopInfoDTO.builder()
+                .eInvoicePassword("secret123")
+                .eInvoiceKey("apikey456")
+                .build();
+
+        when(shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc()).thenReturn(Optional.of(testShopInfo));
+        when(shopInfoRepository.save(any())).thenReturn(testShopInfo);
+
+        shopInfoService.updateShopInfo(dto);
+
+        verify(shopConfigService).set(ShopConfigKey.EINVOICE_PASSWORD, "secret123");
+        verify(shopConfigService).set(ShopConfigKey.EINVOICE_KEY, "apikey456");
+    }
+
+    @Test
+    @DisplayName("updateShopInfo: writes invoiceSystem when present")
+    void testUpdateShopInfo_InvoiceSystem() {
+        ShopInfoDTO dto = ShopInfoDTO.builder().invoiceSystem("VAT").build();
+
+        when(shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc()).thenReturn(Optional.of(testShopInfo));
+        when(shopInfoRepository.save(any())).thenReturn(testShopInfo);
+
+        shopInfoService.updateShopInfo(dto);
+
+        verify(shopConfigService).set(ShopConfigKey.INVOICE_SYSTEM, "VAT");
+    }
+
+    @Test
+    @DisplayName("updateShopInfo: writes posMode and pawnSettings when present")
+    void testUpdateShopInfo_PosAndPawnConfig() {
+        ShopInfoDTO dto = ShopInfoDTO.builder()
+                .posMode("TABLE")
+                .pawnInterestRate(new java.math.BigDecimal("3.5"))
+                .pawnInterestType(30)
+                .pawnDueDate(60)
+                .excludeVisibleItem(true)
+                .pawnCategoryConfig("{}")
+                .build();
+
+        when(shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc()).thenReturn(Optional.of(testShopInfo));
+        when(shopInfoRepository.save(any())).thenReturn(testShopInfo);
+
+        shopInfoService.updateShopInfo(dto);
+
+        verify(shopConfigService).set(ShopConfigKey.POS_MODE, "TABLE");
+        verify(shopConfigService).set(ShopConfigKey.PAWN_INTEREST_RATE, new java.math.BigDecimal("3.5"));
+        verify(shopConfigService).set(ShopConfigKey.PAWN_INTEREST_TYPE, 30);
+        verify(shopConfigService).set(ShopConfigKey.PAWN_DUE_DATE, 60);
+        verify(shopConfigService).set(ShopConfigKey.PAWN_EXCLUDE_VISIBLE_ITEM, true);
+        verify(shopConfigService).set(ShopConfigKey.PAWN_CATEGORY_CONFIG, "{}");
+    }
+
+    @Test
+    @DisplayName("updateShopInfo: always writes cashDenominations, pawnDenominations, priceBoardCode, shopLocations")
+    void testUpdateShopInfo_AlwaysWriteFields() {
+        ShopInfoDTO dto = ShopInfoDTO.builder()
+                .cashDenominations("500000,200000")
+                .pawnDenominations("1000000")
+                .priceBoardCode("BOARD_01")
+                .shopLocations("[\"A\",\"B\"]")
+                .build();
+
+        when(shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc()).thenReturn(Optional.of(testShopInfo));
+        when(shopInfoRepository.save(any())).thenReturn(testShopInfo);
+
+        shopInfoService.updateShopInfo(dto);
+
+        verify(shopConfigService).set(ShopConfigKey.CASH_DENOMINATIONS, "500000,200000");
+        verify(shopConfigService).set(ShopConfigKey.PAWN_DENOMINATIONS, "1000000");
+        verify(shopConfigService).set(ShopConfigKey.PRICE_BOARD_CODE, "BOARD_01");
+        verify(shopConfigService).set(ShopConfigKey.SHOP_LOCATIONS, "[\"A\",\"B\"]");
+    }
+
+    // ============= mapToPublicDTO Tests =============
+
+    @Test
+    @DisplayName("mapToPublicDTO: maps all fields from ShopInfo and configs")
+    void testMapToPublicDTO_AllFields() {
+        when(shopConfigService.getDouble(eq(ShopConfigKey.DEFAULT_TAX_RATE), anyDouble())).thenReturn(10.0);
+        when(shopConfigService.getString(ShopConfigKey.CASH_DENOMINATIONS)).thenReturn("500000");
+        when(shopConfigService.getString(eq(ShopConfigKey.POS_MODE), any())).thenReturn("STANDARD");
+
+        PublicShopInfoDTO result = shopInfoService.mapToPublicDTO(testShopInfo);
+
+        assertThat(result.getShopName()).isEqualTo("Test Shop");
+        assertThat(result.getPhone()).isEqualTo("0123456789");
+        assertThat(result.getDefaultTaxRate()).isEqualTo(10.0);
+        assertThat(result.getCashDenominations()).isEqualTo("500000");
+        assertThat(result.getPosMode()).isEqualTo("STANDARD");
     }
 }

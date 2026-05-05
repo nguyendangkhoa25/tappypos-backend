@@ -32,6 +32,7 @@ public class ProductDTO {
     private String shelfLocation;
     private String status;
     private Set<Long> categoryIds;
+    private Set<String> categoryNames;
     private Map<String, Object> attributes;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

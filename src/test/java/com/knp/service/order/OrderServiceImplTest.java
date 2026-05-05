@@ -25,6 +25,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import com.knp.model.dto.tenant.ReceiptPreviewRequest;
+import com.knp.model.dto.tenant.ReceiptTemplateConfig;
 import com.knp.repository.finance.BankAccountRepository;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -635,5 +637,137 @@ class OrderServiceImplTest {
         assertThat(result.getPendingCount()).isEqualTo(3L);
         assertThat(result.getCompletedCount()).isEqualTo(10L);
         assertThat(result.getCompletedRevenue()).isEqualByComparingTo("500000");
+    }
+
+    @Test
+    @DisplayName("getMyWorkStats: returns zeroes when no completed stats rows")
+    void testGetMyWorkStats_EmptyStats() {
+        when(orderRepository.countActiveByCreatedBy(eq("cashier01"), any())).thenReturn(0L);
+        when(orderRepository.getMyCompletedStats(eq("cashier01"), any(), any()))
+                .thenReturn(Collections.emptyList());
+
+        var result = orderService.getMyWorkStats("DAY", null, null, null);
+
+        assertThat(result.getPendingCount()).isEqualTo(0L);
+        assertThat(result.getCompletedCount()).isEqualTo(0L);
+        assertThat(result.getCompletedRevenue()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    // ── getAllOrders: status+orderType combination ─────────────────────────────
+
+    @Test
+    @DisplayName("getAllOrders: filters by both status and orderType when both provided")
+    void testGetAllOrders_StatusAndOrderType_ViewAll() {
+        Page<Order> page = new PageImpl<>(List.of(completedOrder));
+        when(orderRepository.findAllActiveByStatusAndOrderType(
+                OrderStatus.COMPLETED, Order.OrderType.SELL, pageable)).thenReturn(page);
+
+        Page<OrderDTO> result = orderService.getAllOrders("COMPLETED", "SELL", pageable);
+
+        assertThat(result.getContent()).hasSize(1);
+        verify(orderRepository).findAllActiveByStatusAndOrderType(
+                OrderStatus.COMPLETED, Order.OrderType.SELL, pageable);
+    }
+
+    @Test
+    @DisplayName("getAllOrders: filters by both status and orderType scoped when no VIEW_ALL")
+    void testGetAllOrders_StatusAndOrderType_Scoped() {
+        when(featureContext.hasFeature("ORDER_VIEW_ALL")).thenReturn(false);
+        Page<Order> page = new PageImpl<>(List.of(completedOrder));
+        when(orderRepository.findAllActiveByStatusAndOrderTypeAndCreatedBy(
+                OrderStatus.COMPLETED, Order.OrderType.SELL, "cashier01", pageable)).thenReturn(page);
+
+        orderService.getAllOrders("COMPLETED", "SELL", pageable);
+
+        verify(orderRepository).findAllActiveByStatusAndOrderTypeAndCreatedBy(
+                OrderStatus.COMPLETED, Order.OrderType.SELL, "cashier01", pageable);
+    }
+
+    @Test
+    @DisplayName("getAllOrders: filters by orderType only when viewAll")
+    void testGetAllOrders_OrderTypeOnly_ViewAll() {
+        Page<Order> page = new PageImpl<>(List.of(pendingOrder));
+        when(orderRepository.findAllActiveByOrderType(Order.OrderType.SELL, pageable))
+                .thenReturn(page);
+
+        Page<OrderDTO> result = orderService.getAllOrders(null, "SELL", pageable);
+
+        assertThat(result.getContent()).hasSize(1);
+        verify(orderRepository).findAllActiveByOrderType(Order.OrderType.SELL, pageable);
+    }
+
+    @Test
+    @DisplayName("getAllOrders: filters by orderType only scoped when no VIEW_ALL")
+    void testGetAllOrders_OrderTypeOnly_Scoped() {
+        when(featureContext.hasFeature("ORDER_VIEW_ALL")).thenReturn(false);
+        Page<Order> page = new PageImpl<>(List.of(pendingOrder));
+        when(orderRepository.findAllActiveByOrderTypeAndCreatedBy(
+                Order.OrderType.SELL, "cashier01", pageable)).thenReturn(page);
+
+        orderService.getAllOrders(null, "SELL", pageable);
+
+        verify(orderRepository).findAllActiveByOrderTypeAndCreatedBy(
+                Order.OrderType.SELL, "cashier01", pageable);
+    }
+
+    @Test
+    @DisplayName("getAllOrders: filters by status only scoped when no VIEW_ALL")
+    void testGetAllOrders_StatusOnly_Scoped() {
+        when(featureContext.hasFeature("ORDER_VIEW_ALL")).thenReturn(false);
+        Page<Order> page = new PageImpl<>(List.of(completedOrder));
+        when(orderRepository.findAllActiveByStatusAndCreatedBy(
+                OrderStatus.COMPLETED, "cashier01", pageable)).thenReturn(page);
+
+        orderService.getAllOrders("COMPLETED", null, pageable);
+
+        verify(orderRepository).findAllActiveByStatusAndCreatedBy(
+                OrderStatus.COMPLETED, "cashier01", pageable);
+    }
+
+    @Test
+    @DisplayName("searchOrders: scoped to own when VIEW_ALL absent")
+    void testSearchOrders_Scoped() {
+        when(featureContext.hasFeature("ORDER_VIEW_ALL")).thenReturn(false);
+        when(orderRepository.searchByKeywordAndCreatedBy("abc", "cashier01", pageable))
+                .thenReturn(new PageImpl<>(List.of(completedOrder)));
+
+        Page<OrderDTO> result = orderService.searchOrders("abc", pageable);
+
+        assertThat(result.getContent()).hasSize(1);
+        verify(orderRepository).searchByKeywordAndCreatedBy("abc", "cashier01", pageable);
+    }
+
+    // ── generateReceipt ───────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("generateReceipt: returns HTML string for existing order")
+    void testGenerateReceipt_Success() {
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(pendingOrder));
+        when(shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc()).thenReturn(Optional.empty());
+        ReceiptTemplateConfig cfg = new ReceiptTemplateConfig();
+        when(printTemplateService.getReceiptConfig()).thenReturn(cfg);
+
+        String html = orderService.generateReceipt(1L);
+
+        assertThat(html).isNotNull();
+    }
+
+    // ── generatePreviewReceipt ────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("generatePreviewReceipt: returns preview HTML")
+    void testGeneratePreviewReceipt() {
+        when(shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc()).thenReturn(Optional.empty());
+        ReceiptTemplateConfig cfg = new ReceiptTemplateConfig();
+        when(printTemplateService.getReceiptConfig()).thenReturn(cfg);
+
+        ReceiptPreviewRequest req = new ReceiptPreviewRequest();
+        req.setItems(List.of());
+        req.setTotalDiscount(BigDecimal.ZERO);
+        req.setTotal(new BigDecimal("100000"));
+
+        String html = orderService.generatePreviewReceipt(req);
+
+        assertThat(html).isNotNull();
     }
 }

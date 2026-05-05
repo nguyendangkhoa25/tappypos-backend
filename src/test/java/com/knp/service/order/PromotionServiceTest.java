@@ -9,6 +9,7 @@ import com.knp.model.entity.order.Promotion;
 import com.knp.model.enums.DiscountType;
 import com.knp.repository.order.PromotionRepository;
 import com.knp.service.MessageService;
+import com.knp.multitenant.TenantContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -39,6 +40,7 @@ class PromotionServiceTest {
 
     @Mock private PromotionRepository promotionRepository;
     @Mock private MessageService messageService;
+    @Mock private TenantContext tenantContext;
 
     @InjectMocks
     private PromotionService promotionService;

@@ -9,6 +9,7 @@ import com.knp.model.entity.order.Promotion;
 import com.knp.model.enums.DiscountType;
 import com.knp.repository.order.PromotionRepository;
 import com.knp.service.MessageService;
+import com.knp.multitenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -28,6 +29,7 @@ public class PromotionService {
 
     private final PromotionRepository promotionRepository;
     private final MessageService messageService;
+    private final TenantContext tenantContext;
 
     public Page<PromotionDTO> getAll(Pageable pageable) {
         return promotionRepository.findAllActive(pageable).map(this::mapToDTO);
@@ -46,6 +48,7 @@ public class PromotionService {
             throw new BadRequestException(messageService.getMessage("error.promotion.code.exists", new Object[]{req.getCode()}));
         }
         Promotion promo = Promotion.builder()
+                .tenantId(tenantContext.getCurrentTenantId())
                 .name(req.getName())
                 .code(req.getCode().toUpperCase().trim())
                 .type(req.getType())

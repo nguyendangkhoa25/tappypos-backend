@@ -4,6 +4,7 @@ import com.knp.model.enums.DiscountType;
 import jakarta.persistence.*;
 import com.knp.model.entity.TenantAwareEntity;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -14,7 +15,7 @@ import java.time.LocalDateTime;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
+@SuperBuilder
 public class Promotion extends TenantAwareEntity {
 
     @Column(nullable = false, length = 200)

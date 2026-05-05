@@ -4,6 +4,7 @@ import com.knp.model.enums.LoyaltyTransactionType;
 import jakarta.persistence.*;
 import com.knp.model.entity.TenantAwareEntity;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 @Entity
 @Table(name = "loyalty_transactions")
@@ -11,7 +12,7 @@ import lombok.*;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
+@SuperBuilder
 public class LoyaltyTransaction extends TenantAwareEntity {
 
     @Column(name = "customer_id", nullable = false)

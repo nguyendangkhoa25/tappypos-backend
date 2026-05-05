@@ -18,6 +18,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.knp.model.entity.tenant.GoldPrice;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -338,5 +339,113 @@ class CategoryServiceImplTest {
         assertThatThrownBy(() -> categoryService.getSubcategories(99L))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("99");
+    }
+
+    // ── deleteCategory with gold price ────────────────────────────────────────
+
+    @Test
+    @DisplayName("deleteCategory: soft-deletes linked gold price when present")
+    void testDeleteCategory_SoftDeletesLinkedGoldPrice() {
+        GoldPrice goldPrice = new GoldPrice();
+        goldPrice.setId(10L);
+        goldPrice.setDeleted(false);
+
+        when(categoryRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(rootCategory));
+        when(categoryRepository.findByParentIdAndDeletedFalse(1L)).thenReturn(Collections.emptyList());
+        when(goldPriceRepository.findByCategoryIdAndDeletedFalse(1L))
+                .thenReturn(Optional.of(goldPrice));
+        when(goldPriceRepository.save(any())).thenReturn(goldPrice);
+        when(categoryRepository.save(any())).thenReturn(rootCategory);
+
+        categoryService.deleteCategory(1L);
+
+        assertThat(goldPrice.isDeleted()).isTrue();
+        verify(goldPriceRepository).save(goldPrice);
+        verify(categoryRepository).save(rootCategory);
+    }
+
+    @Test
+    @DisplayName("deleteCategory: proceeds without error when no linked gold price")
+    void testDeleteCategory_NoGoldPrice() {
+        when(categoryRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(rootCategory));
+        when(categoryRepository.findByParentIdAndDeletedFalse(1L)).thenReturn(Collections.emptyList());
+        when(goldPriceRepository.findByCategoryIdAndDeletedFalse(1L)).thenReturn(Optional.empty());
+        when(categoryRepository.save(any())).thenReturn(rootCategory);
+
+        categoryService.deleteCategory(1L);
+
+        verify(goldPriceRepository, never()).save(any());
+    }
+
+    // ── updateCategory: syncGoldPriceLabel ────────────────────────────────────
+
+    @Test
+    @DisplayName("updateCategory: syncs gold price label keeping same parent")
+    void testUpdateCategory_SyncsGoldPriceLabel_WithParent() {
+        GoldPrice goldPrice = new GoldPrice();
+        goldPrice.setId(10L);
+
+        UpdateCategoryRequest req = new UpdateCategoryRequest();
+        req.setName("610");
+        req.setParentId(1L); // keep rootCategory as parent
+
+        when(categoryRepository.findByIdAndDeletedFalse(2L)).thenReturn(Optional.of(childCategory));
+        when(categoryRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(rootCategory));
+        when(categoryRepository.save(any())).thenReturn(childCategory);
+        when(categoryRepository.findByParentIdAndDeletedFalse(2L)).thenReturn(Collections.emptyList());
+        when(goldPriceRepository.findByCategoryIdAndDeletedFalse(2L))
+                .thenReturn(Optional.of(goldPrice));
+        when(goldPriceRepository.save(any())).thenReturn(goldPrice);
+
+        categoryService.updateCategory(2L, req);
+
+        assertThat(goldPrice.getCode()).isEqualTo("610");
+        assertThat(goldPrice.getLabel()).isEqualTo("Vàng 610");
+        verify(goldPriceRepository).save(goldPrice);
+    }
+
+    @Test
+    @DisplayName("updateCategory: syncs gold price label for root category (no parent)")
+    void testUpdateCategory_SyncsGoldPriceLabel_NoParent() {
+        GoldPrice goldPrice = new GoldPrice();
+        goldPrice.setId(20L);
+
+        UpdateCategoryRequest req = new UpdateCategoryRequest();
+        req.setName("Vàng Nhẫn");
+        // parentId = null → setParent(null)
+
+        when(categoryRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(rootCategory));
+        when(categoryRepository.save(any())).thenReturn(rootCategory);
+        when(categoryRepository.findByParentIdAndDeletedFalse(1L)).thenReturn(Collections.emptyList());
+        when(goldPriceRepository.findByCategoryIdAndDeletedFalse(1L))
+                .thenReturn(Optional.of(goldPrice));
+        when(goldPriceRepository.save(any())).thenReturn(goldPrice);
+
+        categoryService.updateCategory(1L, req);
+
+        assertThat(goldPrice.getCode()).isEqualTo("Vàng Nhẫn");
+        assertThat(goldPrice.getLabel()).isEqualTo("Vàng Nhẫn");
+    }
+
+    @Test
+    @DisplayName("updateCategory: sets new parent when parentId provided and different from self")
+    void testUpdateCategory_ChangesParent() {
+        Category newParent = Category.builder().name("Kim Loại").deleted(false).build();
+        newParent.setId(3L);
+        newParent.setProducts(new HashSet<>());
+
+        UpdateCategoryRequest req = new UpdateCategoryRequest();
+        req.setName("Vàng 24K");
+        req.setParentId(3L);
+
+        when(categoryRepository.findByIdAndDeletedFalse(2L)).thenReturn(Optional.of(childCategory));
+        when(categoryRepository.findByIdAndDeletedFalse(3L)).thenReturn(Optional.of(newParent));
+        when(categoryRepository.save(any())).thenReturn(childCategory);
+        when(categoryRepository.findByParentIdAndDeletedFalse(2L)).thenReturn(Collections.emptyList());
+
+        CategoryDTO result = categoryService.updateCategory(2L, req);
+
+        assertThat(result).isNotNull();
+        verify(categoryRepository).save(argThat(c -> c.getParent() != null && c.getParent().getId().equals(3L)));
     }
 }

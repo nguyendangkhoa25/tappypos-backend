@@ -365,6 +365,7 @@ CREATE TABLE IF NOT EXISTS product (
     deleted_at      TIMESTAMP      DEFAULT NULL,
     barcode         VARCHAR(100)   DEFAULT NULL,
     shelf_location  VARCHAR(100)   DEFAULT NULL,
+    legacy_id       VARCHAR(50)    DEFAULT NULL,
     CONSTRAINT uq_product_sku_tenant     UNIQUE (sku, tenant_id),
     CONSTRAINT fk_product_type           FOREIGN KEY (product_type_id) REFERENCES product_type (id),
     CONSTRAINT fk_product_vendor         FOREIGN KEY (vendor_id)       REFERENCES vendors       (id)
@@ -374,7 +375,7 @@ CREATE TABLE IF NOT EXISTS product (
 CREATE TABLE IF NOT EXISTS product_category (
     product_id  BIGINT       NOT NULL,
     category_id BIGINT       NOT NULL,
-    tenant_id   VARCHAR(100) NOT NULL,
+    tenant_id   VARCHAR(100) NOT NULL DEFAULT current_setting('app.current_tenant', true),
     PRIMARY KEY (product_id, category_id),
     CONSTRAINT fk_pc_product  FOREIGN KEY (product_id)  REFERENCES product  (id) ON DELETE CASCADE,
     CONSTRAINT fk_pc_category FOREIGN KEY (category_id) REFERENCES category (id) ON DELETE CASCADE
@@ -496,7 +497,7 @@ CREATE TABLE IF NOT EXISTS customers (
     permanent_address           VARCHAR(500)   DEFAULT NULL,
     loyalty_points              INT            NOT NULL DEFAULT 0,
     total_spent                 DECIMAL(15,2)  NOT NULL DEFAULT 0.00,
-    legacy_id                   BIGINT         DEFAULT NULL,
+    legacy_id                   VARCHAR(50)    DEFAULT NULL,
     created_at                  TIMESTAMP      DEFAULT NOW(),
     updated_at                  TIMESTAMP      DEFAULT NOW(),
     deleted                     BOOLEAN        NOT NULL DEFAULT FALSE,
@@ -554,7 +555,7 @@ CREATE TABLE IF NOT EXISTS orders (
     loyalty_discount        DECIMAL(10,2)  NOT NULL DEFAULT 0.00,
     table_label             VARCHAR(100)   DEFAULT NULL,
     source                  VARCHAR(20)    NOT NULL DEFAULT 'POS',
-    legacy_id               BIGINT         DEFAULT NULL,
+    legacy_id               VARCHAR(50)    DEFAULT NULL,
     order_type              VARCHAR(20)    NOT NULL DEFAULT 'SELL',
     created_at              TIMESTAMP      DEFAULT NOW(),
     updated_at              TIMESTAMP      DEFAULT NOW(),
@@ -822,7 +823,7 @@ CREATE TABLE IF NOT EXISTS employees (
     id_card_issued_place   VARCHAR(255)   DEFAULT NULL,
     id_card_front_image    TEXT           DEFAULT NULL,
     id_card_back_image     TEXT           DEFAULT NULL,
-    legacy_id              BIGINT         DEFAULT NULL,
+    legacy_id              VARCHAR(50)    DEFAULT NULL,
     created_at             TIMESTAMP      NOT NULL DEFAULT NOW(),
     updated_at             TIMESTAMP      DEFAULT NOW(),
     deleted                BOOLEAN        NOT NULL DEFAULT FALSE,
@@ -977,7 +978,7 @@ CREATE TABLE IF NOT EXISTS pawn (
     pawned_days              INT            DEFAULT NULL,
     visible                  BOOLEAN        NOT NULL DEFAULT TRUE,
     pawn_category            VARCHAR(50)    DEFAULT NULL,
-    legacy_id                BIGINT         DEFAULT NULL,
+    legacy_id                VARCHAR(50)    DEFAULT NULL,
     customer_name            VARCHAR(255)   DEFAULT NULL
 );
 
@@ -1027,7 +1028,7 @@ CREATE TABLE IF NOT EXISTS pawn_req_money (
     created_at     TIMESTAMP      DEFAULT NULL,
     updated_by     VARCHAR(100)   DEFAULT NULL,
     updated_at     TIMESTAMP      DEFAULT NULL,
-    legacy_id      BIGINT         DEFAULT NULL
+    legacy_id      VARCHAR(50)    DEFAULT NULL
 );
 
 -- 4.34 pawn_req_money_audit
@@ -1228,6 +1229,7 @@ CREATE TABLE IF NOT EXISTS gold_price (
     note          VARCHAR(500)   DEFAULT NULL,
     show_in_board BOOLEAN        NOT NULL DEFAULT TRUE,
     category_id   BIGINT         DEFAULT NULL REFERENCES category(id) ON DELETE SET NULL,
+    vendor_price  NUMERIC(20,0)  DEFAULT NULL,
     created_by    VARCHAR(100)   DEFAULT NULL,
     updated_by    VARCHAR(100)   DEFAULT NULL,
     created_at    TIMESTAMP      NOT NULL DEFAULT NOW(),
@@ -1436,6 +1438,7 @@ CREATE INDEX IF NOT EXISTS idx_pawn_status      ON pawn (status);
 CREATE INDEX IF NOT EXISTS idx_pawn_category    ON pawn (tenant_id, pawn_category);
 
 -- legacy_id migration-support indexes (partial — only rows where legacy_id is populated)
+CREATE INDEX IF NOT EXISTS idx_product_legacy_id        ON product        (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_pawn_legacy_id           ON pawn           (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_pawn_req_money_legacy_id ON pawn_req_money (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_customers_legacy_id      ON customers      (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
@@ -1848,3 +1851,14 @@ WHERE attribute_id IN (
 
 DELETE FROM attribute_definition
 WHERE code IN ('gold_type_code', 'gold_brand_code', 'is_silver');
+
+-- Normalize product unit values from Vietnamese words to English codes.
+UPDATE product SET unit = 'piece'  WHERE unit = 'cái';
+UPDATE product SET unit = 'can'    WHERE unit = 'lon';
+UPDATE product SET unit = 'bottle' WHERE unit = 'chai';
+UPDATE product SET unit = 'pack'   WHERE unit = 'gói';
+UPDATE product SET unit = 'box'    WHERE unit = 'hộp';
+UPDATE product SET unit = 'bag'    WHERE unit = 'bao';
+UPDATE product SET unit = 'tube'   WHERE unit = 'tuýp';
+UPDATE product SET unit = 'bar'    WHERE unit = 'bánh';
+UPDATE product SET unit = 'roll'   WHERE unit = 'cuộn';

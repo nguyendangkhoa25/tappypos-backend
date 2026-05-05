@@ -15,14 +15,11 @@ INSERT INTO product_type (tenant_id, code, name, description) VALUES
 ON CONFLICT (code, tenant_id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 -- ── 2. Categories ─────────────────────────────────────────────
--- Five top-level categories for a jewelry shop.
--- Gold and silver children are also referenced by gold_price.category_id.
+-- Gold and silver top-level categories only.
+-- Children are also referenced by gold_price.category_id.
 INSERT INTO category (tenant_id, name, parent_id) VALUES
-    (current_setting('app.current_tenant', true), 'Vàng',    NULL),
-    (current_setting('app.current_tenant', true), 'Bạc',     NULL),
-    (current_setting('app.current_tenant', true), 'Đá quý',  NULL),
-    (current_setting('app.current_tenant', true), 'Đồng hồ', NULL),
-    (current_setting('app.current_tenant', true), 'Khác',    NULL);
+    (current_setting('app.current_tenant', true), 'Vàng', NULL),
+    (current_setting('app.current_tenant', true), 'Bạc',  NULL);
 
 -- Gold purity grades (Vàng > children) — also linked to gold_price.category_id
 INSERT INTO category (tenant_id, name, parent_id)
@@ -43,33 +40,6 @@ FROM (VALUES
     ('925',  'Bạc'),
     ('950',  'Bạc'),
     ('9999', 'Bạc')
-) AS c(name, parent_name)
-JOIN category p ON p.name = c.parent_name
-    AND p.tenant_id = current_setting('app.current_tenant', true)
-    AND p.parent_id IS NULL;
-
--- Gemstone types (Đá quý > children)
-INSERT INTO category (tenant_id, name, parent_id)
-SELECT current_setting('app.current_tenant', true), c.name, p.id
-FROM (VALUES
-    ('Kim cương',  'Đá quý'),
-    ('Hồng ngọc',  'Đá quý'),
-    ('Lục bảo',    'Đá quý'),
-    ('Sapphire',   'Đá quý'),
-    ('Topaz',      'Đá quý'),
-    ('Ngọc trai',  'Đá quý'),
-    ('Khác',       'Đá quý')
-) AS c(name, parent_name)
-JOIN category p ON p.name = c.parent_name
-    AND p.tenant_id = current_setting('app.current_tenant', true)
-    AND p.parent_id IS NULL;
-
--- Watch sub-types (Đồng hồ > children)
-INSERT INTO category (tenant_id, name, parent_id)
-SELECT current_setting('app.current_tenant', true), c.name, p.id
-FROM (VALUES
-    ('Đồng hồ đeo tay', 'Đồng hồ'),
-    ('Đồng hồ bàn',     'Đồng hồ')
 ) AS c(name, parent_name)
 JOIN category p ON p.name = c.parent_name
     AND p.tenant_id = current_setting('app.current_tenant', true)
@@ -501,7 +471,7 @@ SELECT
     seq.item_desc,
     seq.item_price,
     seq.item_cost,
-    'cái',
+    'chi',
     pt.id,
     'ACTIVE'
 FROM (VALUES

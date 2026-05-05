@@ -50,9 +50,13 @@ import com.knp.service.tenant.ShopConfigService;
 import com.knp.service.tenant.ShopInfoService;
 import com.knp.service.customer.LoyaltyService;
 import com.knp.service.audit.ActivityLogService;
+import com.knp.model.dto.goldprice.GoldPriceDTO;
 import com.knp.model.enums.ActivityAction;
+import com.knp.model.enums.DynamicPriceProductTypes;
 import com.knp.model.enums.ShopConfigKey;
+import com.knp.model.enums.UniqueItemProductTypes;
 import com.knp.multitenant.TenantContext;
+import com.knp.service.goldprice.GoldPriceService;
 
 /**
  * Cart Service Implementation
@@ -87,6 +91,7 @@ public class CartServiceImpl implements CartService {
     private final LoyaltyService loyaltyService;
     private final ActivityLogService activityLogService;
     private final TenantContext tenantContext;
+    private final GoldPriceService goldPriceService;
 
     /**
      * Initialize a new cart session
@@ -176,6 +181,21 @@ public class CartServiceImpl implements CartService {
             );
         }
 
+        // Step 2b: Unique-item validation (JEWELRY, WATCH, etc.)
+        if (UniqueItemProductTypes.isUniqueItem(product.getProductTypeCode())) {
+            if (!"ACTIVE".equals(product.getStatus())) {
+                throw new BadRequestException(messageService.getMessage("product.already.sold"));
+            }
+            if (request.getQuantity() > 1) {
+                throw new BadRequestException(messageService.getMessage("product.unique.item.qty"));
+            }
+        }
+
+        // Step 2c: Resolve unit price — dynamic types calculate from live market rate
+        BigDecimal resolvedUnitPrice = DynamicPriceProductTypes.isDynamicPrice(product.getProductTypeCode())
+                ? calculateDynamicUnitPrice(product)
+                : product.getPrice();
+
         // Step 3: Check stock availability via InventoryService
         BigDecimal resolvedUnitCost = product.getCostPrice() != null ? product.getCostPrice() : BigDecimal.ZERO;
         try {
@@ -256,8 +276,8 @@ public class CartServiceImpl implements CartService {
                     //Todo to generate barcode
                     //.barcode(product.getBarcode())
                     .quantity(request.getQuantity())
-                    .basePrice(product.getPrice())
-                    .unitPrice(product.getPrice())
+                    .basePrice(resolvedUnitPrice)
+                    .unitPrice(resolvedUnitPrice)
                     .unitCost(resolvedUnitCost)
                     .discountType(DiscountType.NONE)
                     .discountValue(BigDecimal.ZERO)
@@ -826,6 +846,17 @@ public class CartServiceImpl implements CartService {
                 } catch (Exception e) {
                     log.warn("Inventory deduction failed for product {}: {}", cartItem.getProductId(), e.getMessage());
                 }
+
+                // Unique-item types (JEWELRY, WATCH): flip product status to INACTIVE ("Đã bán")
+                try {
+                    ProductDTO soldProduct = productService.getProductById(cartItem.getProductId());
+                    if (UniqueItemProductTypes.isUniqueItem(soldProduct.getProductTypeCode())) {
+                        productService.markAsSold(cartItem.getProductId());
+                        log.info("Unique item {} ({}) marked as sold", cartItem.getProductId(), soldProduct.getProductTypeCode());
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to mark unique item {} as sold: {}", cartItem.getProductId(), e.getMessage());
+                }
             }
 
             summaries.add(CheckoutResponse.CheckoutItemSummary.builder()
@@ -893,6 +924,47 @@ public class CartServiceImpl implements CartService {
                 .loyaltyPointsRedeemed(loyaltyPointsRedeemed > 0 ? loyaltyPointsRedeemed : null)
                 .completedAt(savedOrder.getCompletedAt())
                 .build();
+    }
+
+    /**
+     * Calculates the sell price for a jewelry (or other dynamic-price) product
+     * using the current gold market rate.
+     *
+     * Formula: gold_weight × current_sell_price_per_chi + sell_proc_price (or proc_price)
+     *
+     * Throws BadRequestException if the product has no gold type category or if no
+     * gold price has been configured for that category.
+     */
+    private BigDecimal calculateDynamicUnitPrice(ProductDTO product) {
+        if (product.getCategoryIds() == null || product.getCategoryIds().isEmpty()) {
+            throw new BadRequestException(
+                    messageService.getMessage("error.product.dynamic.price.no.category"));
+        }
+        Long categoryId = product.getCategoryIds().iterator().next();
+
+        GoldPriceDTO goldPrice;
+        try {
+            goldPrice = goldPriceService.getPriceForCategory(categoryId);
+        } catch (Exception e) {
+            throw new BadRequestException(
+                    messageService.getMessage("error.product.dynamic.price.no.gold.price"));
+        }
+
+        Map<String, Object> attrs = product.getAttributes() != null ? product.getAttributes() : Map.of();
+
+        BigDecimal goldWeight = BigDecimal.ZERO;
+        Object goldWeightRaw = attrs.get("gold_weight");
+        if (goldWeightRaw != null && !goldWeightRaw.toString().isBlank()) {
+            try { goldWeight = new BigDecimal(goldWeightRaw.toString()); } catch (NumberFormatException ignored) {}
+        }
+
+        BigDecimal procFee = BigDecimal.ZERO;
+        Object procFeeRaw = attrs.containsKey("sell_proc_price") ? attrs.get("sell_proc_price") : attrs.get("proc_price");
+        if (procFeeRaw != null && !procFeeRaw.toString().isBlank()) {
+            try { procFee = new BigDecimal(procFeeRaw.toString()); } catch (NumberFormatException ignored) {}
+        }
+
+        return goldWeight.multiply(goldPrice.getSell()).add(procFee).setScale(0, RoundingMode.HALF_UP);
     }
 
     private String generateOrderNumber() {

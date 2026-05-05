@@ -74,6 +74,7 @@ public class GoldPriceServiceImpl implements GoldPriceService {
                 .buy(dto.getBuy()   != null ? dto.getBuy()   : BigDecimal.ZERO)
                 .sell(dto.getSell() != null ? dto.getSell()  : BigDecimal.ZERO)
                 .pawn(dto.getPawn() != null ? dto.getPawn()  : BigDecimal.ZERO)
+                .vendorPrice(dto.getVendorPrice())
                 .displayOrder(dto.getDisplayOrder() > 0 ? dto.getDisplayOrder() : 10)
                 .note(dto.getNote())
                 .showInBoard(dto.isShowInBoard())
@@ -96,9 +97,10 @@ public class GoldPriceServiceImpl implements GoldPriceService {
                 .filter(g -> !Boolean.TRUE.equals(g.getDeleted()))
                 .orElseThrow(() -> new ResourceNotFoundException("Gold price not found: " + id));
 
-        if (dto.getBuy()  != null) price.setBuy(dto.getBuy());
-        if (dto.getSell() != null) price.setSell(dto.getSell());
-        if (dto.getPawn() != null) price.setPawn(dto.getPawn());
+        if (dto.getBuy()         != null) price.setBuy(dto.getBuy());
+        if (dto.getSell()        != null) price.setSell(dto.getSell());
+        if (dto.getPawn()        != null) price.setPawn(dto.getPawn());
+        price.setVendorPrice(dto.getVendorPrice());
         price.setDisplayOrder(dto.getDisplayOrder());
         price.setShowInBoard(dto.isShowInBoard());
         if (dto.getNote() != null) price.setNote(dto.getNote());
@@ -189,6 +191,7 @@ public class GoldPriceServiceImpl implements GoldPriceService {
                 .buy(g.getBuy())
                 .sell(g.getSell())
                 .pawn(g.getPawn())
+                .vendorPrice(g.getVendorPrice())
                 .displayOrder(g.getDisplayOrder())
                 .note(g.getNote())
                 .showInBoard(Boolean.TRUE.equals(g.getShowInBoard()))

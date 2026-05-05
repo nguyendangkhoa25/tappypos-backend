@@ -3,6 +3,7 @@ package com.knp.model.entity.vendor;
 import jakarta.persistence.*;
 import com.knp.model.entity.TenantAwareEntity;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 @Entity
 @Table(name = "vendors")
@@ -10,7 +11,7 @@ import lombok.*;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
+@SuperBuilder
 public class Vendor extends TenantAwareEntity {
 
     @Column(nullable = false, length = 200)

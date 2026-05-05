@@ -127,6 +127,7 @@ public class ProductServiceImpl implements ProductService {
                 ProductAttributeValue attrValue = ProductAttributeValue.builder()
                         .product(savedProduct)
                         .attribute(attrDef)
+                        .tenantId(tenantContext.getCurrentTenantId())
                         .deleted(false)
                         .build();
                 
@@ -263,6 +264,7 @@ public class ProductServiceImpl implements ProductService {
                         .orElse(ProductAttributeValue.builder()
                                 .product(product)
                                 .attribute(attrDef)
+                                .tenantId(tenantContext.getCurrentTenantId())
                                 .deleted(false)
                                 .build());
                 
@@ -454,6 +456,10 @@ public class ProductServiceImpl implements ProductService {
                 .map(Category::getId)
                 .collect(Collectors.toSet());
 
+        Set<String> categoryNames = product.getCategories().stream()
+                .map(Category::getName)
+                .collect(Collectors.toSet());
+
         return ProductDTO.builder()
                 .id(product.getId())
                 .productTypeId(product.getProductType().getId())
@@ -471,6 +477,7 @@ public class ProductServiceImpl implements ProductService {
                 .shelfLocation(product.getShelfLocation())
                 .status(product.getStatus().toString())
                 .categoryIds(categoryIds)
+                .categoryNames(categoryNames)
                 .attributes(attributes)
                 .createdAt(product.getCreatedAt())
                 .updatedAt(product.getUpdatedAt())
@@ -541,6 +548,17 @@ public class ProductServiceImpl implements ProductService {
         return BarcodeLookupResult.builder()
                 .source(BarcodeLookupResult.Source.NONE)
                 .build();
+    }
+
+    @Override
+    @Transactional
+    public void markAsSold(Long productId) {
+        Product product = productRepository.findByIdAndDeletedFalse(productId)
+                .orElseThrow(() -> new com.knp.exception.ResourceNotFoundException(
+                        messageService.getMessage("product.not.found")));
+        product.setStatus(Product.ProductStatus.INACTIVE);
+        productRepository.save(product);
+        log.info("Product {} marked as sold (status → INACTIVE)", productId);
     }
 }
 

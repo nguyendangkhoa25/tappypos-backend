@@ -20,6 +20,7 @@ public class GoldPriceDTO {
     private BigDecimal buy;
     private BigDecimal sell;
     private BigDecimal pawn;
+    private BigDecimal vendorPrice;
     private int displayOrder;
     private String note;
     private boolean showInBoard;

@@ -18,6 +18,7 @@ import com.knp.repository.customer.LoyaltyProgramRepository;
 import com.knp.repository.customer.LoyaltyTierRepository;
 import com.knp.repository.customer.LoyaltyTransactionRepository;
 import com.knp.service.MessageService;
+import com.knp.multitenant.TenantContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -46,6 +47,7 @@ class LoyaltyServiceTest {
     @Mock private LoyaltyTransactionRepository transactionRepository;
     @Mock private CustomerRepository customerRepository;
     @Mock private MessageService messageService;
+    @Mock private TenantContext tenantContext;
 
     @InjectMocks
     private LoyaltyService loyaltyService;
