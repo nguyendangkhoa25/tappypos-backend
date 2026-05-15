@@ -68,24 +68,19 @@ public class OnboardingController {
         m.put(ShopType.MASSAGE_SHOP,    serviceBase);
         m.put(ShopType.BEAUTY_CLINIC,   serviceBase);
         m.put(ShopType.MAKEUP_STUDIO,   serviceBase);
-        m.put(ShopType.FOOD_BEVERAGE, List.of(
+        List<String> fnbBase = List.of(
                 "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "PRODUCT", "POS", "CUSTOMER",
-                "COMMISSION", "EMPLOYEE", "EXPENSE", "REVENUE", "USER",
+                "COMMISSION", "EMPLOYEE", "EXPENSE", "REVENUE", "USER", "TABLE_SERVICE",
                 "NOTIFICATION", "FEEDBACK", "ACTIVITY_LOG", "SHOP_INFO",
                 "PRINT_TEMPLATE", "BANK_ACCOUNT", "INVOICE", "ACCOUNTING"
-        ));
-        m.put(ShopType.COFFEE_SHOP, List.of(
-                "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "PRODUCT", "POS", "CUSTOMER",
-                "COMMISSION", "EMPLOYEE", "EXPENSE", "REVENUE", "USER",
-                "NOTIFICATION", "FEEDBACK", "ACTIVITY_LOG", "SHOP_INFO",
-                "PRINT_TEMPLATE", "BANK_ACCOUNT", "INVOICE", "ACCOUNTING"
-        ));
-        m.put(ShopType.RESTAURANT, List.of(
-                "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "PRODUCT", "POS", "CUSTOMER",
-                "COMMISSION", "EMPLOYEE", "EXPENSE", "REVENUE", "USER",
-                "NOTIFICATION", "FEEDBACK", "ACTIVITY_LOG", "SHOP_INFO",
-                "PRINT_TEMPLATE", "BANK_ACCOUNT", "INVOICE", "ACCOUNTING"
-        ));
+        );
+        m.put(ShopType.FOOD_BEVERAGE, fnbBase);
+        m.put(ShopType.COFFEE_SHOP,   fnbBase);
+        m.put(ShopType.RESTAURANT,    fnbBase);
+        m.put(ShopType.PUB,           fnbBase);
+        m.put(ShopType.PUB_SEAFOOD,   fnbBase);
+        m.put(ShopType.PUB_GOAT,      fnbBase);
+        m.put(ShopType.PUB_BEEF,      fnbBase);
         m.put(ShopType.CONVENIENCE_STORE, List.of(
                 "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "PRODUCT", "POS", "INVENTORY",
                 "CUSTOMER", "EMPLOYEE", "EXPENSE", "REVENUE", "USER", "VENDOR",
@@ -133,6 +128,10 @@ public class OnboardingController {
             Map.entry("PHARMACY",           ShopType.PHARMACY),
             Map.entry("JEWELRY",            ShopType.JEWELRY),
             Map.entry("PAWN_SHOP",          ShopType.PAWN_SHOP),
+            Map.entry("PUB",                ShopType.PUB),
+            Map.entry("PUB_SEAFOOD",        ShopType.PUB_SEAFOOD),
+            Map.entry("PUB_GOAT",           ShopType.PUB_GOAT),
+            Map.entry("PUB_BEEF",           ShopType.PUB_BEEF),
             Map.entry("OTHER",              ShopType.OTHER)
     );
 
@@ -158,6 +157,10 @@ public class OnboardingController {
         m.put(ShopType.PHARMACY, "phar");
         m.put(ShopType.JEWELRY, "jwl");
         m.put(ShopType.PAWN_SHOP, "pawn");
+        m.put(ShopType.PUB,        "pub");
+        m.put(ShopType.PUB_SEAFOOD,"pubsea");
+        m.put(ShopType.PUB_GOAT,   "pubgoat");
+        m.put(ShopType.PUB_BEEF,   "pubbf");
         m.put(ShopType.OTHER, "shop");
         PREFIX_MAP = Collections.unmodifiableMap(m);
     }
@@ -169,6 +172,10 @@ public class OnboardingController {
                 shopEntry("FOOD_BEVERAGE", "Thực phẩm / Đồ uống", "🍱"),
                 shopEntry("RESTAURANT", "Quán ăn / Nhà hàng", "🍜"),
                 shopEntry("COFFEE_SHOP", "Quán cà phê", "☕"),
+                shopEntry("PUB",         "Quán nhậu", "🍺"),
+                shopEntry("PUB_SEAFOOD", "Quán nhậu hải sản", "🦞"),
+                shopEntry("PUB_GOAT",    "Quán nhậu chuyên dê", "🐐"),
+                shopEntry("PUB_BEEF",    "Quán nhậu chuyên bò", "🐄"),
                 shopEntry("FASHION", "Thời trang", "👗"),
                 shopEntry("ELECTRONICS", "Điện tử / Điện máy", "📱"),
                 shopEntry("BARBER_SHOP",     "Salon / Cắt tóc",            "💇"),
@@ -180,7 +187,7 @@ public class OnboardingController {
                 shopEntry("MASSAGE_SHOP",    "Tiệm massage",                "🤲"),
                 shopEntry("BEAUTY_CLINIC",   "Thẩm mỹ viện",               "🏥"),
                 shopEntry("MAKEUP_STUDIO",   "Tiệm trang điểm / Cô dâu",   "💄"),
-                shopEntry("BOOK_STORE", "Nhà sách", "🧖"),
+                shopEntry("BOOK_STORE", "Nhà sách", "📚"),
                 shopEntry("PHARMACY", "Nhà thuốc / Dược phẩm", "💊"),
                 shopEntry("JEWELRY", "Trang sức / Vàng bạc", "💍"),
                 shopEntry("PAWN_SHOP", "Tiệm cầm đồ", "🏦"),
@@ -299,6 +306,7 @@ public class OnboardingController {
 
             seedOnboardingProducts(body, tenantId);
             seedOnboardingExpenses(body);
+            seedOnboardingTables(body, tenantId);
 
             List<String> roleNames = roleRepository.findByNameAndTenantId("SHOP_OWNER", tenantId)
                     .map(r -> List.of(r.getName()))
@@ -441,6 +449,48 @@ public class OnboardingController {
                 shopExpenseService.create(req);
             } catch (Exception ex) {
                 log.warn("Skipped onboarding expense due to error: {}", ex.getMessage());
+            }
+        }
+    }
+
+    private static final Set<ShopType> FB_SHOP_TYPES = Set.of(
+            ShopType.FOOD_BEVERAGE, ShopType.RESTAURANT, ShopType.COFFEE_SHOP,
+            ShopType.PUB, ShopType.PUB_SEAFOOD, ShopType.PUB_GOAT, ShopType.PUB_BEEF
+    );
+
+    private void seedOnboardingTables(Map<String, Object> body, String tenantId) {
+        Object raw = body.get("tables");
+        if (!(raw instanceof List<?> list) || list.isEmpty()) return;
+
+        String insert = """
+                INSERT INTO shop_table
+                    (tenant_id, table_number, capacity, location, display_order, status)
+                VALUES
+                    (:tenantId, :tableNumber, :capacity, :location, :displayOrder, 'AVAILABLE')
+                ON CONFLICT DO NOTHING
+                """;
+
+        int order = 0;
+        for (Object item : list) {
+            if (!(item instanceof Map)) continue;
+            @SuppressWarnings("unchecked")
+            Map<String, Object> map = (Map<String, Object>) item;
+            try {
+                String tableNumber = (String) map.get("tableNumber");
+                if (tableNumber == null || tableNumber.isBlank()) continue;
+
+                Number capacityNum = (Number) map.getOrDefault("capacity", 4);
+                String location = (String) map.getOrDefault("location", null);
+
+                Map<String, Object> params = new HashMap<>();
+                params.put("tenantId", tenantId);
+                params.put("tableNumber", tableNumber.strip());
+                params.put("capacity", capacityNum.intValue());
+                params.put("location", location);
+                params.put("displayOrder", order++);
+                namedJdbc.update(insert, params);
+            } catch (Exception ex) {
+                log.warn("Skipped onboarding table '{}': {}", map.get("tableNumber"), ex.getMessage());
             }
         }
     }

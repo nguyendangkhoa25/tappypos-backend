@@ -47,7 +47,13 @@ public class TenantSeedService {
         Map.entry(ShopType.SPA_SHOP,           "db/tenant/spa_shop.sql"),
         Map.entry(ShopType.MASSAGE_SHOP,       "db/tenant/massage_shop.sql"),
         Map.entry(ShopType.BEAUTY_CLINIC,      "db/tenant/beauty_clinic.sql"),
-        Map.entry(ShopType.MAKEUP_STUDIO,      "db/tenant/makeup_studio.sql")
+        Map.entry(ShopType.MAKEUP_STUDIO,      "db/tenant/makeup_studio.sql"),
+        Map.entry(ShopType.RESTAURANT,         "db/tenant/restaurant.sql"),
+        Map.entry(ShopType.COFFEE_SHOP,        "db/tenant/coffee_shop.sql"),
+        Map.entry(ShopType.PUB,                "db/tenant/pub.sql"),
+        Map.entry(ShopType.PUB_SEAFOOD,        "db/tenant/pub_seafood.sql"),
+        Map.entry(ShopType.PUB_GOAT,           "db/tenant/pub_goat.sql"),
+        Map.entry(ShopType.PUB_BEEF,           "db/tenant/pub_beef.sql")
     );
     private static final String DEFAULT_DML = "db/tenant/general.sql";
 
@@ -56,7 +62,8 @@ public class TenantSeedService {
         ShopType.BARBER_SHOP, ShopType.BARBER_SHOP_MEN, ShopType.HAIR_SALON,
         ShopType.NAIL_SHOP, ShopType.LASH_PMU_STUDIO, ShopType.SPA_SHOP,
         ShopType.MASSAGE_SHOP, ShopType.BEAUTY_CLINIC, ShopType.MAKEUP_STUDIO,
-        ShopType.COFFEE_SHOP, ShopType.FOOD_BEVERAGE, ShopType.RESTAURANT
+        ShopType.COFFEE_SHOP, ShopType.FOOD_BEVERAGE, ShopType.RESTAURANT,
+        ShopType.PUB, ShopType.PUB_SEAFOOD, ShopType.PUB_GOAT, ShopType.PUB_BEEF
     );
 
     /**

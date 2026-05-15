@@ -23,6 +23,10 @@ public enum ShopType {
     BOOK_STORE("Nhà sách",              "Book store"),
     COFFEE_SHOP("Quán cà phê",              "Coffee Shop"),
     RESTAURANT("Nhà hàng / Quán ăn",        "Restaurant / Eatery"),
+    PUB("Quán nhậu",                        "Pub / Beer House"),
+    PUB_SEAFOOD("Quán nhậu hải sản",        "Seafood Pub"),
+    PUB_GOAT("Quán nhậu chuyên dê",         "Goat Pub"),
+    PUB_BEEF("Quán nhậu chuyên bò",         "Beef Pub"),
     OTHER("Khác",                           "Other");
 
     private final String displayName;

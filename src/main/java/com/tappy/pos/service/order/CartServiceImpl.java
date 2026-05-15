@@ -61,6 +61,7 @@ import com.tappy.pos.model.enums.NoInventoryProductTypes;
 import com.tappy.pos.model.enums.UniqueItemProductTypes;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.service.goldprice.GoldPriceService;
+import com.tappy.pos.service.table.TableService;
 
 /**
  * Cart Service Implementation
@@ -98,6 +99,7 @@ public class CartServiceImpl implements CartService {
     private final GoldPriceService goldPriceService;
     private final EmployeeRepository employeeRepository;
     private final FeatureContext featureContext;
+    private final TableService tableService;
 
     /**
      * Initialize a new cart session
@@ -661,6 +663,14 @@ public class CartServiceImpl implements CartService {
 
         Order savedOrder = orderRepository.save(order);
         log.info("Kitchen ticket created: {} (tableLabel={})", orderNumber, request.getTableLabel());
+
+        if (request.getTableId() != null) {
+            try {
+                tableService.occupyTable(request.getTableId(), savedOrder.getId());
+            } catch (Exception e) {
+                log.warn("Could not mark table {} as occupied: {}", request.getTableId(), e.getMessage());
+            }
+        }
 
         return SendToKitchenResponse.builder()
                 .orderId(savedOrder.getId())

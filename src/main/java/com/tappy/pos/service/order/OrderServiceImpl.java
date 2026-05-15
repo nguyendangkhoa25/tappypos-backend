@@ -46,6 +46,7 @@ import com.tappy.pos.service.inventory.InventoryService;
 import com.tappy.pos.service.tenant.PrintTemplateService;
 import com.tappy.pos.service.audit.ActivityLogService;
 import com.tappy.pos.config.FeatureContext;
+import com.tappy.pos.repository.table.TableRepository;
 
 @Slf4j
 @Service
@@ -66,6 +67,7 @@ public class OrderServiceImpl implements OrderService {
     private final ActivityLogService activityLogService;
     private final TenantContext tenantContext;
     private final FeatureContext featureContext;
+    private final TableRepository tableRepository;
 
     @Override
     public Page<OrderDTO> getAllOrders(String status, String orderType, Pageable pageable) {
@@ -208,6 +210,7 @@ public class OrderServiceImpl implements OrderService {
         order.complete(completedBy);
         Order saved = orderRepository.save(order);
         log.info("Order {} completed by {}", id, completedBy);
+        releaseTableForOrder(saved);
 
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), completedBy, null,
                 ActivityAction.ORDER_COMPLETED, "ORDER", saved.getOrderNumber(),
@@ -249,6 +252,7 @@ public class OrderServiceImpl implements OrderService {
         order.cancel(request.getReason(), cancelledBy);
         Order saved = orderRepository.save(order);
         log.info("Order {} cancelled by {} — reason: {}", id, cancelledBy, request.getReason());
+        releaseTableForOrder(saved);
 
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), cancelledBy, null,
                 ActivityAction.ORDER_CANCELLED, "ORDER", saved.getOrderNumber(),
@@ -379,6 +383,20 @@ public class OrderServiceImpl implements OrderService {
                 yield new LocalDateTime[]{date.atStartOfDay(), date.plusDays(1).atStartOfDay()};
             }
         };
+    }
+
+    private void releaseTableForOrder(Order order) {
+        try {
+            tableRepository.findByTenantIdAndCurrentOrderId(order.getTenantId(), order.getId())
+                    .ifPresent(table -> {
+                        table.setStatus(com.tappy.pos.model.enums.TableStatus.AVAILABLE);
+                        table.setCurrentOrderId(null);
+                        tableRepository.save(table);
+                        log.debug("Table {} released after order {}", table.getId(), order.getId());
+                    });
+        } catch (Exception e) {
+            log.warn("Could not release table for order {}: {}", order.getId(), e.getMessage());
+        }
     }
 
     private Order findActiveOrder(Long id) {
