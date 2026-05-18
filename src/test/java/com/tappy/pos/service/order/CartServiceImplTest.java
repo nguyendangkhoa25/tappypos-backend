@@ -68,6 +68,7 @@ import com.tappy.pos.model.entity.employee.Employee;
 import com.tappy.pos.repository.employee.EmployeeRepository;
 import com.tappy.pos.service.table.TableService;
 import com.tappy.pos.service.notification.NotificationService;
+import com.tappy.pos.service.subscription.SubscriptionService;
 
 import java.util.Set;
 
@@ -129,6 +130,9 @@ class CartServiceImplTest {
     @Mock
     private NotificationService notificationService;
 
+    @Mock
+    private SubscriptionService subscriptionService;
+
     private CartServiceImpl cartService;
     private ObjectMapper objectMapper;
 
@@ -168,7 +172,8 @@ class CartServiceImplTest {
             employeeRepository,
             featureContext,
             tableService,
-            notificationService
+            notificationService,
+            subscriptionService
         );
     }
 
