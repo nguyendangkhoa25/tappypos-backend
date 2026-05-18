@@ -1,0 +1,98 @@
+package com.tappy.pos.aspect;
+
+import com.tappy.pos.config.JwtTokenProvider;
+import com.tappy.pos.exception.ForbiddenException;
+import com.tappy.pos.multitenant.TenantContext;
+import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.springframework.stereotype.Component;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+
+import java.util.List;
+
+/**
+ * Aspect to enforce master database access restrictions
+ * Intercepts methods/classes annotated with @MasterDatabaseOnly
+ */
+@Aspect
+@Component
+@RequiredArgsConstructor
+@Slf4j
+public class MasterDatabaseAccessAspect {
+
+    private final TenantContext tenantContext;
+    private final JwtTokenProvider jwtTokenProvider;
+
+    private static final String AUTHORIZATION_HEADER = "Authorization";
+    private static final String BEARER_PREFIX = "Bearer ";
+    private static final java.util.Set<String> ALLOWED_MASTER_ROLES =
+            java.util.Set.of("MASTER_TENANT", "AGENT");
+
+    /**
+     * Check if current request is accessing master database with proper role
+     * Requirements:
+     * 1. No tenant context (user is logged into master database)
+     * 2. User has MASTER_TENANT role
+     * 3. JWT token has isMasterUser flag set to true
+     */
+    @Around("@within(com.tappy.pos.annotation.MasterDatabaseOnly) || @annotation(com.tappy.pos.annotation.MasterDatabaseOnly)")
+    public Object checkMasterDatabaseAccess(ProceedingJoinPoint joinPoint) throws Throwable {
+        String currentTenantId = tenantContext.getCurrentTenantId();
+
+        // Check 1: User must be logged into master database (no tenant context)
+        if (currentTenantId != null) {
+            log.warn("Access denied to master-only endpoint. User is logged into tenant: {}", currentTenantId);
+            throw new ForbiddenException("error.access.master_only");
+        }
+
+        // Get JWT token from request
+        String token = extractJwtFromRequest();
+        if (token == null) {
+            log.warn("Access denied to master-only endpoint. No JWT token found.");
+            throw new ForbiddenException("error.access.master_only");
+        }
+
+        // Check 2: User must have a recognised master role (MASTER_TENANT or AGENT)
+        List<String> roles = jwtTokenProvider.getRolesFromToken(token);
+        boolean hasMasterRole = roles != null && roles.stream().anyMatch(ALLOWED_MASTER_ROLES::contains);
+        if (!hasMasterRole) {
+            log.warn("Access denied to master-only endpoint. No allowed master role found. Roles: {}", roles);
+            throw new ForbiddenException("error.access.master_only");
+        }
+
+        // Check 3: JWT token must have isMasterUser flag explicitly set to true.
+        Boolean isMasterUser = jwtTokenProvider.isMasterUserFromToken(token);
+        if (!Boolean.TRUE.equals(isMasterUser)) {
+            log.warn("Access denied to master-only endpoint. isMasterUser flag is not true: {}", isMasterUser);
+            throw new ForbiddenException("error.access.master_only");
+        }
+
+        log.debug("Access granted to master-only endpoint for role(s): {}", roles);
+        return joinPoint.proceed();
+    }
+
+    /**
+     * Extract JWT token from Authorization header
+     */
+    private String extractJwtFromRequest() {
+        ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        if (attributes == null) {
+            return null;
+        }
+
+        HttpServletRequest request = attributes.getRequest();
+        String authHeader = request.getHeader(AUTHORIZATION_HEADER);
+
+        if (authHeader != null && authHeader.startsWith(BEARER_PREFIX)) {
+            return authHeader.substring(BEARER_PREFIX.length());
+        }
+
+        return null;
+    }
+}
+

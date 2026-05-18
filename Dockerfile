@@ -5,7 +5,7 @@ ENV TZ="Asia/Ho_Chi_Minh"
 WORKDIR /app
 RUN mkdir -p /app/logs
 
-COPY target/retail-platform-1.0.0.jar /app/retail-platform.jar
+COPY target/tappy-pos-1.0.0.jar /app/tappy-pos.jar
 
 EXPOSE 6868
 
@@ -14,4 +14,4 @@ ENTRYPOINT ["java", \
   "-XX:MaxRAMPercentage=75.0", \
   "-XX:+ExitOnOutOfMemoryError", \
   "-Djava.security.egd=file:/dev/./urandom", \
-  "-jar", "/app/retail-platform.jar"]
+  "-jar", "/app/tappy-pos.jar"]

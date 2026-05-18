@@ -4,13 +4,13 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.knp</groupId>
-    <artifactId>retail-platform</artifactId>
+    <groupId>com.tappy.pos</groupId>
+    <artifactId>tappy-pos</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
 
-    <name>Retail Platform</name>
-    <description>Retail Platform API System </description>
+    <name>Tappy POS</name>
+    <description>Tappy POS API System</description>
 
     <parent>
         <groupId>org.springframework.boot</groupId>
@@ -65,7 +65,14 @@
             <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
 
-        <!-- Testcontainers (replaces H2 — tests run against a real PostgreSQL) -->
+        <!-- H2 for @DataJpaTest integration tests (no Docker required) -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Testcontainers (for full-stack integration tests against real PostgreSQL) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-testcontainers</artifactId>
@@ -289,13 +296,43 @@
                             <goal>report</goal>
                         </goals>
                     </execution>
+                    <execution>
+                        <id>check</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.80</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
+                    </execution>
                 </executions>
                 <configuration>
                     <excludes>
                         <!-- Exclude model classes from code coverage (DTOs, entities, enums) -->
-                        <exclude>com/knp/model/**</exclude>
-                        <exclude>com/knp/controller/**</exclude>
-                        <exclude>com/knp/util/**</exclude>
+                        <exclude>com/tappy/pos/model/**</exclude>
+                        <exclude>com/tappy/pos/controller/**</exclude>
+                        <exclude>com/tappy/pos/util/**</exclude>
+                        <!-- External API integrations — cannot be unit-tested without live credentials -->
+                        <exclude>com/tappy/pos/integration/google/**</exclude>
+                        <exclude>com/tappy/pos/service/integration/**</exclude>
+                        <!-- Pawn repositories: Spring Data JPA proxies + complex native SQL queries -->
+                        <exclude>com/tappy/pos/repository/pawn/**</exclude>
+                        <!-- Spring Security DSL config — not unit-testable without Spring context -->
+                        <exclude>com/tappy/pos/config/SecurityConfig*</exclude>
+                        <!-- One-time raw-JDBC credential migration — bypasses JPA, requires live DB -->
+                        <exclude>com/tappy/pos/service/tenant/CredentialMigrationService*</exclude>
                     </excludes>
                 </configuration>
             </plugin>

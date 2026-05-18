@@ -37,6 +37,9 @@ Every request carries an `X-Tenant-ID` header:
 5. `TenantInterceptor.afterCompletion` always calls `tenantContext.clear()` to prevent cross-request leakage.
 
 The `X-Tenant-ID: master` special value leaves tenant context empty, disabling RLS on tenant tables and giving access to master tables only. Two AOP annotations enforce access:
+
+> **Critical gotcha — `current_tenant_id()` in auth flows:**
+> `TenantRlsAspect` sets `app.current_tenant` once at `@Transactional` start. If a method begins with no tenant context (e.g. login without `X-Tenant-ID`) and then calls `tenantContext.setCurrentTenant(tenant)` mid-method, the DB session variable remains NULL for the rest of that transaction — even though `tenantContext.getCurrentTenant()` now returns non-null. Any query using `current_tenant_id()` or `r.tenant_id IS NOT DISTINCT FROM current_tenant_id()` will still see NULL and return wrong results (master rows only, not shop rows). **Rule:** queries called from auth flows (login, refresh, onboarding) that need tenant-scoped data must use an explicit `tenantId` bind parameter instead of `current_tenant_id()`. See `RoleFeatureRepository.findActiveFeatureNamesByRoleNamesAndTenantId()` as the reference implementation.
 - `@MasterDatabaseOnly` — endpoint requires no tenant context + `MASTER_TENANT` role + `isMasterUser=true` (used on master-admin controllers like `MultiTenantController`, `FeedbackController` admin endpoints).
 - `@RequiresFeature("NAME")` — endpoint requires the named feature in the caller's JWT (used on all shop and shared controllers). See Feature Access Model below.
 
@@ -107,6 +110,33 @@ Features are enforced at three levels:
 
 **Do NOT use `@PreAuthorize`** — `@EnableMethodSecurity` is not configured; these annotations are silently ignored.
 
+### Granular Sub-Feature Pattern (row-level access control within a module)
+
+Some features need **within-module** access differentiation — e.g., all staff can access the Order module, but only shop owners should see every employee's orders. The standard approach is a **sub-feature flag** that gates the broader view; absence of the flag restricts to the user's own data.
+
+**Pattern:** `<MODULE>_VIEW_ALL` (or `<MODULE>_MANAGE_ALL` for write operations)
+
+**Implemented example: `ORDER` + `ORDER_VIEW_ALL`**
+- `ORDER` — required to open the Order module at all (route guard + `@RequiresFeature`)
+- `ORDER_VIEW_ALL` — within the module, determines query scope:
+  - Present → `findAllActive()` / `searchByKeyword()` — all tenant orders visible
+  - Absent → `findAllActiveByCreatedBy()` / `searchByKeywordAndCreatedBy()` — only `created_by = currentUsername`
+  - `getOrderById()` also enforces ownership when flag is absent (throws 404, not 403, to avoid leaking existence)
+
+**Backend implementation checklist** (service layer, never controller):
+1. Add the sub-feature to `FeatureEnum` with a Vietnamese name and description.
+2. Add a Flyway migration (`V0XX__...sql`) to insert it into the `features` table.
+3. Inject `FeatureContext` into the service (it is already a `@Component` bean).
+4. Branch on `featureContext.hasFeature("FEATURE_VIEW_ALL")` — call the scoped repository method when flag is absent.
+5. Add scoped repository queries (e.g. `findAllActiveByCreatedBy`, `findAllActiveByStatusAndCreatedBy`, `searchByKeywordAndCreatedBy`).
+6. For single-resource fetch (`getById`), throw `ResourceNotFoundException` (same as "not found") rather than 403 — never expose that the record exists but is owned by someone else.
+
+**Master admin setup:** assign the sub-feature to the shop at tenant creation; shop owner assigns it to the SHOP_OWNER role in `role_features`. Staff roles (CASHIER, etc.) do not get it.
+
+**Never** branch on role name, `tenantId`, or any heuristic — always read from `FeatureContext`. This keeps the auth model consistent: token is the single source of truth.
+
+**Apply this pattern to other modules** whenever you need the same owner-vs-all split (e.g. `EXPENSE_VIEW_ALL`, `SALARY_VIEW_ALL`).
+
 ### Async Side-Effect Pattern
 
 `@EnableAsync` is active. Any operation that is a side effect of the main flow (notifications, audit log) must be **fire-and-forget** — it must never block or fail the caller.
@@ -116,12 +146,61 @@ Features are enforced at three levels:
 2. Pass all required context (e.g. `tenantId`, `username`) as method parameters — `TenantContext` and `SecurityContextHolder` are ThreadLocal and are **not** inherited by the async thread.
 3. Catch and log all exceptions internally — never let them propagate to the caller.
 4. If the async method needs a DB write in tenant context, call `tenantContext.setCurrentTenant(...)` at the start and `tenantContext.clear()` in `finally`.
+5. **If the enclosing service class carries `@Transactional(readOnly = true)` at the class level**, also annotate the `@Async` method with `@Transactional(propagation = Propagation.NOT_SUPPORTED)`. Spring's AOP proxy includes the `TransactionInterceptor` in the lambda captured by the async thread pool, so the class-level `readOnly=true` transaction would be applied in the new thread — preventing any `INSERT`/`UPDATE`. `NOT_SUPPORTED` overrides this: no outer transaction starts, and each downstream repository call manages its own writable transaction independently. `REQUIRES_NEW` is **not** the right fix here — it would open a writable transaction before `TenantContext` is set, breaking RLS.
 
 **Existing implementations:**
 - `ActivityLogServiceImpl.logAsync(tenantId, ...)` — audit writes; sets its own TenantContext in the async thread.
-- `NotificationService.pushToMasterUsersAsync(title, message, ...)` — wraps `pushToMasterUsers`; called from `MultiTenantController` after tenant creation.
+- `NotificationService.pushToMasterUsersAsync/pushToRolesAsync(...)` — both annotated `@Transactional(propagation = Propagation.NOT_SUPPORTED)` to override the class-level `readOnly=true`; called from `MultiTenantController` after tenant creation.
 
 When adding new side-effects, follow this same pattern.
+
+### Activity Logging — Coverage & Conventions
+
+Every mutating service method must call `activityLogService.logAsync(...)` after a successful save. The call is fire-and-forget; exceptions are swallowed inside `logAsync`.
+
+**Signature:**
+```java
+activityLogService.logAsync(tenantId, actorUsername, actorFullName, action, targetType, targetId, description, ipAddress);
+```
+
+**`tenantId` rules — critical for RLS correctness:**
+- Shop operations: pass `tenantContext.getCurrentTenantId()` — stored as the actual tenant ID in the DB.
+- Master/agent operations: pass `"master"` — `ActivityLogServiceImpl` translates this to `NULL` before saving. This is intentional: the `activity_log` RLS policy uses `IS NOT DISTINCT FROM current_tenant_id()`, so master-context queries (where `current_tenant_id()` = NULL) correctly see `tenant_id IS NULL` rows.
+- Never pass `null` directly — the method returns early if `tenantId == null`.
+
+**Capture `actorUsername` before any async boundary:**
+```java
+// In the calling service (main thread, SecurityContextHolder is populated)
+String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null, ...);
+```
+For services that use `AuthContext`, use `authContext.getCurrentUsername()` instead.
+
+**Checklist when adding a new service method:**
+1. Add the action to `ActivityAction` enum if it doesn't exist.
+2. Call `logAsync` after the successful repository save (not before, not in a finally block).
+3. Use Vietnamese for `description` — it appears directly in the UI.
+4. Add the action to `ACTION_OPTIONS` and `ACTION_COLORS` in `ActivityLogPage.jsx` (frontend).
+5. Add Vietnamese + English translations in `src/i18n/features/activityLog.js`.
+
+**Currently logged actions by module:**
+
+| Module | Actions |
+|--------|---------|
+| Auth | `LOGIN`, `LOGOUT` (shop + master + agent) |
+| Master: Tenants | `TENANT_CREATED`, `TENANT_UPDATED` |
+| Master: Agents | `AGENT_CREATED`, `AGENT_UPDATED` |
+| Master: Feedback | `FEEDBACK_REVIEWED` |
+| Orders (via Cart checkout) | `ORDER_CREATED`, `ORDER_COMPLETED`, `ORDER_CANCELLED`, `ORDER_VOIDED` |
+| Products | `PRODUCT_CREATED`, `PRODUCT_UPDATED`, `PRODUCT_DELETED` |
+| Customers | `CUSTOMER_CREATED`, `CUSTOMER_UPDATED` |
+| Employees | `EMPLOYEE_CREATED`, `EMPLOYEE_UPDATED` |
+| Vendors | `VENDOR_CREATED`, `VENDOR_UPDATED` |
+| Purchase Orders | `PURCHASE_ORDER_CREATED`, `PURCHASE_ORDER_RECEIVED` |
+| Inventory | `INVENTORY_ADJUSTED` |
+| Expenses | `EXPENSE_CREATED` |
+| Pawn | `PAWN_CREATED`, `PAWN_UPDATED`, `PAWN_DELETED`, `PAWN_CANCEL`, `PAWN_FORFEIT`, `PAWN_REDEEMED`, `PAWN_EXTEND`, `PAWN_REQUEST_MONEY` |
+| Users | `USER_CREATED` |
 
 ### Product System (EAV)
 
@@ -130,13 +209,35 @@ Products use Entity-Attribute-Value to support 18+ types (Food, Beverage, Drug, 
 
 Base `Product` holds SKU, price, cost, unit, vendor, shelf location, and status. Dynamic attributes live in `ProductAttributeValue`.
 
+#### Dynamic-Price Product Types
+
+`DynamicPriceProductTypes` (`com.knp.model.enums`) — currently `CODES = Set.of("JEWELRY")`.
+
+For these types the `price` column on `Product` is stored as `0`. The real sell price is computed at cart-add time in `CartServiceImpl.calculateDynamicUnitPrice()`:
+
+```
+unitPrice = gold_weight (EAV) × GoldPriceService.getPriceForCategory(categoryId).sell
+          + sell_proc_price (EAV, falls back to proc_price)
+```
+
+`CartServiceImpl.addItemToCart()` resolves `unitPrice` before building the `CartItemEntity`:
+```java
+BigDecimal resolvedUnitPrice = DynamicPriceProductTypes.isDynamicPrice(productTypeCode)
+    ? calculateDynamicUnitPrice(product)
+    : product.getPrice();
+```
+
+Throws `BadRequestException` (with Vietnamese message) if the product has no category or no gold price is configured for that category.
+
+**To add a new dynamic-price type:** add its code to `DynamicPriceProductTypes.CODES`; extend `calculateDynamicUnitPrice()` if the formula differs from gold.
+
 ### Tenant Provisioning
 
 `POST /api/multi-tenants` (master-only) calls `TenantProvisioningService.provision()` which:
 1. Inserts a row into the `tenants` master table.
 2. Sets `TenantContext` to the new tenant ID so RLS scopes subsequent writes to that tenant.
 3. Executes the shop-type DML file (e.g. `pawn_shop.sql`) — this uses `current_setting('app.current_tenant', true)` as the `tenant_id` value so all seed rows land in the correct tenant's partition.
-4. Seeds roles, features, role-feature mappings, shop info, admin user, a default walk-in customer (`phone=0000000000`, name `"Khách lẻ"`), and the two default shop configs (`DEFAULT_TAX_RATE`, `POS_MODE`) that are not covered by the DML file.
+4. Seeds roles, role-feature mappings, shop info, default walk-in customer (`phone=0000000000`, name `"Khách lẻ"`), default shop configs (`DEFAULT_TAX_RATE`, `POS_MODE`), and admin user via `TenantProvisioningService` — these are **not** in the DML files.
 
 ### Layer Conventions
 
@@ -172,17 +273,18 @@ Each shop type gets its own seed data file under `src/main/resources/db/tenant/`
 1. Shop info          — INSERT INTO shop_info (shop_name, ...) ON CONFLICT DO NOTHING
 2. Product types      — INSERT INTO product_type ... ON CONFLICT (code) DO UPDATE
 3. Categories         — INSERT INTO category ... ON CONFLICT (name, tenant_id) DO UPDATE
-4. Walk-in customer   — INSERT INTO customers (id=790000001, phone='0000000000', ...) ON CONFLICT DO NOTHING
-5. Vendors (optional) — 1–2 placeholder suppliers relevant to the shop type
-6. Sample products    — 15–40 realistic items the shop actually sells
-7. Product→category   — INSERT INTO product_category ... ON CONFLICT DO NOTHING
-8. Inventory          — INSERT INTO inventory for every product
-9. Loyalty program    — single default program + 4 tiers
-10. Print template    — RECEIPT template with ON CONFLICT DO NOTHING
-11. Attribute groups  — per product type, Vietnamese names, display_order
-12. Attribute defs    — per group, Vietnamese names (see below)
-13. Shop config       — cash_denominations (all shops); pawn_* keys (pawn/jewelry only)
+4. Vendors (optional) — 1–2 placeholder suppliers relevant to the shop type
+5. Sample products    — 15–40 realistic items the shop actually sells
+6. Product→category   — INSERT INTO product_category ... ON CONFLICT DO NOTHING
+7. Inventory          — INSERT INTO inventory for every product
+8. Loyalty program    — single default program + 4 tiers
+9. Print template     — RECEIPT template with ON CONFLICT DO NOTHING
+10. Attribute groups  — per product type, Vietnamese names, display_order
+11. Attribute defs    — per group, Vietnamese names (see below)
+12. Shop config       — cash_denominations (all shops); pawn_* keys (pawn/jewelry only)
 ```
+
+**Do NOT add walk-in customer to DML files.** It is seeded exclusively by `TenantProvisioningService.seedWalkInCustomer()` in Java so each tenant gets an isolated row with correct RLS scoping.
 
 Banks are seeded globally in `V001__initial_schema.sql` — do **not** add bank INSERTs to DML files.
 
@@ -335,6 +437,34 @@ ON CONFLICT (product_type_id, code) DO UPDATE SET name = EXCLUDED.name;
 
 Always join on `ag.code`, never on `ag.name`. Vietnamese names in `name` column. Use PostgreSQL `ON CONFLICT … DO UPDATE/DO NOTHING` — never MySQL's `ON DUPLICATE KEY UPDATE`.
 
+### External / Legacy ID Convention
+
+Every major tenant entity table has a `legacy_id VARCHAR(50) DEFAULT NULL` column. Its purpose is to store the original primary key from **any external or legacy system** — the old platform's integer ID, a third-party UUID, an ERP code, or any opaque string key we don't know the shape of yet.
+
+**Design decisions:**
+- `VARCHAR(50)` instead of `BIGINT` — accepts integers, UUIDs, and arbitrary string keys without a schema change when a new source system appears.
+- `DEFAULT NULL` — existing rows are unaffected; only migrated or synced rows carry a value.
+- **Partial index** on `(tenant_id, legacy_id) WHERE legacy_id IS NOT NULL` — efficient reverse-lookup (old ID → new UUID) with no overhead on the majority of rows that have no legacy ID.
+
+**Tables that already have this column:**
+
+| Table | Index |
+|---|---|
+| `product` | `idx_product_legacy_id` |
+| `customers` | `idx_customers_legacy_id` |
+| `orders` | `idx_orders_legacy_id` |
+| `employees` | `idx_employees_legacy_id` |
+| `pawn` | `idx_pawn_legacy_id` |
+| `pawn_req_money` | `idx_pawn_req_money_legacy_id` |
+
+**When to add `legacy_id` to a new table:**
+1. Add `legacy_id VARCHAR(50) DEFAULT NULL` in a new Flyway migration.
+2. Add the partial index: `CREATE INDEX IF NOT EXISTS idx_<table>_legacy_id ON <table> (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;`
+3. Add `@Column(name = "legacy_id", length = 50) private String legacyId;` to the entity class.
+4. Expose it in the DTO if the migration script or import API needs to read it back.
+
+**Usage pattern in migration scripts:** populate `legacy_id` during the INSERT/UPDATE that creates the new-platform row. After migration, use `SELECT id FROM <table> WHERE tenant_id = ? AND legacy_id = ?` to resolve old IDs to new UUIDs in any cross-reference joins.
+
 ### Database Schema Management
 
 DDL is managed by Flyway (`spring.jpa.hibernate.ddl-auto=none`). There is a **single shared PostgreSQL database** (`retail-platform`) — no per-tenant databases.
@@ -383,9 +513,23 @@ All user-facing strings go through `MessageService` (wraps Spring `MessageSource
 |----------|---------|------|
 | `jwt.secret` | hardcoded default | Override in prod |
 | `jwt.expiration` | 86400000 (24h) | Access token TTL ms |
-| `jwt.refresh-expiration` | 604800000 (7d) | Refresh token TTL ms |
+| `jwt.refresh-expiration` | 2592000000 (30d) | Refresh token TTL ms |
 | `APP_ENCRYPTION_KEY` | empty | Required for e-invoice features |
 | `system.corsAllowedOrigin` | `https://quanlycuahang.com/` | CORS origin |
+
+## Timezone
+
+All timestamps are stored and served in **Asia/Ho_Chi_Minh (UTC+7)**. This is enforced at four layers — do not change any of them independently or timestamps will become inconsistent:
+
+| Layer | Where set | What it controls |
+|-------|-----------|-----------------|
+| JVM default | `RetailPlatformApplication.main()` — `TimeZone.setDefault("Asia/Ho_Chi_Minh")` before Spring starts | `@CreationTimestamp`, `@UpdateTimestamp`, `LocalDateTime.now()` |
+| Hibernate JDBC | `spring.jpa.properties.hibernate.jdbc.time_zone=Asia/Ho_Chi_Minh` in `application.properties` | How Hibernate serialises `java.time.*` values onto the JDBC wire |
+| Jackson | `spring.jackson.time-zone=Asia/Ho_Chi_Minh` in `application.properties` | `LocalDateTime` fields in JSON API responses |
+| Docker image | `ENV TZ="Asia/Ho_Chi_Minh"` in `backend/Dockerfile` | OS timezone inside the container (also sets JVM `TZ` env var) |
+| PostgreSQL container | `TZ: Asia/Ho_Chi_Minh` in `docker-compose.yml` (both dev and prod) | `NOW()`, `CURRENT_TIMESTAMP`, `DEFAULT NOW()` in raw SQL |
+
+When running locally outside Docker (`mvn spring-boot:run`), the `TimeZone.setDefault()` in `main()` acts as a safety net so the JVM uses UTC+7 regardless of the developer's machine timezone.
 
 ## Testing
 

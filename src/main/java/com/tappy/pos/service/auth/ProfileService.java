@@ -1,0 +1,51 @@
+package com.tappy.pos.service.auth;
+
+import com.tappy.pos.model.dto.auth.ProfileRequest;
+import com.tappy.pos.model.dto.auth.UserProfile;
+
+/**
+ * ProfileService Interface
+ * Defines contract for user profile management operations
+ */
+public interface ProfileService {
+    /**
+     * Get user profile by username
+     */
+    UserProfile getUserDetail(String username);
+
+    /**
+     * Update user profile color preference
+     */
+    UserProfile updateProfileColor(String username, ProfileRequest request);
+
+    /**
+     * Update user profile avatar
+     */
+    UserProfile updateProfileAvatar(String username, ProfileRequest request);
+
+    /**
+     * Update user profile password
+     */
+    UserProfile updateProfilePassword(String username, ProfileRequest request);
+
+    /**
+     * Update user basic info (fullName, email)
+     */
+    UserProfile updateProfileInfo(String username, ProfileRequest request);
+
+    /**
+     * Update user language preference
+     */
+    UserProfile updateProfileLang(String username, ProfileRequest request);
+
+    /**
+     * Get user preferences JSON (autocomplete history, etc.)
+     */
+    String getPreferences(String username);
+
+    /**
+     * Save user preferences JSON
+     */
+    void updatePreferences(String username, String preferences);
+}
+

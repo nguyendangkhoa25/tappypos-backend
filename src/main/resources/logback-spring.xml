@@ -17,8 +17,8 @@
     <!-- Sifting Appender - Tenant-Specific Logs with Daily Rotation -->
     <appender name="TENANT_SIFT" class="ch.qos.logback.classic.sift.SiftingAppender">
         <!-- Filter: Only accept logs with tenant ID -->
-        <filter class="com.knp.config.TenantLogFilter"/>
-        <discriminator class="com.knp.config.TenantDiscriminator">
+        <filter class="com.tappy.pos.config.TenantLogFilter"/>
+        <discriminator class="com.tappy.pos.config.TenantDiscriminator">
             <key>tenantId</key>
             <defaultValue>unknown-tenant</defaultValue> <!-- Updated default value to avoid confusion -->
         </discriminator>
@@ -44,7 +44,7 @@
     <!-- Rolling File Appender - Application Logs (for non-tenant requests) -->
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <!-- Filter: Only accept logs without tenant ID -->
-        <filter class="com.knp.config.NonTenantLogFilter"/>
+        <filter class="com.tappy.pos.config.NonTenantLogFilter"/>
         <file>${LOG_PATH}/app.log</file>
         <encoder>
             <pattern>${LOG_PATTERN}</pattern>
@@ -75,7 +75,7 @@
     </appender>
 
     <!-- Logger for application packages -->
-    <logger name="com.knp" level="INFO" additivity="false">
+    <logger name="com.tappy.pos" level="INFO" additivity="false">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="ASYNC_FILE"/>
         <appender-ref ref="ASYNC_TENANT_SIFT"/>

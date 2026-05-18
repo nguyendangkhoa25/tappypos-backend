@@ -30,13 +30,7 @@ INSERT INTO product_type (tenant_id, code, name, description) VALUES
     (current_setting('app.current_tenant', true), 'HEALTH',       'Sức khỏe / Dinh dưỡng',     'Sản phẩm sức khỏe và dinh dưỡng')
 ON CONFLICT (code, tenant_id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
--- ── 2. Walk-in customer ───────────────────────────────────────
-INSERT INTO customers (tenant_id, name, phone, email, notes, deleted)
-VALUES (current_setting('app.current_tenant', true), 'Khách lẻ', '0000000000', NULL,
-        'Khách hàng lẻ - không có thông tin liên hệ', FALSE)
-ON CONFLICT (phone, tenant_id) DO NOTHING;
-
--- ── 3. Loyalty program ────────────────────────────────────────
+-- ── 2. Loyalty program ────────────────────────────────────────
 INSERT INTO loyalty_programs
     (tenant_id, points_per_amount, amount_per_points, redemption_points_per_discount,
      redemption_discount_amount, min_redemption_points, is_active)
