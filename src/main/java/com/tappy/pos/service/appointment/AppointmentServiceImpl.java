@@ -5,8 +5,12 @@ import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.appointment.*;
 import com.tappy.pos.model.entity.appointment.Appointment;
 import com.tappy.pos.model.entity.appointment.AppointmentServiceItem;
+import com.tappy.pos.model.entity.notification.Notification;
+import com.tappy.pos.model.enums.RoleEnum;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.appointment.AppointmentRepository;
+import com.tappy.pos.service.MessageService;
+import com.tappy.pos.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -19,6 +23,8 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -29,6 +35,11 @@ public class AppointmentServiceImpl implements AppointmentService {
 
     private final AppointmentRepository appointmentRepository;
     private final TenantContext tenantContext;
+    private final NotificationService notificationService;
+    private final MessageService messageService;
+
+    private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
+    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     @Override
     public Page<AppointmentDTO> getByDate(LocalDate date, Pageable pageable) {
@@ -72,7 +83,10 @@ public class AppointmentServiceImpl implements AppointmentService {
             }
         }
 
-        return mapToDTO(appointmentRepository.save(appointment));
+        Appointment saved = appointmentRepository.save(appointment);
+        pushAppointmentNotification("notification.appointment.booked.title",
+                "notification.appointment.booked.message", saved, tenantId, username);
+        return mapToDTO(saved);
     }
 
     @Override
@@ -139,8 +153,12 @@ public class AppointmentServiceImpl implements AppointmentService {
     public AppointmentDTO cancel(Long id) {
         Appointment appointment = findOrThrow(id);
         assertEditable(appointment);
+        String tenantId = tenantContext.getCurrentTenantId();
         appointment.setStatus("CANCELLED");
-        return mapToDTO(appointmentRepository.save(appointment));
+        Appointment saved = appointmentRepository.save(appointment);
+        pushAppointmentNotification("notification.appointment.cancelled.title",
+                "notification.appointment.cancelled.message", saved, tenantId, null);
+        return mapToDTO(saved);
     }
 
     @Override
@@ -230,5 +248,27 @@ public class AppointmentServiceImpl implements AppointmentService {
                 .assignedEmployeeId(s.getAssignedEmployeeId())
                 .assignedEmployeeName(s.getAssignedEmployeeName())
                 .build();
+    }
+
+    private void pushAppointmentNotification(String titleKey, String messageKey,
+                                              Appointment a, String tenantId, String excludeUser) {
+        try {
+            Locale vi = new Locale("vi");
+            String services = a.getServices() == null || a.getServices().isEmpty() ? "—"
+                    : a.getServices().stream()
+                    .map(AppointmentServiceItem::getProductName)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.joining(", "));
+            String time = a.getScheduledStartTime() != null ? a.getScheduledStartTime().format(TIME_FMT) : "";
+            String date = a.getScheduledDate() != null ? a.getScheduledDate().format(DATE_FMT) : "";
+            String title = messageService.getMessage(titleKey, vi, a.getAppointmentNumber(), a.getCustomerName());
+            String message = messageService.getMessage(messageKey, vi, a.getCustomerName(), services, time, date);
+            notificationService.pushToRolesAsync(Notification.NotificationType.ORDER, title, message,
+                    "APPOINTMENT", a.getId(),
+                    List.of(RoleEnum.SHOP_OWNER.getCode(), RoleEnum.MANAGER.getCode()),
+                    tenantId, excludeUser);
+        } catch (Exception e) {
+            log.warn("Failed to push appointment notification (id={}): {}", a.getId(), e.getMessage());
+        }
     }
 }

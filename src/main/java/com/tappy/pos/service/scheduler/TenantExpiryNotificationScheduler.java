@@ -21,7 +21,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class TenantExpiryNotificationScheduler {
 
-    private static final int[] WARN_DAYS = {7, 3, 1};
+    private static final int[] WARN_DAYS = {7, 3, 1, 0};
 
     private final TenantRepository tenantRepository;
     private final NotificationService notificationService;
@@ -46,9 +46,13 @@ public class TenantExpiryNotificationScheduler {
             for (Tenant tenant : expiring) {
                 try {
                     tenantContext.setCurrentTenant(tenant);
-                    notificationService.pushExpiryWarning(tenant, days);
+                    if (days == 0) {
+                        notificationService.pushExpiryExpired(tenant);
+                    } else {
+                        notificationService.pushExpiryWarning(tenant, days);
+                    }
                 } catch (Exception e) {
-                    log.error("Failed to push {}-day expiry warning for tenant {}",
+                    log.error("Failed to push {}-day expiry notification for tenant {}",
                             days, tenant.getTenantId(), e);
                 } finally {
                     tenantContext.clear();

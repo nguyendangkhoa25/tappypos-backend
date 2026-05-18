@@ -6,10 +6,12 @@ import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.model.dto.tenant.ReceiptPreviewRequest;
+import com.tappy.pos.model.dto.order.AddOrderItemRequest;
 import com.tappy.pos.model.dto.order.CancelOrderRequest;
 import com.tappy.pos.model.dto.order.MyWorkStatsDTO;
 import com.tappy.pos.model.dto.order.OrderDTO;
 import com.tappy.pos.model.dto.order.OrderItemDTO;
+import com.tappy.pos.model.dto.order.PayAndCompleteRequest;
 import com.tappy.pos.model.dto.order.VoidOrderRequest;
 import com.tappy.pos.model.dto.order.WorkItemDTO;
 import com.tappy.pos.model.dto.order.WorkItemSummaryDTO;
@@ -43,10 +45,15 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import com.tappy.pos.service.customer.LoyaltyService;
 import com.tappy.pos.service.inventory.InventoryService;
+import com.tappy.pos.service.product.ProductService;
 import com.tappy.pos.service.tenant.PrintTemplateService;
 import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.service.notification.NotificationService;
+import com.tappy.pos.model.entity.notification.Notification;
+import com.tappy.pos.model.enums.RoleEnum;
 import com.tappy.pos.config.FeatureContext;
 import com.tappy.pos.repository.table.TableRepository;
+import java.util.Locale;
 
 @Slf4j
 @Service
@@ -62,9 +69,11 @@ public class OrderServiceImpl implements OrderService {
     private final EmployeeRepository employeeRepository;
     private final LoyaltyService loyaltyService;
     private final InventoryService inventoryService;
+    private final ProductService productService;
     private final MessageService messageService;
     private final PrintTemplateService printTemplateService;
     private final ActivityLogService activityLogService;
+    private final NotificationService notificationService;
     private final TenantContext tenantContext;
     private final FeatureContext featureContext;
     private final TableRepository tableRepository;
@@ -264,9 +273,26 @@ public class OrderServiceImpl implements OrderService {
         log.info("Order {} cancelled by {} — reason: {}", id, cancelledBy, request.getReason());
         releaseTableForOrder(saved);
 
-        activityLogService.logAsync(tenantContext.getCurrentTenantId(), cancelledBy, null,
+        String tenantId = tenantContext.getCurrentTenantId();
+        activityLogService.logAsync(tenantId, cancelledBy, null,
                 ActivityAction.ORDER_CANCELLED, "ORDER", saved.getOrderNumber(),
                 "Cancelled order #" + saved.getOrderNumber() + " — " + request.getReason(), null);
+
+        try {
+            Locale vi = new Locale("vi");
+            String amountStr = String.format("%,.0f ₫", saved.getTotalAmount());
+            String title = messageService.getMessage("notification.order.cancelled.title", vi,
+                    saved.getOrderNumber());
+            String msg = messageService.getMessage("notification.order.cancelled.message", vi,
+                    saved.getOrderNumber(), amountStr, cancelledBy,
+                    request.getReason() != null ? request.getReason() : "—");
+            notificationService.pushToRolesAsync(Notification.NotificationType.ORDER, title, msg,
+                    "ORDER", saved.getId(),
+                    List.of(RoleEnum.SHOP_OWNER.getCode(), RoleEnum.MANAGER.getCode()),
+                    tenantId);
+        } catch (Exception e) {
+            log.warn("Failed to push order-cancelled notification (order={}): {}", saved.getOrderNumber(), e.getMessage());
+        }
 
         return mapToDTO(saved);
     }
@@ -471,7 +497,12 @@ public class OrderServiceImpl implements OrderService {
         List<Object[]> rows = orderRepository.getTopProductsSince(from, org.springframework.data.domain.PageRequest.of(0, limit));
         java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
         for (Object[] row : rows) {
-            result.add(java.util.Map.of("name", row[0] != null ? row[0].toString() : "", "orderCount", ((Number) row[1]).longValue(), "revenue", row[2]));
+            java.util.Map<String, Object> entry = new java.util.LinkedHashMap<>();
+            entry.put("name", row[0] != null ? row[0].toString() : "");
+            entry.put("productId", row[1] != null ? row[1].toString() : null);
+            entry.put("orderCount", ((Number) row[2]).longValue());
+            entry.put("revenue", row[3]);
+            result.add(entry);
         }
         return result;
     }
@@ -482,7 +513,12 @@ public class OrderServiceImpl implements OrderService {
         List<Object[]> rows = orderRepository.getTopProductsByRange(from, to, org.springframework.data.domain.PageRequest.of(0, limit));
         java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
         for (Object[] row : rows) {
-            result.add(java.util.Map.of("name", row[0] != null ? row[0].toString() : "", "orderCount", ((Number) row[1]).longValue(), "revenue", row[2]));
+            java.util.Map<String, Object> entry = new java.util.LinkedHashMap<>();
+            entry.put("name", row[0] != null ? row[0].toString() : "");
+            entry.put("productId", row[1] != null ? row[1].toString() : null);
+            entry.put("orderCount", ((Number) row[2]).longValue());
+            entry.put("revenue", row[3]);
+            result.add(entry);
         }
         return result;
     }
@@ -509,7 +545,12 @@ public class OrderServiceImpl implements OrderService {
         List<Object[]> rows = orderRepository.getTopEmployeesByRange(from, to, org.springframework.data.domain.PageRequest.of(0, limit));
         java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
         for (Object[] row : rows) {
-            result.add(java.util.Map.of("name", row[0] != null ? row[0].toString() : "", "orderCount", ((Number) row[1]).longValue(), "revenue", row[2]));
+            java.util.Map<String, Object> entry = new java.util.LinkedHashMap<>();
+            entry.put("name", row[0] != null ? row[0].toString() : "");
+            entry.put("userId", row[1] != null ? row[1].toString() : null);
+            entry.put("orderCount", ((Number) row[2]).longValue());
+            entry.put("revenue", row[3]);
+            result.add(entry);
         }
         return result;
     }
@@ -853,5 +894,145 @@ public class OrderServiceImpl implements OrderService {
         java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
         for (Object[] row : rows) { result.add(java.util.Map.of("label", row[0].toString(), "value", row[1])); }
         return result;
+    }
+
+    // ── IN_PROGRESS order mutation methods ────────────────────────────────────
+
+    @Override
+    @Transactional
+    public OrderItemDTO addItemToOrder(Long orderId, AddOrderItemRequest request) {
+        log.info("Request: Add item productId={} to order {}", request.getProductId(), orderId);
+        Order order = findActiveOrder(orderId);
+        if (order.getStatus() != Order.OrderStatus.IN_PROGRESS) {
+            throw new BadRequestException(messageService.getMessage("error.order.invalid.status.for.start", order.getStatus()));
+        }
+
+        var product = productService.getProductById(request.getProductId());
+        String tenantId = tenantContext.getCurrentTenantId();
+
+        OrderItem oi = new OrderItem();
+        oi.setTenantId(tenantId);
+        oi.setOrder(order);
+        oi.setProductId(product.getId());
+        oi.setProductName(product.getName());
+        oi.setQuantity(request.getQuantity());
+        oi.setUnitPrice(product.getPrice());
+        oi.setUnitCost(product.getCostPrice() != null ? product.getCostPrice() : BigDecimal.ZERO);
+        oi.setItemType(OrderItem.ItemType.STANDARD);
+        oi.setStatus(OrderItem.ItemStatus.PENDING);
+        oi.setCommissionRate(BigDecimal.ZERO);
+        oi.setCommissionAmount(BigDecimal.ZERO);
+        oi.setTaxPercentage(BigDecimal.ZERO);
+        oi.setTaxAmount(BigDecimal.ZERO);
+
+        if (request.getEmployeeId() != null) {
+            employeeRepository.findById(request.getEmployeeId()).ifPresent(emp -> {
+                oi.setAssignedEmployeeId(emp.getId());
+                oi.setAssignedEmployeeName(emp.getFullName());
+            });
+        }
+
+        // Deduct inventory
+        try {
+            var inventoryPage = inventoryService.getInventoryByProductId(product.getId(), PageRequest.of(0, 1));
+            if (!inventoryPage.isEmpty()) {
+                inventoryService.removeStock(inventoryPage.getContent().get(0).getId(), (long) request.getQuantity());
+            }
+        } catch (Exception e) {
+            log.warn("Inventory deduction failed for product {}: {}", product.getId(), e.getMessage());
+        }
+
+        // Recalculate order total
+        BigDecimal lineTotal = product.getPrice().multiply(BigDecimal.valueOf(request.getQuantity()));
+        order.setTotalAmount(order.getTotalAmount().add(lineTotal));
+        orderRepository.save(order);
+
+        OrderItem saved = orderItemRepository.save(oi);
+        log.info("Added item {} (x{}) to order {}", product.getName(), request.getQuantity(), orderId);
+        return mapItemToDTO(saved);
+    }
+
+    @Override
+    @Transactional
+    public void removeItemFromOrder(Long orderId, Long itemId) {
+        log.info("Request: Remove item {} from order {}", itemId, orderId);
+        Order order = findActiveOrder(orderId);
+        if (order.getStatus() != Order.OrderStatus.IN_PROGRESS) {
+            throw new BadRequestException(messageService.getMessage("error.order.invalid.status.for.start", order.getStatus()));
+        }
+
+        OrderItem item = orderItemRepository.findById(itemId)
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.order.item.not.found", itemId)));
+
+        if (!item.getOrder().getId().equals(orderId)) {
+            throw new BadRequestException(messageService.getMessage("error.order.item.not.found", itemId));
+        }
+
+        // Restore inventory
+        if (item.getProductId() != null) {
+            try {
+                var inventoryPage = inventoryService.getInventoryByProductId(item.getProductId(), PageRequest.of(0, 1));
+                if (!inventoryPage.isEmpty()) {
+                    inventoryService.addStock(inventoryPage.getContent().get(0).getId(), (long) item.getQuantity());
+                }
+            } catch (Exception e) {
+                log.warn("Inventory restore failed for product {}: {}", item.getProductId(), e.getMessage());
+            }
+        }
+
+        // Recalculate order total
+        BigDecimal lineTotal = item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
+        order.setTotalAmount(order.getTotalAmount().subtract(lineTotal).max(BigDecimal.ZERO));
+        orderRepository.save(order);
+
+        orderItemRepository.delete(item);
+        log.info("Removed item {} from order {}", itemId, orderId);
+    }
+
+    @Override
+    @Transactional
+    public OrderDTO payAndCompleteOrder(Long orderId, PayAndCompleteRequest request) {
+        log.info("Request: Pay-and-complete order {}", orderId);
+        Order order = findActiveOrder(orderId);
+        if (order.getStatus() != Order.OrderStatus.IN_PROGRESS) {
+            throw new BadRequestException(messageService.getMessage("error.order.invalid.status.for.start", order.getStatus()));
+        }
+
+        String paymentMethod = (request.getPaymentMethod() != null && !request.getPaymentMethod().isBlank())
+                ? request.getPaymentMethod() : "CASH";
+        BigDecimal total = order.getTotalAmount();
+        BigDecimal amountPaid = request.getAmountPaid() != null ? request.getAmountPaid() : total.max(BigDecimal.ZERO);
+        BigDecimal changeAmount = amountPaid.subtract(total.max(BigDecimal.ZERO)).max(BigDecimal.ZERO);
+
+        order.setPaymentMethod(paymentMethod);
+        order.setAmountPaid(amountPaid);
+        order.setChangeAmount(changeAmount);
+
+        // Mark all PENDING items as COMPLETED
+        for (OrderItem item : order.getOrderItems()) {
+            if (item.getStatus() == OrderItem.ItemStatus.PENDING) {
+                item.setStatus(OrderItem.ItemStatus.COMPLETED);
+            }
+        }
+
+        String currentUser = getCurrentUsername();
+        order.complete(currentUser);
+        Order saved = orderRepository.save(order);
+        log.info("Order {} paid ({}) and completed by {}", orderId, paymentMethod, currentUser);
+
+        // Award loyalty points
+        if (saved.getCustomer() != null) {
+            try {
+                loyaltyService.awardPointsForOrder(saved.getCustomer().getId(), saved.getId(), saved.getTotalAmount());
+            } catch (Exception e) {
+                log.warn("Failed to award loyalty points for order {}: {}", saved.getId(), e.getMessage());
+            }
+        }
+
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), currentUser, null,
+                ActivityAction.ORDER_COMPLETED, "ORDER", saved.getOrderNumber(),
+                "Thanh toán và hoàn tất đơn hàng #" + saved.getOrderNumber(), null);
+
+        return mapToDTO(saved);
     }
 }

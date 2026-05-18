@@ -44,6 +44,7 @@ import com.tappy.pos.service.inventory.InventoryService;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.tenant.PrintTemplateService;
 import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.service.notification.NotificationService;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.config.FeatureContext;
 
@@ -71,6 +72,9 @@ class OrderServiceImplTest {
 
     @Mock
     private ActivityLogService activityLogService;
+
+    @Mock
+    private NotificationService notificationService;
 
     @Mock
     private TenantContext tenantContext;

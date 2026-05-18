@@ -276,6 +276,20 @@ public class NotificationService {
     }
 
     /**
+     * Called by the scheduler on the day the subscription expires (daysRemaining = 0).
+     */
+    @Transactional
+    public void pushExpiryExpired(Tenant tenant) {
+        Locale vi = new Locale("vi");
+        String expiryDate = tenant.getExpirationDate().format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
+        String title = messageService.getMessage("notification.subscription.expired.title", vi);
+        String message = messageService.getMessage("notification.subscription.expired.message", vi,
+                tenant.getName(), expiryDate);
+        pushToRoles(Notification.NotificationType.BILLING, title, message,
+                "TENANT", tenant.getId(), List.of(RoleEnum.SHOP_OWNER.getCode()));
+    }
+
+    /**
      * Broadcast a SYSTEM notification to all active MASTER_TENANT users.
      */
     @Transactional
