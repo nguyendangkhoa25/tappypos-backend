@@ -4,14 +4,17 @@ import com.tappy.pos.config.JwtTokenProvider;
 import com.tappy.pos.model.dto.ApiResponse;
 import com.tappy.pos.model.dto.finance.ShopExpenseRequest;
 import com.tappy.pos.model.dto.tenant.CreateTenantRequest;
+import com.tappy.pos.model.entity.notification.Notification;
 import com.tappy.pos.model.entity.tenant.Tenant;
 import com.tappy.pos.model.enums.ExpenseCategory;
 import com.tappy.pos.model.enums.ShopType;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.auth.RoleRepository;
 import com.tappy.pos.model.dto.finance.DefaultExpenseRequest;
+import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.finance.DefaultExpenseService;
 import com.tappy.pos.service.finance.ShopExpenseService;
+import com.tappy.pos.service.notification.NotificationService;
 import com.tappy.pos.service.tenant.TenantFeatureService;
 import com.tappy.pos.service.tenant.TenantProvisioningService;
 import com.tappy.pos.service.tenant.TenantSeedService;
@@ -27,6 +30,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -45,6 +49,10 @@ public class OnboardingController {
     private final JwtTokenProvider jwtTokenProvider;
     private final RoleRepository roleRepository;
     private final NamedParameterJdbcTemplate namedJdbc;
+    private final NotificationService notificationService;
+    private final MessageService messageService;
+
+    private static final DateTimeFormatter VN_DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private static final List<String> DEFAULT_TENANT_FEATURES = List.of(
             "POS", "ORDER", "ORDER_VIEW_ALL", "PRODUCT", "CUSTOMER", "INVENTORY",
@@ -335,6 +343,8 @@ public class OnboardingController {
 
             log.info("Self-provisioned tenant {} for user {} with {} features",
                     tenantId, username, featureNames.size());
+
+            sendWelcomeNotification(tenantEntity, username, tenantId);
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("accessToken", accessToken);
@@ -649,5 +659,21 @@ public class OnboardingController {
             }
         }
         return prefix + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+    }
+
+    private void sendWelcomeNotification(Tenant tenant, String username, String tenantId) {
+        try {
+            Locale vi = new Locale("vi");
+            String expiryFormatted = tenant.getExpirationDate() != null
+                    ? tenant.getExpirationDate().format(VN_DATE)
+                    : LocalDate.now().plusYears(1).format(VN_DATE);
+            String title = messageService.getMessage("notification.shop.welcome.title", vi);
+            String message = messageService.getMessage("notification.shop.welcome.self.message", vi,
+                    tenant.getName(), expiryFormatted);
+            notificationService.pushSystemAsync(username, Notification.NotificationType.SYSTEM,
+                    title, message, "TENANT", tenant.getId(), tenantId);
+        } catch (Exception e) {
+            log.warn("Failed to send welcome notification to {}: {}", username, e.getMessage());
+        }
     }
 }
