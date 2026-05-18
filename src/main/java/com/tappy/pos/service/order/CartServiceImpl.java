@@ -898,20 +898,21 @@ public class CartServiceImpl implements CartService {
         }
 
         // --- Build Order ---
+        boolean inProgress = request.isCreateAsInProgress();
         String orderNumber = generateOrderNumber();
         String tenantId = tenantContext.getCurrentTenantId();
         Order order = new Order();
         order.setTenantId(tenantId);
         order.setOrderNumber(orderNumber);
-        order.setStatus(Order.OrderStatus.COMPLETED);
+        order.setStatus(inProgress ? Order.OrderStatus.IN_PROGRESS : Order.OrderStatus.COMPLETED);
         order.setOrderType(orderType);
         order.setTotalAmount(total);
         order.setDiscountAmount(totalDiscount);
         order.setTaxPercentage(cart.getTaxRate().multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP));
         order.setTaxAmount(totalTax);
-        order.setPaymentMethod(paymentMethod);
-        order.setAmountPaid(amountPaid);
-        order.setChangeAmount(changeAmount);
+        order.setPaymentMethod(inProgress ? null : paymentMethod);
+        order.setAmountPaid(inProgress ? BigDecimal.ZERO : amountPaid);
+        order.setChangeAmount(inProgress ? BigDecimal.ZERO : changeAmount);
         order.setNotes(request.getNotes());
         order.setPromotionCode(appliedPromotionCode);
         order.setPromotionDiscount(promotionDiscount);
@@ -920,7 +921,7 @@ public class CartServiceImpl implements CartService {
         if (resolvedCustomer != null) order.setCustomer(resolvedCustomer);
         String currentUser = SecurityContextHolder.getContext().getAuthentication().getName();
         order.setCreatedBy(currentUser);
-        order.complete(currentUser);
+        if (!inProgress) order.complete(currentUser);
 
         // --- Build OrderItems + deduct inventory for STANDARD items only ---
         List<OrderItem> orderItems = new ArrayList<>();
@@ -938,7 +939,7 @@ public class CartServiceImpl implements CartService {
             oi.setUnitCost(cartItem.getUnitCost());
             oi.setItemType(OrderItem.ItemType.valueOf(cartItem.getItemType().name()));
             oi.setMetadata(cartItem.getMetadata());
-            oi.setStatus(OrderItem.ItemStatus.COMPLETED);
+            oi.setStatus(inProgress ? OrderItem.ItemStatus.PENDING : OrderItem.ItemStatus.COMPLETED);
             oi.setAssignedEmployeeId(cartItem.getAssignedEmployeeId());
             oi.setAssignedEmployeeName(cartItem.getAssignedEmployeeName());
             oi.setCommissionRate(cartItem.getCommissionRate() != null ? cartItem.getCommissionRate() : BigDecimal.ZERO);
@@ -994,17 +995,23 @@ public class CartServiceImpl implements CartService {
                 ActivityAction.ORDER_CREATED, "ORDER", savedOrder.getOrderNumber(),
                 "Tạo đơn hàng #" + savedOrder.getOrderNumber(), null);
 
-        // --- Notify SHOP_OWNER + MANAGER of new order (fire-and-forget) ---
+        // --- Notify SHOP_OWNER + MANAGER of new order, excluding the creator (fire-and-forget) ---
         String formattedTotal = NumberFormat.getNumberInstance(new java.util.Locale("vi", "VN"))
                 .format(total.longValue()) + " ₫";
-        String customerSuffix = resolvedCustomerName != null ? " · " + resolvedCustomerName : "";
+        String customerLine = resolvedCustomerName != null ? resolvedCustomerName + "\n" : "";
+        String itemsSummary = orderItems.stream()
+                .limit(3)
+                .map(i -> i.getProductName() + " x" + i.getQuantity())
+                .collect(java.util.stream.Collectors.joining(", "));
+        if (orderItems.size() > 3) itemsSummary += " +" + (orderItems.size() - 3) + " món";
+        String itemsLine = itemsSummary.isBlank() ? "" : itemsSummary + "\n";
         notificationService.pushToRolesAsync(
                 Notification.NotificationType.ORDER,
-                messageService.getMessage("notification.order.new.title", savedOrder.getOrderNumber()),
-                messageService.getMessage("notification.order.new.message", formattedTotal, customerSuffix),
+                messageService.getMessage("notification.order.new.title", savedOrder.getOrderNumber(), currentUser),
+                messageService.getMessage("notification.order.new.message", customerLine, itemsLine, "", "", formattedTotal),
                 "ORDER", savedOrder.getId(),
                 List.of(RoleEnum.SHOP_OWNER.getCode(), RoleEnum.MANAGER.getCode()),
-                tenantContext.getCurrentTenantId());
+                tenantContext.getCurrentTenantId(), currentUser);
 
         // --- Mark cart completed ---
         cart.setStatus(CartStatus.COMPLETED);
@@ -1019,8 +1026,8 @@ public class CartServiceImpl implements CartService {
             log.warn("Could not load shop info for receipt: {}", e.getMessage());
         }
 
-        // Back-fill loyalty transaction's orderId
-        if (loyaltyPointsRedeemed > 0 && resolvedCustomerId != null) {
+        // Back-fill loyalty transaction's orderId (skip for IN_PROGRESS — awarded on pay-and-complete)
+        if (!inProgress && loyaltyPointsRedeemed > 0 && resolvedCustomerId != null) {
             try {
                 loyaltyService.backfillRedemptionOrderId(resolvedCustomerId, savedOrder.getId());
             } catch (Exception e) {

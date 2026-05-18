@@ -188,6 +188,13 @@ public class NotificationService {
     @Transactional
     public void pushToRoles(Notification.NotificationType type, String title, String message,
                              String referenceType, Long referenceId, List<String> roleNames) {
+        pushToRoles(type, title, message, referenceType, referenceId, roleNames, null);
+    }
+
+    @Transactional
+    public void pushToRoles(Notification.NotificationType type, String title, String message,
+                             String referenceType, Long referenceId, List<String> roleNames,
+                             String excludeUsername) {
         List<String> targets = userRepository.findUsernamesByRoleNames(roleNames);
         if (targets.isEmpty()) {
             log.warn("pushToRoles: no active users found for roles {}", roleNames);
@@ -197,6 +204,7 @@ public class NotificationService {
         Set<String> optedOut = optedOutUsers(targets, type);
         List<Notification> notifications = targets.stream()
                 .filter(userId -> !optedOut.contains(userId))
+                .filter(userId -> excludeUsername == null || !excludeUsername.equals(userId))
                 .map(userId -> Notification.builder()
                         .userId(userId)
                         .title(title)
@@ -210,8 +218,8 @@ public class NotificationService {
                         .build())
                 .collect(Collectors.toList());
         notificationRepository.saveAll(notifications);
-        log.info("pushToRoles: {} notification(s) → roles={} ({} opted out)",
-                notifications.size(), roleNames, optedOut.size());
+        log.info("pushToRoles: {} notification(s) → roles={} ({} opted out, excluded={})",
+                notifications.size(), roleNames, optedOut.size(), excludeUsername);
     }
 
     /**
@@ -228,11 +236,19 @@ public class NotificationService {
     public void pushToRolesAsync(Notification.NotificationType type, String title, String message,
                                   String referenceType, Long referenceId,
                                   List<String> roleNames, String tenantId) {
+        pushToRolesAsync(type, title, message, referenceType, referenceId, roleNames, tenantId, null);
+    }
+
+    @Async
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public void pushToRolesAsync(Notification.NotificationType type, String title, String message,
+                                  String referenceType, Long referenceId,
+                                  List<String> roleNames, String tenantId, String excludeUsername) {
         try {
             if (tenantId != null) {
                 tenantRepository.findByTenantId(tenantId).ifPresent(tenantContext::setCurrentTenant);
             }
-            pushToRoles(type, title, message, referenceType, referenceId, roleNames);
+            pushToRoles(type, title, message, referenceType, referenceId, roleNames, excludeUsername);
         } catch (Exception e) {
             log.warn("Async pushToRoles failed (roles={}, tenantId={}): {}", roleNames, tenantId, e.getMessage(), e);
         } finally {
