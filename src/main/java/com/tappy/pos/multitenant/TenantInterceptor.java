@@ -40,7 +40,7 @@ public class TenantInterceptor implements HandlerInterceptor {
             "/api/tenants",              // Get available tenants + self-provision
             "/api/swagger-ui",           // Swagger UI
             "/api/v3/api-docs",          // API docs
-            "/actuator",                 // Health check
+            "/api/actuator",             // Health check (context path is /api)
             "/api/contact",              // Public lead capture from landing page
             "/api/integrations/oauth",   // OAuth2 callback from providers (no tenant header)
             "/api/shop-types",           // Onboarding: shop type list (no tenant yet)
