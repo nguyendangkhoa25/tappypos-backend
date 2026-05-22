@@ -36,6 +36,10 @@ public class Order extends TenantAwareEntity {
     @Column(name = "change_amount", precision = 10, scale = 2)
     private BigDecimal changeAmount;
 
+    @Builder.Default
+    @Column(name = "tip_amount", precision = 10, scale = 2, columnDefinition = "DECIMAL(10,2) DEFAULT 0")
+    private BigDecimal tipAmount = BigDecimal.ZERO;
+
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
     private OrderStatus status;

@@ -567,6 +567,7 @@ CREATE TABLE IF NOT EXISTS orders (
     tax_percentage          DECIMAL(5,2)   DEFAULT 0.00,
     tax_amount              DECIMAL(10,2)  DEFAULT 0.00,
     commission_amount       DECIMAL(10,2)  DEFAULT 0.00,
+    tip_amount              DECIMAL(10,2)  NOT NULL DEFAULT 0,
     invoice_id              BIGINT         DEFAULT NULL,
     notes                   TEXT           DEFAULT NULL,
     created_by              VARCHAR(100)   DEFAULT NULL,
@@ -891,6 +892,8 @@ CREATE TABLE IF NOT EXISTS salary (
     notes            TEXT           DEFAULT NULL,
     approved_at      TIMESTAMP      DEFAULT NULL,
     paid_at          TIMESTAMP      DEFAULT NULL,
+    deleted          BOOLEAN        NOT NULL DEFAULT FALSE,
+    deleted_at       TIMESTAMP      DEFAULT NULL,
     created_by       VARCHAR(100)   DEFAULT NULL,
     created_at       TIMESTAMP      NOT NULL DEFAULT NOW(),
     updated_at       TIMESTAMP      NOT NULL DEFAULT NOW(),
@@ -921,6 +924,8 @@ CREATE TABLE IF NOT EXISTS salary_advance (
     note            TEXT            DEFAULT NULL,
     salary_id       BIGINT          DEFAULT NULL,
     is_deducted     BOOLEAN         NOT NULL DEFAULT FALSE,
+    deleted         BOOLEAN         NOT NULL DEFAULT FALSE,
+    deleted_at      TIMESTAMP       DEFAULT NULL,
     created_by      VARCHAR(100)    DEFAULT NULL,
     created_at      TIMESTAMP       NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMP       NOT NULL DEFAULT NOW(),
@@ -2167,6 +2172,7 @@ CREATE TABLE IF NOT EXISTS combos (
     price DECIMAL(20,0) NOT NULL DEFAULT 0,
     active BOOLEAN NOT NULL DEFAULT TRUE,
     deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    deleted_at TIMESTAMP DEFAULT NULL,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
     created_by VARCHAR(100)
@@ -2748,6 +2754,17 @@ VALUES
 ('Nhuộm tóc nam',               '💈', 200000,  'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN'], 431, 'Tạo kiểu'),
 ('Combo cắt + cạo râu',         '💈', 180000,  'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN'], 440, 'Combo'),
 ('Combo cắt + gội + massage đầu','💈', 200000, 'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN'], 441, 'Combo')
+ON CONFLICT (name) DO NOTHING;
+
+-- ── Ráy tai (BARBER_SHOP_MEN + BARBER_SHOP) ──────────────────
+INSERT INTO product_suggestions
+    (name, emoji, default_price, unit, product_type_code, dynamic_price, shop_types, display_order, category_name)
+VALUES
+('Lấy ráy tai thường',          '👂', 30000,   'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN', 'BARBER_SHOP', 'SPA_SHOP'], 445, 'Ráy tai'),
+('Lấy ráy tai chuyên sâu',      '👂', 50000,   'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN', 'BARBER_SHOP', 'SPA_SHOP'], 446, 'Ráy tai'),
+('Lấy ráy tai bằng máy',        '⚡', 80000,   'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN', 'BARBER_SHOP', 'SPA_SHOP'], 447, 'Ráy tai'),
+('Massage tai + lấy ráy tai',   '💆', 80000,   'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN', 'BARBER_SHOP', 'SPA_SHOP'], 448, 'Ráy tai'),
+('Vệ sinh tai toàn diện',       '✨', 120000,  'Lần', 'SERVICE', FALSE, ARRAY['BARBER_SHOP_MEN', 'BARBER_SHOP', 'SPA_SHOP'], 449, 'Ráy tai')
 ON CONFLICT (name) DO NOTHING;
 
 -- ── HAIR_SALON product suggestions ───────────────────────────

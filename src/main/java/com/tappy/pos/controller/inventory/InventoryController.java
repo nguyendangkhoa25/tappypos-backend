@@ -79,6 +79,7 @@ public class InventoryController {
      * Get all inventory items with pagination
      * GET /api/v1/inventory
      */
+    @RequiresFeature({"INVENTORY", "POS"})
     @GetMapping
     public ResponseEntity<ApiResponse<Page<InventoryDTO>>> getAllInventory(Pageable pageable) {
         log.info("GET /api/v1/inventory - Get all inventory, page: {}, size: {}", 

@@ -350,11 +350,11 @@ public class OnboardingController {
             result.put("accessToken", accessToken);
             result.put("tenantId", tenantId);
             result.put("setupComplete", true);
-            return ResponseEntity.ok(ApiResponse.success(result, "Cửa hàng đã được tạo thành công"));
+            return ResponseEntity.ok(ApiResponse.success(result, messageService.getMessage("success.shop.created")));
 
         } catch (Exception e) {
             log.error("Self-provision failed for user {}: {}", username, e.getMessage(), e);
-            throw new RuntimeException("Không thể tạo cửa hàng: " + e.getMessage(), e);
+            throw new RuntimeException(messageService.getMessage("error.shop.provision.failed") + ": " + e.getMessage(), e);
         } finally {
             tenantContext.clear();
         }

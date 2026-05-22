@@ -17,11 +17,13 @@ public interface DefaultExpenseService {
     void delete(Long id);
 
     /**
-     * Clones all default expenses into the given month.
+     * Clones default expenses into the given month.
+     * If {@code ids} is non-null and non-empty, only those defaults are cloned; otherwise all active defaults are cloned.
      * Skips any expense whose description already exists in that month.
      *
      * @param month "YYYY-MM"
+     * @param ids   optional list of default-expense IDs to clone (null = clone all)
      * @return list of newly created shop expenses
      */
-    List<ShopExpenseDTO> cloneToMonth(String month);
+    List<ShopExpenseDTO> cloneToMonth(String month, List<Long> ids);
 }

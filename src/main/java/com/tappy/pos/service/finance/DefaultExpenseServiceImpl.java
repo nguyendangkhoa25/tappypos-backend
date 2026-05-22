@@ -73,12 +73,15 @@ public class DefaultExpenseServiceImpl implements DefaultExpenseService {
 
     @Override
     @Transactional
-    public List<ShopExpenseDTO> cloneToMonth(String month) {
+    public List<ShopExpenseDTO> cloneToMonth(String month, List<Long> ids) {
         YearMonth ym = YearMonth.parse(month);
         LocalDate firstDay = ym.atDay(1);
         LocalDate lastDay = ym.atEndOfMonth();
 
-        List<DefaultExpense> defaults = defaultExpenseRepository.findAllActive();
+        List<DefaultExpense> all = defaultExpenseRepository.findAllActive();
+        List<DefaultExpense> defaults = (ids != null && !ids.isEmpty())
+                ? all.stream().filter(d -> ids.contains(d.getId())).toList()
+                : all;
         List<ShopExpenseDTO> created = new ArrayList<>();
 
         for (DefaultExpense def : defaults) {

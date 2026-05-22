@@ -12,6 +12,7 @@ import com.tappy.pos.model.dto.order.MyWorkStatsDTO;
 import com.tappy.pos.model.dto.order.OrderDTO;
 import com.tappy.pos.model.dto.order.OrderItemDTO;
 import com.tappy.pos.model.dto.order.PayAndCompleteRequest;
+import com.tappy.pos.model.dto.order.UpdateOrderMetaRequest;
 import com.tappy.pos.model.dto.order.VoidOrderRequest;
 import com.tappy.pos.model.dto.order.WorkItemDTO;
 import com.tappy.pos.model.dto.order.WorkItemSummaryDTO;
@@ -21,6 +22,7 @@ import com.tappy.pos.model.entity.tenant.ShopInfo;
 import com.tappy.pos.model.entity.finance.BankAccount;
 import com.tappy.pos.model.entity.employee.Employee;
 import com.tappy.pos.repository.auth.UserRepository;
+import com.tappy.pos.repository.customer.CustomerRepository;
 import com.tappy.pos.repository.employee.EmployeeRepository;
 import com.tappy.pos.repository.finance.BankAccountRepository;
 import com.tappy.pos.repository.order.OrderItemRepository;
@@ -66,6 +68,7 @@ public class OrderServiceImpl implements OrderService {
     private final ShopInfoRepository shopInfoRepository;
     private final BankAccountRepository bankAccountRepository;
     private final UserRepository userRepository;
+    private final CustomerRepository customerRepository;
     private final EmployeeRepository employeeRepository;
     private final LoyaltyService loyaltyService;
     private final InventoryService inventoryService;
@@ -172,6 +175,7 @@ public class OrderServiceImpl implements OrderService {
                 .customerName(order.getCustomer() != null ? order.getCustomer().getName() : null)
                 .totalAmount(order.getTotalAmount())
                 .discountAmount(order.getDiscountAmount())
+                .tipAmount(order.getTipAmount())
                 .taxAmount(order.getTaxAmount())
                 .paymentMethod(order.getPaymentMethod())
                 .amountPaid(order.getAmountPaid())
@@ -987,6 +991,121 @@ public class OrderServiceImpl implements OrderService {
 
         orderItemRepository.delete(item);
         log.info("Removed item {} from order {}", itemId, orderId);
+    }
+
+    @Override
+    @Transactional
+    public OrderItemDTO updateItemQuantity(Long orderId, Long itemId, int quantity) {
+        log.info("Request: Update quantity of item {} in order {} to {}", itemId, orderId, quantity);
+        Order order = findActiveOrder(orderId);
+        if (order.getStatus() != Order.OrderStatus.IN_PROGRESS) {
+            throw new BadRequestException(messageService.getMessage("error.order.invalid.status.for.start", order.getStatus()));
+        }
+        if (quantity <= 0) {
+            throw new BadRequestException("Số lượng phải lớn hơn 0");
+        }
+
+        OrderItem item = orderItemRepository.findById(itemId)
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.order.item.not.found", itemId)));
+        if (!item.getOrder().getId().equals(orderId)) {
+            throw new BadRequestException(messageService.getMessage("error.order.item.not.found", itemId));
+        }
+
+        int oldQty = item.getQuantity();
+        int delta = quantity - oldQty;
+
+        // Adjust inventory for the quantity difference
+        if (delta != 0 && item.getProductId() != null) {
+            try {
+                var inventoryPage = inventoryService.getInventoryByProductId(item.getProductId(), PageRequest.of(0, 1));
+                if (!inventoryPage.isEmpty()) {
+                    if (delta > 0) {
+                        inventoryService.removeStock(inventoryPage.getContent().get(0).getId(), (long) delta);
+                    } else {
+                        inventoryService.addStock(inventoryPage.getContent().get(0).getId(), (long) -delta);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Inventory adjustment failed for product {}: {}", item.getProductId(), e.getMessage());
+            }
+        }
+
+        BigDecimal oldSubtotal = item.getUnitPrice().multiply(BigDecimal.valueOf(oldQty));
+        BigDecimal newSubtotal = item.getUnitPrice().multiply(BigDecimal.valueOf(quantity));
+        item.setQuantity(quantity);
+
+        order.setTotalAmount(order.getTotalAmount().subtract(oldSubtotal).add(newSubtotal).max(BigDecimal.ZERO));
+        orderRepository.save(order);
+
+        OrderItem saved = orderItemRepository.save(item);
+        log.info("Updated item {} quantity {} → {} in order {}", itemId, oldQty, quantity, orderId);
+        return mapItemToDTO(saved);
+    }
+
+    @Override
+    @Transactional
+    public OrderItemDTO updateItemEmployee(Long orderId, Long itemId, Long employeeId) {
+        log.info("Request: Update employee of item {} in order {} to employeeId={}", itemId, orderId, employeeId);
+        Order order = findActiveOrder(orderId);
+        if (order.getStatus() != Order.OrderStatus.IN_PROGRESS) {
+            throw new BadRequestException(messageService.getMessage("error.order.invalid.status.for.start", order.getStatus()));
+        }
+
+        OrderItem item = orderItemRepository.findById(itemId)
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.order.item.not.found", itemId)));
+        if (!item.getOrder().getId().equals(orderId)) {
+            throw new BadRequestException(messageService.getMessage("error.order.item.not.found", itemId));
+        }
+
+        if (employeeId == null) {
+            item.setAssignedEmployeeId(null);
+            item.setAssignedEmployeeName(null);
+        } else {
+            employeeRepository.findById(employeeId).ifPresent(emp -> {
+                item.setAssignedEmployeeId(emp.getId());
+                item.setAssignedEmployeeName(emp.getFullName());
+            });
+        }
+
+        OrderItem saved = orderItemRepository.save(item);
+        log.info("Updated employee for item {} in order {}: employeeId={}", itemId, orderId, employeeId);
+        return mapItemToDTO(saved);
+    }
+
+    @Override
+    @Transactional
+    public OrderDTO updateOrderMeta(Long orderId, UpdateOrderMetaRequest request) {
+        log.info("Request: Update meta for order {} tip={} customerId={} clearCustomer={} paymentMethod={}",
+                orderId, request.getTip(), request.getCustomerId(), request.isClearCustomer(), request.getPaymentMethod());
+        Order order = findActiveOrder(orderId);
+        if (order.getStatus() != Order.OrderStatus.IN_PROGRESS) {
+            throw new BadRequestException(messageService.getMessage("error.order.invalid.status.for.start", order.getStatus()));
+        }
+
+        // Update tip — recalculate total accordingly
+        if (request.getTip() != null && request.getTip().compareTo(BigDecimal.ZERO) >= 0) {
+            BigDecimal oldTip = order.getTipAmount() != null ? order.getTipAmount() : BigDecimal.ZERO;
+            BigDecimal newTip = request.getTip().setScale(2, java.math.RoundingMode.HALF_UP);
+            order.setTotalAmount(order.getTotalAmount().subtract(oldTip).add(newTip).max(BigDecimal.ZERO));
+            order.setTipAmount(newTip);
+        }
+
+        // Update customer
+        if (request.isClearCustomer()) {
+            order.setCustomer(null);
+        } else if (request.getCustomerId() != null) {
+            customerRepository.findByIdActive(request.getCustomerId())
+                    .ifPresent(order::setCustomer);
+        }
+
+        // Update payment method pre-selection
+        if (request.getPaymentMethod() != null && !request.getPaymentMethod().isBlank()) {
+            order.setPaymentMethod(request.getPaymentMethod());
+        }
+
+        Order saved = orderRepository.save(order);
+        log.info("Updated meta for order {}", orderId);
+        return mapToDTO(saved);
     }
 
     @Override

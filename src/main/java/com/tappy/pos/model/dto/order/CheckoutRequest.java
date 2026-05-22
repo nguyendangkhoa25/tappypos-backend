@@ -29,6 +29,10 @@ public class CheckoutRequest {
     @DecimalMin(value = "0.0", message = "Amount paid must be >= 0")
     private BigDecimal amountPaid;
 
+    /** Gratuity added on top of the order total (service shops only). */
+    @DecimalMin(value = "0.0", message = "Tip must be >= 0")
+    private BigDecimal tip;
+
     private String notes;
 
     /** ID of an existing customer to associate with this order. */
@@ -57,4 +61,10 @@ public class CheckoutRequest {
      * Null defaults to SELL to preserve backward compatibility.
      */
     private Order.OrderType orderType;
+
+    /**
+     * When true, creates an IN_PROGRESS order (service started, payment deferred).
+     * Used by service shops for the two-phase flow: start service → pay later.
+     */
+    private boolean createAsInProgress;
 }

@@ -146,7 +146,7 @@ public class MultiTenantController {
         String createdBy = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync("master", createdBy, null,
                 ActivityAction.TENANT_CREATED, "TENANT", tenant.getTenantId(),
-                "Tạo cửa hàng: " + tenant.getName() + " (" + tenant.getTenantId() + ")", null);
+                messageService.getMessage("activity.tenant.created", tenant.getName(), tenant.getTenantId()), null);
         Locale vi = new Locale("vi");
         String notifTitle = messageService.getMessage("notification.master.tenant.created.title", vi);
         String notifMsg = messageService.getMessage("notification.master.tenant.created.message", vi,
@@ -208,7 +208,7 @@ public class MultiTenantController {
         String updatedBy = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync("master", updatedBy, null,
                 ActivityAction.TENANT_UPDATED, "TENANT", tenantId,
-                "Cập nhật cửa hàng: " + tenant.getName() + " (" + tenantId + ")", null);
+                messageService.getMessage("activity.tenant.updated", tenant.getName(), tenantId), null);
 
         return ResponseEntity.ok(ApiResponse.success(tenant, "Tenant updated successfully"));
     }

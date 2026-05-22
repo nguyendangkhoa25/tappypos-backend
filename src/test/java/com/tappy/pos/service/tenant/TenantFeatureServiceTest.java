@@ -17,6 +17,8 @@ import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -57,7 +59,7 @@ class TenantFeatureServiceTest {
         List<String> roleFeatures = Arrays.asList("DASHBOARD", "ORDER", "CUSTOMER", "REPORT");
 
         when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
-        when(roleFeatureRepository.findActiveFeatureNamesByRoleNames(roleNames))
+        when(roleFeatureRepository.findActiveFeatureNamesByRoleNamesAndTenantId(eq(roleNames), anyString()))
                 .thenReturn(roleFeatures);
 
         // When
@@ -69,7 +71,7 @@ class TenantFeatureServiceTest {
         assertThat(result).contains("DASHBOARD", "ORDER", "CUSTOMER");
         assertThat(result).doesNotContain("REPORT");
         verify(tenantContext).getCurrentTenant();
-        verify(roleFeatureRepository).findActiveFeatureNamesByRoleNames(roleNames);
+        verify(roleFeatureRepository).findActiveFeatureNamesByRoleNamesAndTenantId(eq(roleNames), anyString());
     }
 
     @Test
@@ -98,8 +100,6 @@ class TenantFeatureServiceTest {
         List<String> roleNames = Collections.emptyList();
 
         when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
-        when(roleFeatureRepository.findActiveFeatureNamesByRoleNames(roleNames))
-                .thenReturn(Collections.emptyList());
 
         // When
         List<String> result = tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(roleNames);
@@ -121,8 +121,6 @@ class TenantFeatureServiceTest {
         List<String> roleFeatures = Arrays.asList("DASHBOARD", "ORDER", "CUSTOMER");
 
         when(tenantContext.getCurrentTenant()).thenReturn(emptyTenant);
-        when(roleFeatureRepository.findActiveFeatureNamesByRoleNames(roleNames))
-                .thenReturn(roleFeatures);
 
         // When
         List<String> result = tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(roleNames);
@@ -143,7 +141,7 @@ class TenantFeatureServiceTest {
         List<String> roleFeatures = Arrays.asList("DASHBOARD", "ORDER", "CUSTOMER", "REPORT");
 
         when(tenantContext.getCurrentTenant()).thenReturn(limitedTenant);
-        when(roleFeatureRepository.findActiveFeatureNamesByRoleNames(roleNames))
+        when(roleFeatureRepository.findActiveFeatureNamesByRoleNamesAndTenantId(eq(roleNames), anyString()))
                 .thenReturn(roleFeatures);
 
         // When
@@ -167,7 +165,7 @@ class TenantFeatureServiceTest {
         List<String> roleFeatures = Arrays.asList("DASHBOARD", "ORDER", "CUSTOMER", "REPORT");
 
         when(tenantContext.getCurrentTenant()).thenReturn(spacedTenant);
-        when(roleFeatureRepository.findActiveFeatureNamesByRoleNames(roleNames))
+        when(roleFeatureRepository.findActiveFeatureNamesByRoleNamesAndTenantId(eq(roleNames), anyString()))
                 .thenReturn(roleFeatures);
 
         // When
@@ -253,7 +251,7 @@ class TenantFeatureServiceTest {
         List<String> roleFeatures = Arrays.asList("DASHBOARD", "ORDER", "CUSTOMER");
 
         when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
-        when(roleFeatureRepository.findActiveFeatureNamesByRoleNames(roleNames))
+        when(roleFeatureRepository.findActiveFeatureNamesByRoleNamesAndTenantId(eq(roleNames), anyString()))
                 .thenReturn(roleFeatures);
 
         // When
@@ -271,7 +269,7 @@ class TenantFeatureServiceTest {
         List<String> roleFeatures = Arrays.asList("DASHBOARD", "ORDER", "CUSTOMER");
 
         when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
-        when(roleFeatureRepository.findActiveFeatureNamesByRoleNames(roleNames))
+        when(roleFeatureRepository.findActiveFeatureNamesByRoleNamesAndTenantId(eq(roleNames), anyString()))
                 .thenReturn(roleFeatures);
 
         // When
@@ -289,7 +287,7 @@ class TenantFeatureServiceTest {
         List<String> roleFeatures = Arrays.asList("DASHBOARD", "ORDER");
 
         when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
-        when(roleFeatureRepository.findActiveFeatureNamesByRoleNames(List.of(roleName)))
+        when(roleFeatureRepository.findActiveFeatureNamesByRoleNamesAndTenantId(eq(List.of(roleName)), anyString()))
                 .thenReturn(roleFeatures);
 
         // When
@@ -307,7 +305,7 @@ class TenantFeatureServiceTest {
         List<String> roleFeatures = Arrays.asList("DASHBOARD", "ORDER", "CUSTOMER", "REPORT");
 
         when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
-        when(roleFeatureRepository.findActiveFeatureNamesByRoleNames(roleNames))
+        when(roleFeatureRepository.findActiveFeatureNamesByRoleNamesAndTenantId(eq(roleNames), anyString()))
                 .thenReturn(roleFeatures);
 
         // When
@@ -406,7 +404,7 @@ class TenantFeatureServiceTest {
         List<String> roleFeatures = Arrays.asList("DASHBOARD", "ORDER", "CUSTOMER");  // uppercase
 
         when(tenantContext.getCurrentTenant()).thenReturn(caseTenant);
-        when(roleFeatureRepository.findActiveFeatureNamesByRoleNames(roleNames))
+        when(roleFeatureRepository.findActiveFeatureNamesByRoleNamesAndTenantId(eq(roleNames), anyString()))
                 .thenReturn(roleFeatures);
 
         // When
@@ -430,7 +428,7 @@ class TenantFeatureServiceTest {
         List<String> roleFeatures = Arrays.asList("DASHBOARD", "ORDER", "CUSTOMER");
 
         when(tenantContext.getCurrentTenant()).thenReturn(singleTenant);
-        when(roleFeatureRepository.findActiveFeatureNamesByRoleNames(roleNames))
+        when(roleFeatureRepository.findActiveFeatureNamesByRoleNamesAndTenantId(eq(roleNames), anyString()))
                 .thenReturn(roleFeatures);
 
         // When
@@ -453,7 +451,7 @@ class TenantFeatureServiceTest {
         List<String> roleFeatures = Arrays.asList("DASHBOARD", "ORDER", "CUSTOMER", "REPORT", "SETTINGS");
 
         when(tenantContext.getCurrentTenant()).thenReturn(manyTenant);
-        when(roleFeatureRepository.findActiveFeatureNamesByRoleNames(roleNames))
+        when(roleFeatureRepository.findActiveFeatureNamesByRoleNamesAndTenantId(eq(roleNames), anyString()))
                 .thenReturn(roleFeatures);
 
         // When
@@ -475,7 +473,7 @@ class TenantFeatureServiceTest {
         List<String> roleFeatures = Arrays.asList("DASHBOARD", "ORDER", "CUSTOMER");
 
         when(tenantContext.getCurrentTenant()).thenReturn(otherTenant);
-        when(roleFeatureRepository.findActiveFeatureNamesByRoleNames(roleNames))
+        when(roleFeatureRepository.findActiveFeatureNamesByRoleNamesAndTenantId(eq(roleNames), anyString()))
                 .thenReturn(roleFeatures);
 
         // When
@@ -497,8 +495,6 @@ class TenantFeatureServiceTest {
         List<String> roleFeatures = Arrays.asList("DASHBOARD");
 
         when(tenantContext.getCurrentTenant()).thenReturn(whitespaceTenant);
-        when(roleFeatureRepository.findActiveFeatureNamesByRoleNames(roleNames))
-                .thenReturn(roleFeatures);
 
         // When
         List<String> result = tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(roleNames);

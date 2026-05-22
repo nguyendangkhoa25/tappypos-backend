@@ -52,15 +52,15 @@ public class GoldPriceServiceImpl implements GoldPriceService {
     public GoldPriceDTO createPrice(GoldPriceDTO dto) {
         log.info("Request: Create gold price categoryId={}", dto.getCategoryId());
         if (dto.getCategoryId() == null) {
-            throw new BadRequestException("Vui lòng chọn loại vàng");
+            throw new BadRequestException(messageService.getMessage("error.goldprice.category.required"));
         }
         Category cat = categoryRepository.findByIdAndDeletedFalse(dto.getCategoryId())
                 .orElseThrow(() -> new ResourceNotFoundException("Category not found: " + dto.getCategoryId()));
         if (cat.getParent() == null) {
-            throw new BadRequestException("Chỉ có thể đặt giá cho loại vàng con (610, 9999, 925…), không phải danh mục gốc");
+            throw new BadRequestException(messageService.getMessage("error.goldprice.category.must.be.leaf"));
         }
         goldPriceRepository.findByCategoryIdAndDeletedFalse(dto.getCategoryId()).ifPresent(existing -> {
-            throw new BadRequestException("Loại vàng " + cat.getName() + " đã có cấu hình giá");
+            throw new BadRequestException(messageService.getMessage("error.goldprice.category.already.configured", cat.getName()));
         });
 
         String catName    = cat.getName();

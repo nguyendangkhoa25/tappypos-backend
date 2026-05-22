@@ -136,7 +136,7 @@ class TenantInterceptorTest {
     @DisplayName("Should allow actuator public path")
     void testPreHandle_ActuatorPath() throws Exception {
         // Given
-        when(request.getRequestURI()).thenReturn("/actuator/health");
+        when(request.getRequestURI()).thenReturn("/api/actuator/health");
 
         // When
         boolean result = tenantInterceptor.preHandle(request, response, new Object());

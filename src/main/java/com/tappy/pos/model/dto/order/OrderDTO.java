@@ -1,5 +1,6 @@
 package com.tappy.pos.model.dto.order;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -11,6 +12,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class OrderDTO {
     private Long id;
     private String orderNumber;
@@ -23,6 +25,7 @@ public class OrderDTO {
     // Financials
     private BigDecimal totalAmount;
     private BigDecimal discountAmount;
+    private BigDecimal tipAmount;
     private BigDecimal taxAmount;
     private String paymentMethod;
     private BigDecimal amountPaid;
@@ -53,4 +56,23 @@ public class OrderDTO {
     private String orderType;
 
     private List<OrderItemDTO> items;
+
+    // ── Alias getters for mobile client backward compatibility ─────────────────
+    // Jackson serialises both the field getter (totalAmount) and these,
+    // so the response includes both names without any breaking change.
+
+    public BigDecimal getTotal() { return totalAmount; }
+
+    public BigDecimal getDiscount() { return discountAmount; }
+
+    public BigDecimal getSubtotal() {
+        BigDecimal disc = discountAmount != null ? discountAmount : BigDecimal.ZERO;
+        BigDecimal tip  = tipAmount     != null ? tipAmount     : BigDecimal.ZERO;
+        BigDecimal tot  = totalAmount   != null ? totalAmount   : BigDecimal.ZERO;
+        return tot.add(disc).subtract(tip);
+    }
+
+    public String getNote() { return notes; }
+
+    public String getCreatedByName() { return createdBy; }
 }

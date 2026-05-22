@@ -125,9 +125,12 @@ public class ShopExpenseController {
     }
 
     @PostMapping("/clone-defaults")
-    public ResponseEntity<ApiResponse<List<ShopExpenseDTO>>> cloneDefaults(@RequestBody Map<String, String> body) {
-        String month = body.get("month");
-        log.info("Endpoint: POST /expenses/clone-defaults month={}", month);
-        return ResponseEntity.ok(ApiResponse.success(defaultExpenseService.cloneToMonth(month), "Cloned"));
+    public ResponseEntity<ApiResponse<List<ShopExpenseDTO>>> cloneDefaults(@RequestBody Map<String, Object> body) {
+        String month = (String) body.get("month");
+        @SuppressWarnings("unchecked")
+        List<Number> rawIds = (List<Number>) body.get("ids");
+        List<Long> ids = rawIds != null ? rawIds.stream().map(Number::longValue).toList() : null;
+        log.info("Endpoint: POST /expenses/clone-defaults month={} ids={}", month, ids);
+        return ResponseEntity.ok(ApiResponse.success(defaultExpenseService.cloneToMonth(month, ids), "Cloned"));
     }
 }

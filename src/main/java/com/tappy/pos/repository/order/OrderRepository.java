@@ -226,14 +226,14 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
            nativeQuery = true)
     List<Object[]> getYearlyRevenue(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
-    @Query(value = "SELECT oi.product_name, COALESCE(SUM(oi.quantity),0) as cnt, COALESCE(SUM(oi.amount),0) as rev " +
+    @Query(value = "SELECT oi.product_name, MIN(oi.product_id) as productId, COALESCE(SUM(oi.quantity),0) as cnt, COALESCE(SUM(oi.amount),0) as rev " +
            "FROM order_items oi JOIN orders o ON oi.order_id = o.id " +
            "WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.created_at >= :since " +
            "GROUP BY oi.product_name ORDER BY cnt DESC",
            nativeQuery = true)
     List<Object[]> getTopProductsSince(@Param("since") LocalDateTime since, org.springframework.data.domain.Pageable pageable);
 
-    @Query(value = "SELECT oi.product_name, COALESCE(SUM(oi.quantity),0) as cnt, COALESCE(SUM(oi.amount),0) as rev " +
+    @Query(value = "SELECT oi.product_name, MIN(oi.product_id) as productId, COALESCE(SUM(oi.quantity),0) as cnt, COALESCE(SUM(oi.amount),0) as rev " +
            "FROM order_items oi JOIN orders o ON oi.order_id = o.id " +
            "WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.created_at BETWEEN :from AND :to " +
            "GROUP BY oi.product_name ORDER BY cnt DESC",
@@ -250,11 +250,13 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
            nativeQuery = true)
     List<Object[]> getTopCustomersByRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to, org.springframework.data.domain.Pageable pageable);
 
-    @Query(value = "SELECT o.created_by, COUNT(o.id) as orderCount, COALESCE(SUM(o.total_amount),0) as revenue " +
+    @Query(value = "SELECT COALESCE(e.full_name, o.created_by) as name, u.id as userId, COUNT(o.id) as orderCount, COALESCE(SUM(o.total_amount),0) as revenue " +
            "FROM orders o " +
+           "LEFT JOIN users u ON u.username = o.created_by " +
+           "LEFT JOIN employees e ON e.user_id = u.id " +
            "WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.created_by IS NOT NULL " +
            "AND o.created_at BETWEEN :from AND :to " +
-           "GROUP BY o.created_by ORDER BY revenue DESC",
+           "GROUP BY COALESCE(e.full_name, o.created_by), o.created_by, u.id ORDER BY revenue DESC",
            nativeQuery = true)
     List<Object[]> getTopEmployeesByRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to, org.springframework.data.domain.Pageable pageable);
 

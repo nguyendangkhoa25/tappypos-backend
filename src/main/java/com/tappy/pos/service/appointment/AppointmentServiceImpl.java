@@ -118,7 +118,7 @@ public class AppointmentServiceImpl implements AppointmentService {
     public AppointmentDTO confirm(Long id) {
         Appointment appointment = findOrThrow(id);
         if (!"PENDING".equals(appointment.getStatus())) {
-            throw new BadRequestException("Chỉ có thể xác nhận lịch hẹn ở trạng thái chờ xác nhận");
+            throw new BadRequestException(messageService.getMessage("error.appointment.confirm.invalid.status"));
         }
         appointment.setStatus("CONFIRMED");
         return mapToDTO(appointmentRepository.save(appointment));
@@ -129,7 +129,7 @@ public class AppointmentServiceImpl implements AppointmentService {
     public CheckInPayload checkIn(Long id) {
         Appointment appointment = findOrThrow(id);
         if ("CANCELLED".equals(appointment.getStatus()) || "NO_SHOW".equals(appointment.getStatus())) {
-            throw new BadRequestException("Không thể check-in lịch hẹn đã huỷ hoặc không đến");
+            throw new BadRequestException(messageService.getMessage("error.appointment.checkin.invalid.status"));
         }
         appointment.setStatus("CHECKED_IN");
         appointmentRepository.save(appointment);
@@ -166,7 +166,7 @@ public class AppointmentServiceImpl implements AppointmentService {
     public AppointmentDTO noShow(Long id) {
         Appointment appointment = findOrThrow(id);
         if ("CANCELLED".equals(appointment.getStatus())) {
-            throw new BadRequestException("Lịch hẹn đã huỷ không thể đánh dấu không đến");
+            throw new BadRequestException(messageService.getMessage("error.appointment.noshow.already.cancelled"));
         }
         appointment.setStatus("NO_SHOW");
         return mapToDTO(appointmentRepository.save(appointment));
@@ -185,12 +185,12 @@ public class AppointmentServiceImpl implements AppointmentService {
     private Appointment findOrThrow(Long id) {
         return appointmentRepository
                 .findByIdAndTenantIdAndDeletedFalse(id, tenantContext.getCurrentTenantId())
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lịch hẹn #" + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.appointment.not.found", id)));
     }
 
     private void assertEditable(Appointment a) {
         if ("CHECKED_IN".equals(a.getStatus()) || "CANCELLED".equals(a.getStatus()) || "NO_SHOW".equals(a.getStatus())) {
-            throw new BadRequestException("Không thể chỉnh sửa lịch hẹn ở trạng thái này");
+            throw new BadRequestException(messageService.getMessage("error.appointment.edit.invalid.status"));
         }
     }
 

@@ -1,9 +1,13 @@
 package com.tappy.pos.service.order;
 
 import com.tappy.pos.model.dto.tenant.ReceiptPreviewRequest;
+import com.tappy.pos.model.dto.order.AddOrderItemRequest;
 import com.tappy.pos.model.dto.order.CancelOrderRequest;
 import com.tappy.pos.model.dto.order.MyWorkStatsDTO;
 import com.tappy.pos.model.dto.order.OrderDTO;
+import com.tappy.pos.model.dto.order.OrderItemDTO;
+import com.tappy.pos.model.dto.order.PayAndCompleteRequest;
+import com.tappy.pos.model.dto.order.UpdateOrderMetaRequest;
 import com.tappy.pos.model.dto.order.VoidOrderRequest;
 import com.tappy.pos.model.dto.order.WorkItemDTO;
 import com.tappy.pos.model.dto.order.WorkItemSummaryDTO;
@@ -57,6 +61,19 @@ public interface OrderService {
     List<Map<String, Object>> getTopEmployeesByRange(int limit, LocalDateTime from, LocalDateTime to);
 
     void softDeleteOrder(Long id);
+
+    // ── IN_PROGRESS order mutation endpoints ──────────────────────────────────
+    OrderItemDTO addItemToOrder(Long orderId, AddOrderItemRequest request);
+
+    void removeItemFromOrder(Long orderId, Long itemId);
+
+    OrderItemDTO updateItemQuantity(Long orderId, Long itemId, int quantity);
+
+    OrderItemDTO updateItemEmployee(Long orderId, Long itemId, Long employeeId);
+
+    OrderDTO updateOrderMeta(Long orderId, UpdateOrderMetaRequest request);
+
+    OrderDTO payAndCompleteOrder(Long orderId, PayAndCompleteRequest request);
 
     // ── Item-level work queue (MY_WORK feature) ────────────────────────────────
     Page<WorkItemDTO> getMyWorkItems(Pageable pageable);

@@ -879,6 +879,13 @@ public class CartServiceImpl implements CartService {
             }
         }
 
+        // --- Tip (SELL only, added after loyalty redemption) ---
+        BigDecimal tipAmount = BigDecimal.ZERO;
+        if (isStandardSell && request.getTip() != null && request.getTip().compareTo(BigDecimal.ZERO) > 0) {
+            tipAmount = request.getTip().setScale(2, RoundingMode.HALF_UP);
+            total = total.add(tipAmount);
+        }
+
         // --- Payment ---
         String paymentMethod = (request.getPaymentMethod() != null && !request.getPaymentMethod().isBlank())
                 ? request.getPaymentMethod() : "CASH";
@@ -908,9 +915,10 @@ public class CartServiceImpl implements CartService {
         order.setOrderType(orderType);
         order.setTotalAmount(total);
         order.setDiscountAmount(totalDiscount);
+        order.setTipAmount(tipAmount);
         order.setTaxPercentage(cart.getTaxRate().multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP));
         order.setTaxAmount(totalTax);
-        order.setPaymentMethod(inProgress ? null : paymentMethod);
+        order.setPaymentMethod(paymentMethod);
         order.setAmountPaid(inProgress ? BigDecimal.ZERO : amountPaid);
         order.setChangeAmount(inProgress ? BigDecimal.ZERO : changeAmount);
         order.setNotes(request.getNotes());

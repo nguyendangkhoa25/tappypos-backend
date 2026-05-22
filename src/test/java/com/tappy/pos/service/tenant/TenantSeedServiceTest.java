@@ -176,11 +176,13 @@ class TenantSeedServiceTest {
     }
 
     @Test
-    @DisplayName("seedShopTypeTemplates: JEWELRY shop type returns early without DB call")
+    @DisplayName("seedShopTypeTemplates: JEWELRY inserts pawn contract templates + gold certificate")
     void seedShopTypeTemplates_jewelry_noTemplate() throws Exception {
         tenantSeedService.seedShopTypeTemplates(ShopType.JEWELRY);
 
-        verify(mockSession, never()).doWork(any(Work.class));
+        // JEWELRY calls seedPawnContractTemplates() + seedGoldCertificateTemplate() → 2 doWork calls
+        verify(mockSession, atLeast(2)).doWork(any(Work.class));
+        verify(mockStatement, atLeastOnce()).execute(argThat(sql -> sql.contains("Phiếu bảo hành vàng")));
     }
 
     @Test

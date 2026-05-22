@@ -192,7 +192,7 @@ public class AuthService {
                 new SessionInfo(sessionId, clientIp, userAgent, LocalDateTime.now()));
 
         activityLogService.logAsync(tenantKey, user.getUsername(), user.getFullName(),
-                ActivityAction.LOGIN, null, null, "Đăng nhập", clientIp);
+                ActivityAction.LOGIN, null, null, messageService.getMessage("activity.login"), clientIp);
 
         boolean setupComplete = isMasterUser
                 || (tenantContext.getCurrentTenant() != null && tenantContext.getCurrentTenant().isSetupComplete());
@@ -383,7 +383,7 @@ public class AuthService {
         sessionRegistry.remove(tenantKey, username);
 
         activityLogService.logAsync(tenantKey, username, user.getFullName(),
-                ActivityAction.LOGOUT, null, null, "Đã đăng xuất", null);
+                ActivityAction.LOGOUT, null, null, messageService.getMessage("activity.logout"), null);
 
         log.info("User logged out: {}", username);
     }

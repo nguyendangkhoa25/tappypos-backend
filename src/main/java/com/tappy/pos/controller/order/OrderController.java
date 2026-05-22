@@ -2,9 +2,13 @@ package com.tappy.pos.controller.order;
 
 import com.tappy.pos.model.dto.ApiResponse;
 import com.tappy.pos.model.dto.tenant.ReceiptPreviewRequest;
+import com.tappy.pos.model.dto.order.AddOrderItemRequest;
 import com.tappy.pos.model.dto.order.CancelOrderRequest;
 import com.tappy.pos.model.dto.order.MyWorkStatsDTO;
 import com.tappy.pos.model.dto.order.OrderDTO;
+import com.tappy.pos.model.dto.order.OrderItemDTO;
+import com.tappy.pos.model.dto.order.PayAndCompleteRequest;
+import com.tappy.pos.model.dto.order.UpdateOrderMetaRequest;
 import com.tappy.pos.model.dto.order.VoidOrderRequest;
 import com.tappy.pos.model.dto.order.WorkItemDTO;
 import com.tappy.pos.model.dto.order.WorkItemSummaryDTO;
@@ -467,6 +471,95 @@ public class OrderController {
         log.info("Endpoint: DELETE /orders/{}", id);
         orderService.softDeleteOrder(id);
         return ResponseEntity.ok(ApiResponse.success(null, "Order deleted"));
+    }
+
+    // ── IN_PROGRESS order mutation endpoints ──────────────────────────────────
+
+    /**
+     * POST /api/orders/{id}/items
+     * Add a product to an IN_PROGRESS order and deduct inventory.
+     */
+    @PostMapping("/{id}/items")
+    public ResponseEntity<ApiResponse<OrderItemDTO>> addItemToOrder(
+            @PathVariable Long id,
+            @RequestBody AddOrderItemRequest request) {
+        log.info("Endpoint: POST /orders/{}/items productId={}", id, request.getProductId());
+        OrderItemDTO item = orderService.addItemToOrder(id, request);
+        return ResponseEntity.ok(ApiResponse.success(item, "Item added to order"));
+    }
+
+    /**
+     * DELETE /api/orders/{id}/items/{itemId}
+     * Remove an item from an IN_PROGRESS order and restore inventory.
+     */
+    @DeleteMapping("/{id}/items/{itemId}")
+    public ResponseEntity<ApiResponse<Void>> removeItemFromOrder(
+            @PathVariable Long id,
+            @PathVariable Long itemId) {
+        log.info("Endpoint: DELETE /orders/{}/items/{}", id, itemId);
+        orderService.removeItemFromOrder(id, itemId);
+        return ResponseEntity.ok(ApiResponse.success(null, "Item removed from order"));
+    }
+
+    /**
+     * PATCH /api/orders/{id}/items/{itemId}/employee
+     * Assign (or clear) the technician for a single item in an IN_PROGRESS order.
+     * Body: { employeeId } — null clears the assignment.
+     */
+    @PatchMapping("/{id}/items/{itemId}/employee")
+    public ResponseEntity<ApiResponse<OrderItemDTO>> updateItemEmployee(
+            @PathVariable Long id,
+            @PathVariable Long itemId,
+            @RequestBody Map<String, Long> body) {
+        log.info("Endpoint: PATCH /orders/{}/items/{}/employee", id, itemId);
+        Long employeeId = body.get("employeeId");
+        OrderItemDTO item = orderService.updateItemEmployee(id, itemId, employeeId);
+        return ResponseEntity.ok(ApiResponse.success(item, "Item employee updated"));
+    }
+
+    /**
+     * PATCH /api/orders/{id}/items/{itemId}/quantity
+     * Update the quantity of a single item in an IN_PROGRESS order.
+     * Body: { quantity }
+     */
+    @PatchMapping("/{id}/items/{itemId}/quantity")
+    public ResponseEntity<ApiResponse<OrderItemDTO>> updateItemQuantity(
+            @PathVariable Long id,
+            @PathVariable Long itemId,
+            @RequestBody Map<String, Integer> body) {
+        log.info("Endpoint: PATCH /orders/{}/items/{}/quantity", id, itemId);
+        int quantity = body.getOrDefault("quantity", 1);
+        OrderItemDTO item = orderService.updateItemQuantity(id, itemId, quantity);
+        return ResponseEntity.ok(ApiResponse.success(item, "Item quantity updated"));
+    }
+
+    /**
+     * PATCH /api/orders/{id}/meta
+     * Update tip, customer, and/or paymentMethod on an IN_PROGRESS order without completing it.
+     * Body: { tip?, customerId?, clearCustomer?, paymentMethod? }
+     */
+    @PatchMapping("/{id}/meta")
+    public ResponseEntity<ApiResponse<OrderDTO>> updateOrderMeta(
+            @PathVariable Long id,
+            @RequestBody UpdateOrderMetaRequest request) {
+        log.info("Endpoint: PATCH /orders/{}/meta", id);
+        OrderDTO order = orderService.updateOrderMeta(id, request);
+        return ResponseEntity.ok(ApiResponse.success(order, "Order meta updated"));
+    }
+
+    /**
+     * PUT /api/orders/{id}/pay-and-complete
+     * Record payment and transition IN_PROGRESS → COMPLETED.
+     * Body: { paymentMethod, amountPaid }
+     */
+    @PutMapping("/{id}/pay-and-complete")
+    public ResponseEntity<ApiResponse<OrderDTO>> payAndCompleteOrder(
+            @PathVariable Long id,
+            @RequestBody(required = false) PayAndCompleteRequest request) {
+        log.info("Endpoint: PUT /orders/{}/pay-and-complete", id);
+        if (request == null) request = new PayAndCompleteRequest();
+        OrderDTO order = orderService.payAndCompleteOrder(id, request);
+        return ResponseEntity.ok(ApiResponse.success(order, "Order paid and completed"));
     }
 
     // ── Staff performance endpoints (requires ORDER_VIEW_ALL) ──────────────────

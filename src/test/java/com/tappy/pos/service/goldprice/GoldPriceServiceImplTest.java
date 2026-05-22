@@ -234,7 +234,7 @@ class GoldPriceServiceImplTest {
 
         assertThatThrownBy(() -> service.createPrice(dto))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessageContaining("danh mục gốc");
+                .hasMessageContaining("error.goldprice.category.must.be.leaf");
     }
 
     @Test
@@ -254,7 +254,7 @@ class GoldPriceServiceImplTest {
 
         assertThatThrownBy(() -> service.createPrice(dto))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessageContaining("đã có cấu hình giá");
+                .hasMessageContaining("error.goldprice.category.already.configured");
     }
 
     @Test

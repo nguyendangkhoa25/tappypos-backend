@@ -25,4 +25,7 @@ public class OrderItemDTO {
     private String assignedEmployeeName;
     private BigDecimal commissionRate;
     private BigDecimal commissionAmount;
+
+    // Alias for mobile client
+    public BigDecimal getSubtotal() { return amount; }
 }

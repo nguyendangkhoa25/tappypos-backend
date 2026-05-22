@@ -58,6 +58,7 @@ class AuthServiceTest {
     private AuthService authService;
 
     private User testUser;
+    private User masterUser;
     private LoginRequest loginRequest;
     private Tenant testTenant;
 
@@ -88,6 +89,26 @@ class AuthServiceTest {
 
         testTenant = new Tenant();
         testTenant.setTenantId("shop1");
+
+        Role masterRole = Role.builder().name("MASTER_TENANT").build();
+        masterRole.setId(2L);
+        masterUser = User.builder()
+                .username("testuser")
+                .email("test@example.com")
+                .password("hashedPassword")
+                .fullName("Test User")
+                .active(true)
+                .accountNonLocked(true)
+                .credentialsNonExpired(true)
+                .accountNonExpired(true)
+                .requireAction(null)
+                .roles(new HashSet<>(Set.of(masterRole)))
+                .build();
+        masterUser.setId(1L);
+        masterUser.setCreatedAt(LocalDateTime.now());
+
+        lenient().when(messageService.getMessage(anyString())).thenAnswer(inv -> inv.getArgument(0));
+        lenient().when(messageService.getMessage(anyString(), any(Object[].class))).thenAnswer(inv -> inv.getArgument(0));
     }
 
     // ─── authenticateUser ────────────────────────────────────────────────────────
@@ -121,7 +142,7 @@ class AuthServiceTest {
         @DisplayName("Should authenticate successfully as master user (no tenant)")
         void success_masterUser() {
             when(tenantContext.getCurrentTenant()).thenReturn(null);
-            when(userRepository.findByUsernameGlobal("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameGlobal("testuser")).thenReturn(Optional.of(masterUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
             when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of("DASHBOARD"));
             when(sessionRegistry.getSession(anyString(), anyString())).thenReturn(Optional.empty());
@@ -356,7 +377,7 @@ class AuthServiceTest {
         @DisplayName("Should log activity with 'master' tenant key for master user login")
         void success_noActivityLogForMasterUser() {
             when(tenantContext.getCurrentTenant()).thenReturn(null);
-            when(userRepository.findByUsernameGlobal("testuser")).thenReturn(Optional.of(testUser));
+            when(userRepository.findByUsernameGlobal("testuser")).thenReturn(Optional.of(masterUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
             when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of());
             when(sessionRegistry.getSession(anyString(), anyString())).thenReturn(Optional.empty());
@@ -409,8 +430,8 @@ class AuthServiceTest {
                     .build();
 
             when(tenantContext.getCurrentTenant()).thenReturn(null);
-            when(userRepository.findByUsernameGlobal("testuser")).thenReturn(Optional.of(testUser));
-            when(refreshTokenRepository.findAllByUserAndActive(eq(testUser), anyLong())).thenReturn(List.of(storedToken));
+            when(userRepository.findByUsernameGlobal("testuser")).thenReturn(Optional.of(masterUser));
+            when(refreshTokenRepository.findAllByUserAndActive(eq(masterUser), anyLong())).thenReturn(List.of(storedToken));
             when(passwordEncoder.matches("raw-rt", "hashed-rt")).thenReturn(true);
             when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of());
             when(jwtTokenProvider.generateTokenWithRolesAndFeatures(anyString(), anyList(), anyList(), anyBoolean(), any(), anyString()))
