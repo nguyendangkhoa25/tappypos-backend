@@ -210,6 +210,20 @@
             <version>4.4</version>
         </dependency>
 
+        <!-- AWS SDK v2 S3 (used for Cloudflare R2 — S3-compatible) -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+            <version>2.25.60</version>
+        </dependency>
+
+        <!-- Thumbnailator: image resize + EXIF-aware JPEG output (no native deps) -->
+        <dependency>
+            <groupId>net.coobird</groupId>
+            <artifactId>thumbnailator</artifactId>
+            <version>0.4.20</version>
+        </dependency>
+
         <!-- FastExcel for Excel export -->
         <dependency>
             <groupId>org.dhatim</groupId>

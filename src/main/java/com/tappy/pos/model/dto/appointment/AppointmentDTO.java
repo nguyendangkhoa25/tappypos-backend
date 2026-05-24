@@ -29,4 +29,12 @@ public class AppointmentDTO {
     private String createdBy;
     private LocalDateTime createdAt;
     private List<AppointmentServiceItemDTO> services;
+
+    /**
+     * Non-blocking schedule conflict warnings returned by create/update.
+     * The appointment is saved regardless — these are advisory only.
+     * Empty on all other operations.
+     */
+    @Builder.Default
+    private List<String> warnings = List.of();
 }

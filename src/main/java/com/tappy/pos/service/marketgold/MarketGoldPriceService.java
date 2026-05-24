@@ -63,7 +63,8 @@ public class MarketGoldPriceService {
 
     // ── Scheduled pollers (staggered initialDelay to avoid simultaneous network hits) ──
 
-    @Scheduled(fixedDelay = 30 * 60 * 1000, initialDelay = 0)
+    // SJC API is currently unavailable — polling disabled. Remove the comment to re-enable.
+    // @Scheduled(fixedDelay = 30 * 60 * 1000, initialDelay = 0)
     @Transactional
     public void pollSjc() {
         poll(SJC, SJC_URL, this::parseSjc);
@@ -81,7 +82,8 @@ public class MarketGoldPriceService {
         poll(PNJ, PNJ_URL, this::parsePnj);
     }
 
-    @Scheduled(fixedDelay = 30 * 60 * 1000, initialDelay = 15_000)
+    // BTMC API is currently unavailable — polling disabled. Remove the comment to re-enable.
+    // @Scheduled(fixedDelay = 30 * 60 * 1000, initialDelay = 15_000)
     @Transactional
     public void pollBtmc() {
         poll(BTMC, BTMC_URL, this::parseBtmc);

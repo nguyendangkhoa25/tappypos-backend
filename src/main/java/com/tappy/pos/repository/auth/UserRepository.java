@@ -4,6 +4,7 @@ import com.tappy.pos.model.entity.auth.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -113,6 +114,16 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByUsernameGlobal(@Param("username") String username);
 
     /**
+     * Find an active user by phone number, cross-tenant.
+     * Used only in the forgot-password OTP flow (no tenant context established yet).
+     * Prefers tenant-scoped rows over pre-provision rows — same ordering as findByUsernameGlobal.
+     */
+    @Query(value = "SELECT * FROM users WHERE phone = :phone AND active = true AND deleted <> true " +
+                   "ORDER BY tenant_id NULLS LAST LIMIT 1",
+           nativeQuery = true)
+    Optional<User> findByPhoneGlobal(@Param("phone") String phone);
+
+    /**
      * Get all active usernames scoped to the current tenant.
      * Uses current_tenant_id() so this must be called within a @Transactional boundary
      * where TenantRlsAspect has already set app.current_tenant on the connection.
@@ -144,6 +155,23 @@ public interface UserRepository extends JpaRepository<User, Long> {
                    "AND u.tenant_id IS NOT DISTINCT FROM current_tenant_id()",
            nativeQuery = true)
     java.util.List<String> findUsernamesByRoleNames(@Param("roleNames") java.util.List<String> roleNames);
+
+    /**
+     * Count how many users belong to a given tenant (used for the deletion audit log).
+     */
+    @Query(value = "SELECT COUNT(*) FROM users WHERE tenant_id = :tenantId AND deleted <> true",
+           nativeQuery = true)
+    int countByTenantId(@Param("tenantId") String tenantId);
+
+    /**
+     * Bulk-unlink all users from a tenant: set tenant_id = NULL and clear roles.
+     * Called when a shop owner deletes the shop.
+     * Role rows are cleaned up separately so tenant-specific roles don't remain.
+     */
+    @Modifying
+    @Query(value = "UPDATE users SET tenant_id = NULL WHERE tenant_id = :tenantId AND deleted <> true",
+           nativeQuery = true)
+    int unlinkAllFromTenant(@Param("tenantId") String tenantId);
 
     /**
      * Returns the subset of the given usernames whose roles grant the specified feature.

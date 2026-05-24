@@ -250,6 +250,32 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
            nativeQuery = true)
     List<Object[]> getTopCustomersByRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to, org.springframework.data.domain.Pageable pageable);
 
+    // Top customers sorted by order count (frequency) instead of spend
+    @Query(value = "SELECT c.name, COUNT(o.id) as orderCount, COALESCE(SUM(o.total_amount),0) as totalSpend, " +
+           "CAST(c.id AS VARCHAR) as customerId " +
+           "FROM orders o JOIN customers c ON o.customer_id = c.id " +
+           "WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.customer_id IS NOT NULL " +
+           "AND c.deleted = false AND c.phone != '0000000000' " +
+           "AND o.created_at BETWEEN :from AND :to " +
+           "GROUP BY c.id, c.name ORDER BY orderCount DESC",
+           nativeQuery = true)
+    List<Object[]> getTopCustomersByFrequency(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to, org.springframework.data.domain.Pageable pageable);
+
+    // Count customers making their FIRST EVER order in this period
+    @Query(value = "SELECT COUNT(DISTINCT o.customer_id) " +
+           "FROM orders o JOIN customers c ON o.customer_id = c.id " +
+           "WHERE o.deleted = false AND o.status = 'COMPLETED' " +
+           "AND c.deleted = false AND c.phone != '0000000000' " +
+           "AND o.created_at BETWEEN :from AND :to " +
+           "AND NOT EXISTS (" +
+           "  SELECT 1 FROM orders o2 " +
+           "  WHERE o2.customer_id = o.customer_id " +
+           "  AND o2.deleted = false " +
+           "  AND o2.created_at < :from" +
+           ")",
+           nativeQuery = true)
+    long countNewCustomers(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
     @Query(value = "SELECT COALESCE(e.full_name, o.created_by) as name, u.id as userId, COUNT(o.id) as orderCount, COALESCE(SUM(o.total_amount),0) as revenue " +
            "FROM orders o " +
            "LEFT JOIN users u ON u.username = o.created_by " +
@@ -259,6 +285,33 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
            "GROUP BY COALESCE(e.full_name, o.created_by), o.created_by, u.id ORDER BY revenue DESC",
            nativeQuery = true)
     List<Object[]> getTopEmployeesByRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to, org.springframework.data.domain.Pageable pageable);
+
+    // ── Customer list analytics ───────────────────────────────────────────────
+
+    @Query(value = "SELECT COUNT(DISTINCT o.customer_id) " +
+           "FROM orders o JOIN customers c ON o.customer_id = c.id " +
+           "WHERE o.deleted = false AND o.status = 'COMPLETED' " +
+           "AND c.deleted = false AND c.phone != '0000000000' " +
+           "AND o.created_at BETWEEN :from AND :to",
+           nativeQuery = true)
+    long countActiveCustomers(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query(value = "SELECT COALESCE(SUM(o.total_amount), 0) " +
+           "FROM orders o JOIN customers c ON o.customer_id = c.id " +
+           "WHERE o.deleted = false AND o.status = 'COMPLETED' " +
+           "AND c.deleted = false AND c.phone != '0000000000' " +
+           "AND o.created_at BETWEEN :from AND :to",
+           nativeQuery = true)
+    java.math.BigDecimal getTotalRevenueFromNamedCustomers(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query(value = "SELECT c.name, COUNT(o.id) as orderCount, COALESCE(SUM(o.total_amount),0) as totalSpend, " +
+           "CAST(c.id AS VARCHAR) as customerId " +
+           "FROM orders o JOIN customers c ON o.customer_id = c.id " +
+           "WHERE o.deleted = false AND o.status = 'COMPLETED' " +
+           "AND c.deleted = false AND c.phone != '0000000000' " +
+           "GROUP BY c.id, c.name ORDER BY totalSpend DESC",
+           nativeQuery = true)
+    List<Object[]> getTopCustomersAllTime(org.springframework.data.domain.Pageable pageable);
 
     // ── Customer-scoped analytics ──────────────────────────────────────────────
 
@@ -316,6 +369,11 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             @Param("customerId") Long customerId,
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to);
+
+    /** Most recent completed_at for a customer, or NULL if none. */
+    @Query(value = "SELECT MAX(completed_at) FROM orders WHERE deleted = false AND status = 'COMPLETED' AND customer_id = :customerId",
+           nativeQuery = true)
+    java.time.LocalDateTime findLastVisitDateByCustomer(@Param("customerId") Long customerId);
 
     // ── By createdBy (staff performance view) ─────────────────────────────────
 
@@ -426,4 +484,120 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             @Param("from") LocalDate from,
             @Param("to") LocalDate to,
             Pageable pageable);
+
+    // ── Kitchen Display ────────────────────────────────────────────────────────
+
+    /** All PENDING + IN_PROGRESS orders for the kitchen display, oldest first. */
+    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.status IN ('PENDING', 'IN_PROGRESS') ORDER BY o.createdAt ASC")
+    List<Order> findAllKitchenOrders();
+
+    // Payment method breakdown by date range: [paymentMethod, count, totalAmount]
+    @Query(value = "SELECT payment_method, COUNT(*), COALESCE(SUM(total_amount), 0) " +
+           "FROM orders WHERE deleted = false AND status = 'COMPLETED' AND order_type = 'SELL' " +
+           "AND (CAST(:from AS date) IS NULL OR DATE(completed_at) >= CAST(:from AS date)) " +
+           "AND (CAST(:to   AS date) IS NULL OR DATE(completed_at) <= CAST(:to   AS date)) " +
+           "GROUP BY payment_method",
+           nativeQuery = true)
+    List<Object[]> groupByPaymentMethodDateRange(@Param("from") LocalDate from, @Param("to") LocalDate to);
+
+    // Category breakdown by date range: [categoryName, orderCount, revenue] — STANDARD items only
+    @Query(value = """
+            SELECT COALESCE(c.name, 'Không phân loại') AS categoryName,
+                   COUNT(DISTINCT o.id) AS orderCount,
+                   COALESCE(SUM(oi.amount), 0) AS revenue
+            FROM orders o
+            JOIN order_items oi ON oi.order_id = o.id AND oi.item_type = 'STANDARD'
+            JOIN product p ON p.id = oi.product_id
+            LEFT JOIN product_category pc ON pc.product_id = p.id
+            LEFT JOIN category c ON c.id = pc.category_id
+            WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.order_type = 'SELL'
+              AND (CAST(:from AS date) IS NULL OR DATE(o.completed_at) >= CAST(:from AS date))
+              AND (CAST(:to   AS date) IS NULL OR DATE(o.completed_at) <= CAST(:to   AS date))
+            GROUP BY COALESCE(c.name, 'Không phân loại')
+            ORDER BY revenue DESC
+            """, nativeQuery = true)
+    List<Object[]> sumRevenueGroupedByCategoryDateRange(@Param("from") LocalDate from, @Param("to") LocalDate to);
+
+    // ── Employee analytics — revenue trend by date range ──────────────────────
+
+    /**
+     * Count of distinct order creators (active employees) in a date window.
+     */
+    @Query(value = """
+            SELECT COUNT(DISTINCT o.created_by)
+            FROM orders o
+            WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.order_type = 'SELL'
+              AND o.completed_at >= :from AND o.completed_at < :to
+            """, nativeQuery = true)
+    Long countActiveEmployees(
+            @Param("from") java.time.LocalDateTime from,
+            @Param("to")   java.time.LocalDateTime to);
+
+    /**
+     * Revenue ranking by order creator in a date range.
+     * [employeeName, userId, orderCount, revenue]
+     */
+    @Query(value = """
+            SELECT COALESCE(e.full_name, o.created_by)              AS employee_name,
+                   u.id                                              AS user_id,
+                   COUNT(o.id)                                       AS order_count,
+                   COALESCE(SUM(o.total_amount), 0)                 AS revenue
+            FROM orders o
+            LEFT JOIN users u ON u.username = o.created_by
+            LEFT JOIN employees e ON e.user_id = u.id
+            WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.order_type = 'SELL'
+              AND o.completed_at >= :from AND o.completed_at < :to
+            GROUP BY COALESCE(e.full_name, o.created_by), o.created_by, u.id
+            ORDER BY revenue DESC
+            LIMIT :limit
+            """, nativeQuery = true)
+    java.util.List<Object[]> getEmployeeRevenueRankingByDateRange(
+            @Param("from")  java.time.LocalDateTime from,
+            @Param("to")    java.time.LocalDateTime to,
+            @Param("limit") int limit);
+
+    /**
+     * Daily revenue trend: [date, revenue]
+     */
+    @Query(value = """
+            SELECT DATE_TRUNC('day', o.completed_at)::DATE AS lbl,
+                   COALESCE(SUM(o.total_amount), 0)         AS revenue
+            FROM orders o
+            WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.order_type = 'SELL'
+              AND o.completed_at >= :from AND o.completed_at < :to
+            GROUP BY lbl ORDER BY lbl
+            """, nativeQuery = true)
+    java.util.List<Object[]> getEmployeeRevenueTrendByDay(
+            @Param("from") java.time.LocalDateTime from,
+            @Param("to")   java.time.LocalDateTime to);
+
+    /**
+     * Weekly revenue trend: [week_start, revenue]
+     */
+    @Query(value = """
+            SELECT DATE_TRUNC('week', o.completed_at)::DATE AS lbl,
+                   COALESCE(SUM(o.total_amount), 0)          AS revenue
+            FROM orders o
+            WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.order_type = 'SELL'
+              AND o.completed_at >= :from AND o.completed_at < :to
+            GROUP BY lbl ORDER BY lbl
+            """, nativeQuery = true)
+    java.util.List<Object[]> getEmployeeRevenueTrendByWeek(
+            @Param("from") java.time.LocalDateTime from,
+            @Param("to")   java.time.LocalDateTime to);
+
+    /**
+     * Monthly revenue trend: [month_start, revenue]
+     */
+    @Query(value = """
+            SELECT DATE_TRUNC('month', o.completed_at)::DATE AS lbl,
+                   COALESCE(SUM(o.total_amount), 0)           AS revenue
+            FROM orders o
+            WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.order_type = 'SELL'
+              AND o.completed_at >= :from AND o.completed_at < :to
+            GROUP BY lbl ORDER BY lbl
+            """, nativeQuery = true)
+    java.util.List<Object[]> getEmployeeRevenueTrendByMonth(
+            @Param("from") java.time.LocalDateTime from,
+            @Param("to")   java.time.LocalDateTime to);
 }

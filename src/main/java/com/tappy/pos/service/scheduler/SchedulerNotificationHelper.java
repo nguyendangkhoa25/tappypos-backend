@@ -1,13 +1,19 @@
 package com.tappy.pos.service.scheduler;
 
+import com.tappy.pos.model.entity.appointment.Appointment;
+import com.tappy.pos.model.entity.appointment.AppointmentServiceItem;
 import com.tappy.pos.model.entity.notification.Notification;
 import com.tappy.pos.model.entity.tenant.Tenant;
 import com.tappy.pos.model.enums.PawnStatus;
 import com.tappy.pos.model.enums.RoleEnum;
+import com.tappy.pos.repository.appointment.AppointmentRepository;
 import com.tappy.pos.repository.order.OrderRepository;
 import com.tappy.pos.repository.pawn.PawnRepository;
 import com.tappy.pos.service.MessageService;
+import com.tappy.pos.service.auth.ZaloZnsService;
 import com.tappy.pos.service.notification.NotificationService;
+import com.tappy.pos.service.tenant.ZaloMessageTemplateService;
+import com.tappy.pos.service.tenant.ZaloOaService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -21,6 +27,8 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * Transactional helper for schedulers that need to query tenant-scoped data and push notifications.
@@ -34,8 +42,14 @@ public class SchedulerNotificationHelper {
 
     private final OrderRepository orderRepository;
     private final PawnRepository pawnRepository;
+    private final AppointmentRepository appointmentRepository;
     private final NotificationService notificationService;
     private final MessageService messageService;
+    private final ZaloZnsService zaloZnsService;
+    private final ZaloMessageTemplateService zaloMessageTemplateService;
+    private final ZaloOaService zaloOaService;
+
+    private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
@@ -94,5 +108,55 @@ public class SchedulerNotificationHelper {
         notificationService.pushToRoles(Notification.NotificationType.INFO, title, message,
                 "PAWN", null, List.of(RoleEnum.SHOP_OWNER.getCode(), RoleEnum.MANAGER.getCode()));
         log.info("Pawn due notification sent for tenant {}: {} contract(s)", tenant.getTenantId(), count);
+    }
+
+    /**
+     * Finds appointments scheduled in the 60-minute window starting from
+     * {@code windowStart}, sends a Zalo ZNS reminder to each customer (if they
+     * have a phone number), then marks {@code reminderSent = true}.
+     * TenantContext must be set by the caller before invoking this method.
+     */
+    @Transactional
+    public void sendAppointmentReminders(Tenant tenant, LocalTime windowStart) {
+        LocalDate today = LocalDate.now();
+        LocalTime windowEnd = windowStart.plusMinutes(60);
+
+        List<Appointment> due = appointmentRepository.findDueForReminder(
+                tenant.getTenantId(), today, windowStart, windowEnd);
+
+        if (due.isEmpty()) return;
+
+        // Look up the tenant's configured template ID (falls back to global config).
+        String templateId = zaloMessageTemplateService.getDefaultTemplateId(
+                ZaloMessageTemplateService.APPOINTMENT_REMINDER);
+
+        // Look up the tenant's own OA access token (null → ZNS service falls back to platform token).
+        String tenantAccessToken = zaloOaService.getAccessToken();
+
+        for (Appointment appt : due) {
+            try {
+                if (appt.getCustomerPhone() != null && !appt.getCustomerPhone().isBlank()) {
+                    String serviceNames = appt.getServices() == null || appt.getServices().isEmpty() ? "—"
+                            : appt.getServices().stream()
+                            .map(AppointmentServiceItem::getProductName)
+                            .filter(Objects::nonNull)
+                            .collect(Collectors.joining(", "));
+                    String time = appt.getScheduledStartTime().format(TIME_FMT);
+                    String date = appt.getScheduledDate().format(DATE_FMT);
+
+                    zaloZnsService.sendAppointmentReminderAsync(
+                            appt.getCustomerPhone(), appt.getCustomerName(),
+                            serviceNames, time, date, appt.getId(), templateId, tenantAccessToken);
+                }
+            } finally {
+                // Mark sent regardless of whether the phone number exists or ZNS succeeds,
+                // so we don't retry the same appointment in a future scheduler tick.
+                appt.setReminderSent(true);
+            }
+        }
+
+        appointmentRepository.saveAll(due);
+        log.info("Appointment reminders queued for tenant {}: {} appointment(s)",
+                tenant.getTenantId(), due.size());
     }
 }

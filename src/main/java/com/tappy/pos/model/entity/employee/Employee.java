@@ -84,4 +84,8 @@ public class Employee extends TenantAwareEntity {
 
     @Column(name = "id_card_back_image", columnDefinition = "TEXT")
     private String idCardBackImage;
+
+    /** R2 public URL for the employee's avatar photo. Preferred over legacy base64 `avatar` field. */
+    @Column(name = "avatar_url", length = 500)
+    private String avatarUrl;
 }

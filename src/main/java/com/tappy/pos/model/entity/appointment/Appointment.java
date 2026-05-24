@@ -54,6 +54,11 @@ public class Appointment extends TenantAwareEntity {
     @Column(name = "created_by", nullable = false, length = 255)
     private String createdBy;
 
+    /** True once the Zalo ZNS 1-hour-before reminder has been sent. */
+    @Builder.Default
+    @Column(name = "reminder_sent", nullable = false)
+    private Boolean reminderSent = false;
+
     @Builder.Default
     @OneToMany(mappedBy = "appointment", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<AppointmentServiceItem> services = new ArrayList<>();

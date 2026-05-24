@@ -18,6 +18,8 @@ public class BankServiceImpl implements BankService {
 
     private final BankRepository bankRepository;
 
+    private static final String VIETQR_LOGO_BASE = "https://cdn.vietqr.io/img/";
+
     @Override
     public List<BankDTO> getAllBanks() {
         return bankRepository.findAllActiveOrderBySortOrder()
@@ -30,6 +32,9 @@ public class BankServiceImpl implements BankService {
                         .shortName(b.getShortName())
                         .sortOrder(b.getSortOrder())
                         .isActive(b.getIsActive())
+                        .logoUrl(b.getVietqrCode() != null
+                                ? VIETQR_LOGO_BASE + b.getVietqrCode() + ".png"
+                                : null)
                         .build())
                 .collect(Collectors.toList());
     }

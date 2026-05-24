@@ -4,6 +4,7 @@ import com.tappy.pos.model.dto.product.*;
 import com.tappy.pos.model.entity.product.Product;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -22,5 +23,8 @@ public interface ProductService {
     void markAsSold(Long productId);
     void setVisibility(Long id, boolean active);
     ProductSummaryDTO getSummary();
+    ProductDTO uploadImage(Long id, MultipartFile file);
+    void deleteImage(Long id);
+    ProductStatsDTO getProductStats(Long id, int days);
 }
 

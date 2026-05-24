@@ -102,6 +102,19 @@ public class CartController {
     }
 
     /**
+     * POST /api/v1/carts/{cartId}/combos/{comboId}
+     * Expand all combo items into the cart, each tagged with the combo_id.
+     */
+    @PostMapping("/{cartId}/combos/{comboId}")
+    public ResponseEntity<ApiResponse<CartResponse>> addComboToCart(
+            @PathVariable String cartId,
+            @PathVariable Long comboId) throws JsonProcessingException {
+        log.info("POST /api/v1/carts/{}/combos/{}", cartId, comboId);
+        CartResponse cart = cartService.addComboToCart(cartId, comboId);
+        return ResponseEntity.ok(ApiResponse.success(cart, "Combo added to cart"));
+    }
+
+    /**
      * Update cart item quantity
      * 
      * PUT /api/v1/carts/{cartId}/items/{itemId}
@@ -336,6 +349,23 @@ public class CartController {
         log.info("POST /api/v1/carts/{}/checkout", cartId);
         CheckoutResponse response = cartService.checkout(cartId, request);
         return ResponseEntity.ok(ApiResponse.success(response, "Checkout completed successfully"));
+    }
+
+    /**
+     * Update (or clear) the per-item note.
+     *
+     * PATCH /api/v1/carts/{cartId}/items/{itemId}/note
+     * Body: { "note": "ít đường" }  — omit or send null/blank to clear
+     */
+    @PatchMapping("/{cartId}/items/{itemId}/note")
+    public ResponseEntity<ApiResponse<CartResponse>> updateCartItemNote(
+            @PathVariable String cartId,
+            @PathVariable Long itemId,
+            @RequestBody java.util.Map<String, String> body) {
+        String note = body.get("note");
+        log.info("PATCH /api/v1/carts/{}/items/{}/note", cartId, itemId);
+        CartResponse cart = cartService.updateCartItemNote(cartId, itemId, note);
+        return ResponseEntity.ok(ApiResponse.success(cart, "Item note updated"));
     }
 
     /**

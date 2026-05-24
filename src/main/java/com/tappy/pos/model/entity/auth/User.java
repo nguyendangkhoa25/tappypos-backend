@@ -55,6 +55,10 @@ public class User extends UnifiedTenantEntity {
     @Column(columnDefinition = "LONGTEXT")
     private String avatar;
 
+    /** R2 public URL for the user's avatar image; replaces the legacy base64 `avatar` field. */
+    @Column(name = "avatar_url", length = 500)
+    private String avatarUrl;
+
     @Column(length = 50)
     private String colorPreference;
 
@@ -72,6 +76,21 @@ public class User extends UnifiedTenantEntity {
     )
     private Set<Role> roles = new HashSet<>();
 
+    /**
+     * Optional per-user feature overrides.
+     * When non-empty, the JWT features become: tenant_features ∩ userFeatures
+     * (completely replaces the default role_features intersection).
+     * When empty, the default role-based feature resolution applies.
+     */
+    @Builder.Default
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(
+            name = "user_features",
+            joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "feature_id")
+    )
+    private Set<Feature> userFeatures = new HashSet<>();
+
     @Builder.Default
     @Column(name = "failed_login_attempts", nullable = false)
     private Integer failedLoginAttempts = 0;
@@ -87,6 +106,10 @@ public class User extends UnifiedTenantEntity {
 
     @Column(name = "nickname", length = 100)
     private String nickname;
+
+    /** Vietnamese mobile number in 84XXXXXXXXX format; used for Zalo OTP password reset */
+    @Column(name = "phone", length = 20)
+    private String phone;
 
     // Add a role to this user
     public void addRole(Role role) {

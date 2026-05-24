@@ -8,7 +8,9 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 
 /**
  * RoleFeatureRepository — data access for role-feature mappings.
@@ -72,6 +74,9 @@ public interface RoleFeatureRepository extends JpaRepository<Feature, Long> {
            "WHERE f.deleted = FALSE AND f.active = TRUE " +
            "ORDER BY f.name ASC", nativeQuery = true)
     List<Feature> findAllActiveFeatures();
+
+    /** Find Feature entities whose name is in the given collection (for user-feature assignment). */
+    Set<Feature> findByNameIn(Collection<String> names);
 
     @Transactional
     @Modifying

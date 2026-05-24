@@ -34,6 +34,14 @@ public class ShopTable extends TenantAwareEntity {
     @Column(name = "display_order", nullable = false)
     private Integer displayOrder;
 
+    /** Name of the party who reserved this table (null when not reserved). */
+    @Column(name = "reserved_for", length = 100)
+    private String reservedFor;
+
+    /** Human-readable time string for the reservation, e.g. "19:00". */
+    @Column(name = "reserved_time", length = 10)
+    private String reservedTime;
+
     @PrePersist
     protected void onTablePersist() {
         if (this.status == null) this.status = TableStatus.AVAILABLE;

@@ -2,6 +2,7 @@ package com.tappy.pos.service.auth;
 
 import com.tappy.pos.model.dto.auth.ProfileRequest;
 import com.tappy.pos.model.dto.auth.UserProfile;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * ProfileService Interface
@@ -37,6 +38,17 @@ public interface ProfileService {
      * Update user language preference
      */
     UserProfile updateProfileLang(String username, ProfileRequest request);
+
+    /**
+     * Upload a new avatar image for the user (multipart).
+     * Resizes to 512×512 JPEG, stores in R2 under avatars/{userId}.jpg.
+     */
+    UserProfile uploadAvatar(String username, MultipartFile file);
+
+    /**
+     * Delete the current user's avatar from R2 and clear avatarUrl.
+     */
+    void deleteAvatar(String username);
 
     /**
      * Get user preferences JSON (autocomplete history, etc.)

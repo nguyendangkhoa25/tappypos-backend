@@ -58,6 +58,12 @@ public interface OrderService {
 
     List<Map<String, Object>> getTopCustomersByRange(int limit, LocalDateTime from, LocalDateTime to);
 
+    /** Same as getTopCustomersByRange but sorted by visit count, not spend. */
+    List<Map<String, Object>> getTopCustomersByFrequency(int limit, LocalDateTime from, LocalDateTime to);
+
+    /** Returns { total, newCount, returningCount } for the period. */
+    Map<String, Object> getCustomerStats(LocalDateTime from, LocalDateTime to);
+
     List<Map<String, Object>> getTopEmployeesByRange(int limit, LocalDateTime from, LocalDateTime to);
 
     void softDeleteOrder(Long id);
@@ -70,6 +76,9 @@ public interface OrderService {
     OrderItemDTO updateItemQuantity(Long orderId, Long itemId, int quantity);
 
     OrderItemDTO updateItemEmployee(Long orderId, Long itemId, Long employeeId);
+
+    /** Update (or clear) the per-item note. Passing null or blank clears the note. */
+    OrderItemDTO updateItemNote(Long orderId, Long itemId, String note);
 
     OrderDTO updateOrderMeta(Long orderId, UpdateOrderMetaRequest request);
 
@@ -110,4 +119,15 @@ public interface OrderService {
     List<Map<String, Object>> getStaffOrderChart(String createdBy, LocalDate from, LocalDate to, String granularity);
 
     Page<OrderDTO> getStaffOrders(String createdBy, String status, LocalDate from, LocalDate to, Pageable pageable);
+
+    // ── Kitchen Display ────────────────────────────────────────────────────────
+
+    /** Returns all PENDING + IN_PROGRESS orders (unfiltered by user) for the kitchen view. */
+    List<OrderDTO> getKitchenOrders();
+
+    /**
+     * Cycle kitchen item status: PENDING → IN_PROGRESS → COMPLETED.
+     * Returns the updated item's parent order.
+     */
+    OrderItemDTO bumpKitchenItem(Long itemId);
 }

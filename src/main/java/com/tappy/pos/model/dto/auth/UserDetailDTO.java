@@ -21,10 +21,13 @@ public class UserDetailDTO {
     private Boolean credentialsNonExpired;
     private Boolean accountNonExpired;
     private String requireAction;
+    private String avatarUrl;
     private Long employeeId;
     private Long vendorId;
     private String vendorName;
     private Set<RoleDTO> roles;
+    /** Per-user feature overrides. Non-empty = user's JWT uses these instead of role features. */
+    private Set<String> userFeatureNames;
     private String notes;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

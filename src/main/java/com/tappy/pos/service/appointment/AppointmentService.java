@@ -16,4 +16,6 @@ public interface AppointmentService {
     AppointmentDTO cancel(Long id);
     AppointmentDTO noShow(Long id);
     void delete(Long id);
+    /** Returns appointment counts grouped by date for the given date range. */
+    AppointmentWeekSummaryDTO getWeekSummary(LocalDate from, LocalDate to);
 }

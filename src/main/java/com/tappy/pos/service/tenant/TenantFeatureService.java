@@ -8,6 +8,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import com.tappy.pos.model.entity.auth.Feature;
+import com.tappy.pos.model.entity.auth.User;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -77,6 +80,37 @@ public class TenantFeatureService {
                 roleNames, currentTenant.getTenantId(), accessibleFeatures.size());
         log.debug("Accessible features: {}", accessibleFeatures);
         return accessibleFeatures;
+    }
+
+    /**
+     * Get accessible features for a user.
+     * If the user has explicit per-user features set (user_features table), those are used
+     * instead of role features — intersected with tenant features.
+     * Falls back to role-based resolution when no user features are configured.
+     *
+     * @param user      the user (with userFeatures loaded)
+     * @param roleNames list of role names the user has (used as fallback)
+     * @return list of feature names the user can access
+     */
+    public List<String> getAccessibleFeaturesByUserAndTenant(User user, List<String> roleNames) {
+        if (user.getUserFeatures() != null && !user.getUserFeatures().isEmpty()) {
+            log.info("User {} has {} user-specific features — using override instead of role features",
+                    user.getUsername(), user.getUserFeatures().size());
+            Set<String> userFeatureNames = user.getUserFeatures().stream()
+                    .map(Feature::getName)
+                    .collect(Collectors.toSet());
+
+            Tenant currentTenant = tenantContext.getCurrentTenant();
+            if (currentTenant == null) {
+                return new ArrayList<>(userFeatureNames);
+            }
+            Set<String> tenantFeatures = getTenantFeatures(currentTenant);
+            return userFeatureNames.stream()
+                    .filter(tenantFeatures::contains)
+                    .collect(Collectors.toList());
+        }
+        // No override — fall back to role-based resolution
+        return getAccessibleFeaturesByRoleAndTenant(roleNames);
     }
 
     /**

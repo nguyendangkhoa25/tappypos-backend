@@ -37,7 +37,8 @@ INSERT INTO category (tenant_id, name, parent_id) VALUES
     (current_setting('app.current_tenant', true), 'Nhuộm & Uốn',         NULL),
     (current_setting('app.current_tenant', true), 'Chăm sóc râu',        NULL),
     (current_setting('app.current_tenant', true), 'Gội đầu & Massage',   NULL),
-    (current_setting('app.current_tenant', true), 'Tạo kiểu & Combo',    NULL);
+    (current_setting('app.current_tenant', true), 'Tạo kiểu & Combo',    NULL),
+    (current_setting('app.current_tenant', true), 'Ráy tai',             NULL);
 
 -- ── 6. Loyalty program ───────────────────────────────────────
 INSERT INTO loyalty_programs

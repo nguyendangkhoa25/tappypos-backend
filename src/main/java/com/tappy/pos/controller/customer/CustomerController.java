@@ -15,8 +15,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -193,6 +195,21 @@ public class CustomerController {
         return ResponseEntity.ok(ApiResponse.success(customerService.getRecentCustomers(limit), "Recent customers retrieved"));
     }
 
+    /**
+     * GET /customers/birthdays/this-month
+     * Returns all customers whose birthday (dateOfBirth) falls in the current calendar month,
+     * ordered by day-of-month ascending.  The mobile client re-sorts to surface today /
+     * upcoming days before already-passed days.
+     */
+    @GetMapping("/birthdays/this-month")
+    public ResponseEntity<ApiResponse<List<CustomerDTO>>> getBirthdaysThisMonth() {
+        int month = LocalDate.now().getMonthValue();
+        log.info("Endpoint: GET /customers/birthdays/this-month month={}", month);
+        return ResponseEntity.ok(ApiResponse.success(
+                customerService.getCustomersByBirthdayMonth(month),
+                "Birthday customers retrieved"));
+    }
+
     @GetMapping("/{id}/orders")
     public ResponseEntity<ApiResponse<Page<OrderDTO>>> getCustomerOrders(
             @PathVariable Long id, Pageable pageable) {
@@ -218,6 +235,62 @@ public class CustomerController {
             @RequestParam(defaultValue = "day") String granularity) {
         log.info("Endpoint: GET /customers/{}/orders/chart from={} to={} granularity={}", id, from, to, granularity);
         return ResponseEntity.ok(ApiResponse.success(orderService.getCustomerOrderChart(id, from, to, granularity), "OK"));
+    }
+
+    // ── Customer list analytics ───────────────────────────────────────────────
+
+    @GetMapping("/analytics/summary")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getAnalyticsSummary(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        log.info("Endpoint: GET /customers/analytics/summary from={} to={}", from, to);
+        return ResponseEntity.ok(ApiResponse.success(customerService.getAnalyticsSummary(from, to), "OK"));
+    }
+
+    @GetMapping("/analytics/trend")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getAnalyticsTrend(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "day") String granularity,
+            @RequestParam(defaultValue = "revenue") String metric) {
+        log.info("Endpoint: GET /customers/analytics/trend from={} to={} granularity={} metric={}", from, to, granularity, metric);
+        return ResponseEntity.ok(ApiResponse.success(customerService.getAnalyticsTrend(from, to, granularity, metric), "OK"));
+    }
+
+    @GetMapping("/analytics/ranking")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getAnalyticsRanking(
+            @RequestParam(defaultValue = "10") int limit,
+            @RequestParam(defaultValue = "true") boolean allTime,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        LocalDate resolvedFrom = from != null ? from : LocalDate.now().minusDays(30);
+        LocalDate resolvedTo   = to   != null ? to   : LocalDate.now();
+        log.info("Endpoint: GET /customers/analytics/ranking limit={} allTime={} from={} to={}", limit, allTime, resolvedFrom, resolvedTo);
+        return ResponseEntity.ok(ApiResponse.success(customerService.getTopCustomersRanking(limit, allTime, resolvedFrom, resolvedTo), "OK"));
+    }
+
+    // ── Avatar ────────────────────────────────────────────────────────────────
+
+    /**
+     * POST /customers/{id}/avatar  (multipart/form-data, field: "file")
+     * Upload / replace customer avatar. Resized to 256×256 JPEG on the server.
+     */
+    @PostMapping(value = "/{id}/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<CustomerDTO>> uploadAvatar(
+            @PathVariable Long id,
+            @RequestParam("file") MultipartFile file) {
+        log.info("Endpoint: POST /customers/{}/avatar", id);
+        return ResponseEntity.ok(ApiResponse.success(customerService.uploadAvatar(id, file), "Ảnh đại diện đã được cập nhật"));
+    }
+
+    /**
+     * DELETE /customers/{id}/avatar
+     * Remove customer avatar from R2 and clear the URL.
+     */
+    @DeleteMapping("/{id}/avatar")
+    public ResponseEntity<ApiResponse<CustomerDTO>> deleteAvatar(@PathVariable Long id) {
+        log.info("Endpoint: DELETE /customers/{}/avatar", id);
+        return ResponseEntity.ok(ApiResponse.success(customerService.deleteAvatar(id), "Đã xoá ảnh đại diện"));
     }
 }
 

@@ -14,6 +14,9 @@ public interface PrintTemplateRepository extends JpaRepository<PrintTemplate, Lo
 
     List<PrintTemplate> findAllByTemplateTypeAndDeletedFalseOrderByIsDefaultDescNameAsc(String templateType);
 
+    /** Returns all non-deleted templates across every type — used by the mobile list endpoint. */
+    List<PrintTemplate> findAllByDeletedFalseOrderByTemplateTypeAscIsDefaultDescNameAsc();
+
     Optional<PrintTemplate> findFirstByTemplateTypeAndIsDefaultTrueAndDeletedFalse(String templateType);
 
     boolean existsByTemplateTypeAndDeletedFalse(String templateType);

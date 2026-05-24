@@ -1,8 +1,7 @@
 package com.tappy.pos.model.entity.order;
 
-import jakarta.persistence.*;
 import com.tappy.pos.model.entity.TenantAwareEntity;
-import com.tappy.pos.model.entity.product.Product;
+import jakarta.persistence.*;
 import jakarta.validation.constraints.Positive;
 import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -101,6 +100,19 @@ public class OrderItem extends TenantAwareEntity {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "metadata", columnDefinition = "jsonb")
     private String metadata;
+
+    /** Per-item customer note (e.g. "ít đường", "không hành", "thêm đá"). */
+    @Column(name = "note", length = 500)
+    private String note;
+
+    /** Combo this item was sold as part of; null for standalone items. */
+    @Column(name = "combo_id")
+    private Long comboId;
+
+    /** Service duration in minutes (snapshot from product at order time). 0 = no timer. */
+    @Builder.Default
+    @Column(name = "duration_minutes", nullable = false, columnDefinition = "INT DEFAULT 0")
+    private Integer durationMinutes = 0;
 
     public enum ItemType {
         STANDARD,

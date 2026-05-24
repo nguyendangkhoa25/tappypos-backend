@@ -4,14 +4,16 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 
+/** Body for POST /auth/password-reset/reset */
 @Getter
-@Setter
 @NoArgsConstructor
 public class ResetPasswordRequest {
 
-    @NotBlank
-    @Size(min = 6, max = 100)
+    @NotBlank(message = "resetToken is required")
+    private String resetToken;
+
+    @NotBlank(message = "newPassword is required")
+    @Size(min = 8, max = 100, message = "Password must be at least 8 characters")
     private String newPassword;
 }

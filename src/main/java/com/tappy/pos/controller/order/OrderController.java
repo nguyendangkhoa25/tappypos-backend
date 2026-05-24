@@ -454,6 +454,29 @@ public class OrderController {
         return ResponseEntity.ok(ApiResponse.success(orderService.getTopCustomersByRange(limit, fromDt, toDt), "OK"));
     }
 
+    @GetMapping("/top-customers/by-frequency")
+    @RequiresFeature("CUSTOMER")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getTopCustomersByFrequency(
+            @RequestParam(defaultValue = "10") int limit,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        log.info("Endpoint: GET /orders/top-customers/by-frequency limit={} from={} to={}", limit, from, to);
+        LocalDateTime fromDt = from.atStartOfDay();
+        LocalDateTime toDt   = to.atTime(LocalTime.MAX);
+        return ResponseEntity.ok(ApiResponse.success(orderService.getTopCustomersByFrequency(limit, fromDt, toDt), "OK"));
+    }
+
+    @GetMapping("/customer-stats")
+    @RequiresFeature("CUSTOMER")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getCustomerStats(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        log.info("Endpoint: GET /orders/customer-stats from={} to={}", from, to);
+        LocalDateTime fromDt = from.atStartOfDay();
+        LocalDateTime toDt   = to.atTime(LocalTime.MAX);
+        return ResponseEntity.ok(ApiResponse.success(orderService.getCustomerStats(fromDt, toDt), "OK"));
+    }
+
     @GetMapping("/top-employees")
     @RequiresFeature("ORDER_VIEW_ALL")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getTopEmployees(
@@ -515,6 +538,22 @@ public class OrderController {
         Long employeeId = body.get("employeeId");
         OrderItemDTO item = orderService.updateItemEmployee(id, itemId, employeeId);
         return ResponseEntity.ok(ApiResponse.success(item, "Item employee updated"));
+    }
+
+    /**
+     * PATCH /api/orders/{id}/items/{itemId}/note
+     * Update (or clear) the per-item note in an IN_PROGRESS order.
+     * Body: { "note": "ít đường" } — omit or send null/blank to clear
+     */
+    @PatchMapping("/{id}/items/{itemId}/note")
+    public ResponseEntity<ApiResponse<OrderItemDTO>> updateItemNote(
+            @PathVariable Long id,
+            @PathVariable Long itemId,
+            @RequestBody Map<String, String> body) {
+        log.info("Endpoint: PATCH /orders/{}/items/{}/note", id, itemId);
+        String note = body.get("note");
+        OrderItemDTO item = orderService.updateItemNote(id, itemId, note);
+        return ResponseEntity.ok(ApiResponse.success(item, "Item note updated"));
     }
 
     /**
@@ -597,5 +636,30 @@ public class OrderController {
         log.info("Endpoint: GET /orders/by-staff createdBy={} status={} page={}", createdBy, status, page);
         return ResponseEntity.ok(ApiResponse.success(
                 orderService.getStaffOrders(createdBy, status, from, to, PageRequest.of(page, size)), "OK"));
+    }
+
+    // ── Kitchen Display ────────────────────────────────────────────────────────
+
+    /**
+     * GET /api/orders/kitchen
+     * Returns all PENDING + IN_PROGRESS orders (unfiltered by user) for the kitchen display.
+     * Ordered oldest-first so the most urgent tickets appear at the top.
+     */
+    @GetMapping("/kitchen")
+    @RequiresFeature("TABLE_SERVICE")
+    public ResponseEntity<ApiResponse<java.util.List<OrderDTO>>> getKitchenOrders() {
+        log.info("Endpoint: GET /orders/kitchen");
+        return ResponseEntity.ok(ApiResponse.success(orderService.getKitchenOrders(), "Kitchen orders retrieved"));
+    }
+
+    /**
+     * PATCH /api/orders/kitchen/items/{itemId}/bump
+     * Cycles item status: PENDING → IN_PROGRESS → COMPLETED → PENDING (undo).
+     */
+    @PatchMapping("/kitchen/items/{itemId}/bump")
+    @RequiresFeature("TABLE_SERVICE")
+    public ResponseEntity<ApiResponse<OrderItemDTO>> bumpKitchenItem(@PathVariable Long itemId) {
+        log.info("Endpoint: PATCH /orders/kitchen/items/{}/bump", itemId);
+        return ResponseEntity.ok(ApiResponse.success(orderService.bumpKitchenItem(itemId), "Item status updated"));
     }
 }

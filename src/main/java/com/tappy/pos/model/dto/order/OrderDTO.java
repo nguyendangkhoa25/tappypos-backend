@@ -54,6 +54,8 @@ public class OrderDTO {
     private String tableLabel;
     private String source;
     private String orderType;
+    /** Pickup time for F&B takeaway orders (null for dine-in). */
+    private LocalDateTime pickupTime;
 
     private List<OrderItemDTO> items;
 

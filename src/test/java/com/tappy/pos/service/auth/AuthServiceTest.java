@@ -123,7 +123,7 @@ class AuthServiceTest {
             when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
             when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
-            when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of("DASHBOARD"));
+            when(tenantFeatureService.getAccessibleFeaturesByUserAndTenant(any(), anyList())).thenReturn(List.of("DASHBOARD"));
             when(sessionRegistry.getSession(anyString(), anyString())).thenReturn(Optional.empty());
             when(jwtTokenProvider.generateTokenWithSession(anyString(), anyList(), anyList(), anyBoolean(), anyString(), any(), anyString()))
                     .thenReturn("access-token");
@@ -144,7 +144,7 @@ class AuthServiceTest {
             when(tenantContext.getCurrentTenant()).thenReturn(null);
             when(userRepository.findByUsernameGlobal("testuser")).thenReturn(Optional.of(masterUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
-            when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of("DASHBOARD"));
+            when(tenantFeatureService.getAccessibleFeaturesByUserAndTenant(any(), anyList())).thenReturn(List.of("DASHBOARD"));
             when(sessionRegistry.getSession(anyString(), anyString())).thenReturn(Optional.empty());
             when(jwtTokenProvider.generateTokenWithSession(anyString(), anyList(), anyList(), anyBoolean(), anyString(), any(), anyString()))
                     .thenReturn("master-token");
@@ -164,7 +164,7 @@ class AuthServiceTest {
             when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
             when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
-            when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of());
+            when(tenantFeatureService.getAccessibleFeaturesByUserAndTenant(any(), anyList())).thenReturn(List.of());
             when(sessionRegistry.getSession(anyString(), anyString())).thenReturn(Optional.empty());
             when(jwtTokenProvider.generateTokenWithSession(anyString(), anyList(), anyList(), anyBoolean(), anyString(), any(), anyString()))
                     .thenReturn("access-token");
@@ -187,7 +187,7 @@ class AuthServiceTest {
             when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
             when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
-            when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of());
+            when(tenantFeatureService.getAccessibleFeaturesByUserAndTenant(any(), anyList())).thenReturn(List.of());
             when(sessionRegistry.getSession(anyString(), anyString())).thenReturn(Optional.empty());
             when(jwtTokenProvider.generateTokenWithSession(anyString(), anyList(), anyList(), anyBoolean(), anyString(), any(), anyString()))
                     .thenReturn("access-token");
@@ -271,7 +271,7 @@ class AuthServiceTest {
             when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
             when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
-            when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of());
+            when(tenantFeatureService.getAccessibleFeaturesByUserAndTenant(any(), anyList())).thenReturn(List.of());
             when(sessionRegistry.getSession(anyString(), anyString())).thenReturn(Optional.empty());
             when(jwtTokenProvider.generateTokenWithSession(anyString(), anyList(), anyList(), anyBoolean(), anyString(), any(), anyString()))
                     .thenReturn("token");
@@ -303,7 +303,7 @@ class AuthServiceTest {
             when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
             when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
-            when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of());
+            when(tenantFeatureService.getAccessibleFeaturesByUserAndTenant(any(), anyList())).thenReturn(List.of());
             when(sessionRegistry.getSession(anyString(), anyString())).thenReturn(Optional.empty());
             when(jwtTokenProvider.generateTokenWithSession(anyString(), anyList(), anyList(), anyBoolean(), anyString(), any(), anyString()))
                     .thenReturn("temp-token");
@@ -322,7 +322,7 @@ class AuthServiceTest {
             when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
             when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
-            when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of("DASHBOARD", "ORDER"));
+            when(tenantFeatureService.getAccessibleFeaturesByUserAndTenant(any(), anyList())).thenReturn(List.of("DASHBOARD", "ORDER"));
             when(sessionRegistry.getSession(anyString(), anyString())).thenReturn(Optional.empty());
             when(jwtTokenProvider.generateTokenWithSession(anyString(), anyList(), anyList(), anyBoolean(), anyString(), any(), anyString()))
                     .thenReturn("token");
@@ -344,7 +344,7 @@ class AuthServiceTest {
             when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
             when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
-            when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of());
+            when(tenantFeatureService.getAccessibleFeaturesByUserAndTenant(any(), anyList())).thenReturn(List.of());
             when(sessionRegistry.getSession(anyString(), anyString())).thenReturn(Optional.of(existing));
             when(jwtTokenProvider.generateTokenWithSession(anyString(), anyList(), anyList(), anyBoolean(), anyString(), any(), anyString()))
                     .thenReturn("token");
@@ -362,7 +362,7 @@ class AuthServiceTest {
             when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
             when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
-            when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of());
+            when(tenantFeatureService.getAccessibleFeaturesByUserAndTenant(any(), anyList())).thenReturn(List.of());
             when(sessionRegistry.getSession(anyString(), anyString())).thenReturn(Optional.empty());
             when(jwtTokenProvider.generateTokenWithSession(anyString(), anyList(), anyList(), anyBoolean(), anyString(), any(), anyString()))
                     .thenReturn("token");
@@ -379,7 +379,7 @@ class AuthServiceTest {
             when(tenantContext.getCurrentTenant()).thenReturn(null);
             when(userRepository.findByUsernameGlobal("testuser")).thenReturn(Optional.of(masterUser));
             when(passwordEncoder.matches("password123", "hashedPassword")).thenReturn(true);
-            when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of());
+            when(tenantFeatureService.getAccessibleFeaturesByUserAndTenant(any(), anyList())).thenReturn(List.of());
             when(sessionRegistry.getSession(anyString(), anyString())).thenReturn(Optional.empty());
             when(jwtTokenProvider.generateTokenWithSession(anyString(), anyList(), anyList(), anyBoolean(), anyString(), any(), anyString()))
                     .thenReturn("token");
@@ -409,7 +409,7 @@ class AuthServiceTest {
             when(userRepository.findByUsernameTenantScoped("testuser")).thenReturn(Optional.of(testUser));
             when(refreshTokenRepository.findAllByUserAndActive(eq(testUser), anyLong())).thenReturn(List.of(storedToken));
             when(passwordEncoder.matches("raw-rt", "hashed-rt")).thenReturn(true);
-            when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of("DASHBOARD"));
+            when(tenantFeatureService.getAccessibleFeaturesByUserAndTenant(any(), anyList())).thenReturn(List.of("DASHBOARD"));
             when(jwtTokenProvider.generateTokenWithRolesAndFeatures(anyString(), anyList(), anyList(), anyBoolean(), any(), anyString()))
                     .thenReturn("new-access-token");
             when(jwtTokenProvider.getTokenExpirationMs()).thenReturn(3600000L);
@@ -433,7 +433,7 @@ class AuthServiceTest {
             when(userRepository.findByUsernameGlobal("testuser")).thenReturn(Optional.of(masterUser));
             when(refreshTokenRepository.findAllByUserAndActive(eq(masterUser), anyLong())).thenReturn(List.of(storedToken));
             when(passwordEncoder.matches("raw-rt", "hashed-rt")).thenReturn(true);
-            when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(anyList())).thenReturn(List.of());
+            when(tenantFeatureService.getAccessibleFeaturesByUserAndTenant(any(), anyList())).thenReturn(List.of());
             when(jwtTokenProvider.generateTokenWithRolesAndFeatures(anyString(), anyList(), anyList(), anyBoolean(), any(), anyString()))
                     .thenReturn("new-token");
             when(jwtTokenProvider.getTokenExpirationMs()).thenReturn(3600000L);

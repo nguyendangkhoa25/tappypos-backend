@@ -13,6 +13,7 @@ import com.tappy.pos.model.dto.auth.UserDTO;
 import com.tappy.pos.multitenant.TenantInterceptor;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.auth.AuthService;
+import com.tappy.pos.service.auth.PasswordResetService;
 import com.tappy.pos.service.auth.SessionInfo;
 import com.tappy.pos.service.auth.SessionRegistry;
 import com.tappy.pos.service.auth.TurnstileService;
@@ -85,6 +86,7 @@ class AuthControllerTest {
     @MockBean MessageService               messageService;
     @MockBean AuthService                  authService;
     @MockBean TurnstileService             turnstileService;
+    @MockBean PasswordResetService         passwordResetService;
 
     @BeforeEach
     void setUp() throws Exception {

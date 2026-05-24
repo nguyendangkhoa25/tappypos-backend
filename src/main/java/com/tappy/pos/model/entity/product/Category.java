@@ -20,6 +20,10 @@ public class Category extends TenantAwareEntity {
     @Column(nullable = false, length = 255)
     private String name;
 
+    @Builder.Default
+    @Column(nullable = false, length = 20)
+    private String emoji = "📦";
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_id")
     private Category parent;

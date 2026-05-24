@@ -22,6 +22,7 @@ import com.tappy.pos.model.enums.DiscountType;
 import com.tappy.pos.repository.order.CartItemRepository;
 import com.tappy.pos.repository.order.CartRepository;
 import com.tappy.pos.repository.customer.CustomerRepository;
+import com.tappy.pos.repository.order.ComboRepository;
 import com.tappy.pos.repository.order.OrderRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -133,6 +134,9 @@ class CartServiceImplTest {
     @Mock
     private SubscriptionService subscriptionService;
 
+    @Mock
+    private ComboRepository comboRepository;
+
     private CartServiceImpl cartService;
     private ObjectMapper objectMapper;
 
@@ -173,7 +177,8 @@ class CartServiceImplTest {
             featureContext,
             tableService,
             notificationService,
-            subscriptionService
+            subscriptionService,
+            comboRepository
         );
     }
 
@@ -1814,6 +1819,8 @@ class CartServiceImplTest {
                 .id(1L).cartId("cart-123").status(CartStatus.ACTIVE)
                 .items(new ArrayList<>()).build();
         when(cartRepository.findByCartId("cart-123")).thenReturn(Optional.of(cart));
+
+        when(messageService.getMessage("error.cart.gold.item.type")).thenReturn("Item type must be GOLD_IN or GOLD_OUT");
 
         AddGoldItemRequest req = new AddGoldItemRequest();
         req.setItemType(CartItemEntity.ItemType.STANDARD);

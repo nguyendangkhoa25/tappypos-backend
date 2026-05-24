@@ -36,4 +36,7 @@ public class EmployeeDTO {
     private String idCardIssuedPlace;
     private String idCardFrontImage;
     private String idCardBackImage;
+
+    /** R2 public URL for the employee's avatar photo; null if no avatar set. */
+    private String avatarUrl;
 }

@@ -4,11 +4,18 @@ import com.tappy.pos.config.AuthContext;
 import com.tappy.pos.model.dto.ApiResponse;
 import com.tappy.pos.model.dto.auth.AuthResponse;
 import com.tappy.pos.model.dto.auth.LoginRequest;
+import com.tappy.pos.model.dto.auth.OtpRequestBody;
+import com.tappy.pos.model.dto.auth.OtpRequestResponse;
+import com.tappy.pos.model.dto.auth.OtpVerifyRequest;
+import com.tappy.pos.model.dto.auth.OtpVerifyResponse;
+import com.tappy.pos.model.dto.auth.ResetPasswordRequest;
 import com.tappy.pos.model.dto.auth.UserDTO;
 import com.tappy.pos.service.auth.AuthService;
+import com.tappy.pos.service.auth.PasswordResetService;
 import com.tappy.pos.service.auth.TurnstileService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
@@ -30,6 +37,7 @@ public class AuthController {
     private final AuthService authService;
     private final AuthContext authContext;
     private final TurnstileService turnstileService;
+    private final PasswordResetService passwordResetService;
 
     /**
      * POST /api/auth/login
@@ -208,12 +216,43 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success(null, "PIN removed successfully"));
     }
 
+    /**
+     * POST /api/auth/password-reset/request
+     * Step 1: submit phone → receive OTP via Zalo ZNS.
+     * Always returns 200 (never reveals if phone is registered).
+     */
     @PostMapping("/password-reset/request")
-    public ResponseEntity<ApiResponse<Void>> requestPasswordReset(@RequestBody java.util.Map<String, String> body) {
-        String phone = body.get("phone");
-        if (phone == null) return ResponseEntity.badRequest().body(ApiResponse.error("BAD_REQUEST", "phone required"));
-        authService.requestPasswordReset(phone);
-        return ResponseEntity.ok(ApiResponse.success(null, "If the account exists, instructions have been sent."));
+    public ResponseEntity<ApiResponse<OtpRequestResponse>> requestPasswordReset(
+            @Valid @RequestBody OtpRequestBody body,
+            HttpServletRequest request) {
+        String maskedPhone = passwordResetService.requestOtp(body.getPhone(), resolveClientIp(request));
+        return ResponseEntity.ok(ApiResponse.success(
+                new OtpRequestResponse(maskedPhone),
+                "Mã OTP đã được gửi qua Zalo"));
+    }
+
+    /**
+     * POST /api/auth/password-reset/verify
+     * Step 2: submit OTP → receive a short-lived resetToken (10 min, single-use).
+     */
+    @PostMapping("/password-reset/verify")
+    public ResponseEntity<ApiResponse<OtpVerifyResponse>> verifyOtp(
+            @Valid @RequestBody OtpVerifyRequest request) {
+        String resetToken = passwordResetService.verifyOtp(request.getPhone(), request.getOtp());
+        return ResponseEntity.ok(ApiResponse.success(
+                new OtpVerifyResponse(resetToken),
+                "OTP hợp lệ"));
+    }
+
+    /**
+     * POST /api/auth/password-reset/reset
+     * Step 3: submit resetToken + newPassword → password updated.
+     */
+    @PostMapping("/password-reset/reset")
+    public ResponseEntity<ApiResponse<Void>> resetPassword(
+            @Valid @RequestBody ResetPasswordRequest body) {
+        passwordResetService.resetPassword(body.getResetToken(), body.getNewPassword());
+        return ResponseEntity.ok(ApiResponse.success(null, "Mật khẩu đã được đặt lại thành công"));
     }
 
     private String resolveClientIp(HttpServletRequest request) {

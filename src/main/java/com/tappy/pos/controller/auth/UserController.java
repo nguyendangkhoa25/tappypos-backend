@@ -6,6 +6,7 @@ import com.tappy.pos.model.dto.auth.CreateUserRequest;
 import com.tappy.pos.model.dto.auth.UserDetailDTO;
 import com.tappy.pos.model.dto.auth.PasswordResetResponse;
 import com.tappy.pos.service.auth.UserService;
+import com.tappy.pos.service.tenant.TenantFeatureService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -13,6 +14,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import com.tappy.pos.annotation.RequiresFeature;
+
+import java.util.Set;
 
 /**
  * UserController - REST API endpoints for user management
@@ -27,6 +30,7 @@ public class UserController {
 
     private final UserService userService;
     private final AuthContext authContext;
+    private final TenantFeatureService tenantFeatureService;
 
     /**
      * POST /api/users
@@ -197,6 +201,18 @@ public class UserController {
         UserDetailDTO user = userService.getUserByUsername(username);
         userService.deleteUser(user.getId());
         return ResponseEntity.ok(ApiResponse.success(null, "Account deleted"));
+    }
+
+    /**
+     * GET /api/users/tenant-features
+     * Return all feature names available to the current tenant.
+     * Used by the mobile feature-matrix so the owner can see which features can be assigned to a user.
+     */
+    @GetMapping("/tenant-features")
+    public ResponseEntity<ApiResponse<Set<String>>> getTenantFeatures() {
+        log.info("Endpoint: GET /users/tenant-features - Get tenant available features");
+        Set<String> features = tenantFeatureService.getTenantAssignedFeatures();
+        return ResponseEntity.ok(ApiResponse.success(features, "Tenant features retrieved successfully"));
     }
 
     /**

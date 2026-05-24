@@ -9,8 +9,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import com.tappy.pos.annotation.RequiresFeature;
@@ -122,6 +124,18 @@ public class ProductController {
     }
 
     /**
+     * Per-product sales stats.
+     * GET /api/products/{id}/stats?days=30
+     */
+    @GetMapping("/{id}/stats")
+    public ResponseEntity<ApiResponse<ProductStatsDTO>> getProductStats(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "30") int days) {
+        log.info("GET /api/products/{}/stats - days={}", id, days);
+        return ResponseEntity.ok(ApiResponse.success(productService.getProductStats(id, days), "OK"));
+    }
+
+    /**
      * Get product by ID (generic path must come last)
      * GET /api/products/{id}
      */
@@ -169,6 +183,36 @@ public class ProductController {
         if (active == null) return ResponseEntity.badRequest().body(ApiResponse.error("BAD_REQUEST", "active required"));
         productService.setVisibility(id, active);
         return ResponseEntity.ok(ApiResponse.success(null, "Visibility updated"));
+    }
+
+    /**
+     * Upload or replace product image.
+     * POST /api/products/{id}/image   (multipart/form-data, field: "file")
+     * Accepts JPEG / PNG / WebP, max 10 MB (configured in application.properties).
+     * Resizes server-side to ≤ 1024 px and stores as JPEG in Cloudflare R2.
+     * Returns the updated ProductDTO with the new imageUrl.
+     */
+    @PostMapping(value = "/{id}/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<ProductDTO>> uploadImage(
+            @PathVariable Long id,
+            @RequestParam("file") MultipartFile file) {
+        log.info("POST /api/products/{}/image — size: {} bytes", id, file.getSize());
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("BAD_REQUEST", "File không được để trống"));
+        }
+        ProductDTO product = productService.uploadImage(id, file);
+        return ResponseEntity.ok(ApiResponse.success(product, "Ảnh sản phẩm đã được cập nhật"));
+    }
+
+    /**
+     * Delete product image.
+     * DELETE /api/products/{id}/image
+     */
+    @DeleteMapping("/{id}/image")
+    public ResponseEntity<ApiResponse<Void>> deleteImage(@PathVariable Long id) {
+        log.info("DELETE /api/products/{}/image", id);
+        productService.deleteImage(id);
+        return ResponseEntity.ok(ApiResponse.success(null, "Ảnh sản phẩm đã được xoá"));
     }
 
     /**

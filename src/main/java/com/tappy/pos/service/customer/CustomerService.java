@@ -4,6 +4,8 @@ import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.service.storage.R2CleanupService;
+import com.tappy.pos.service.storage.R2StorageService;
 import com.tappy.pos.model.dto.customer.CreateCustomerRequest;
 import com.tappy.pos.model.dto.customer.CustomerDTO;
 import com.tappy.pos.model.dto.customer.UpdateCustomerRequest;
@@ -11,8 +13,11 @@ import com.tappy.pos.model.entity.customer.Customer;
 import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.customer.CustomerRepository;
+import com.tappy.pos.repository.order.OrderRepository;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.coobird.thumbnailator.Thumbnails;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -20,8 +25,19 @@ import org.springframework.data.domain.Sort;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -30,9 +46,13 @@ import java.util.List;
 public class CustomerService {
 
     private final CustomerRepository customerRepository;
+    private final OrderRepository orderRepository;
+    private final EntityManager entityManager;
     private final MessageService messageService;
     private final ActivityLogService activityLogService;
     private final TenantContext tenantContext;
+    private final R2StorageService r2StorageService;
+    private final R2CleanupService r2CleanupService;
 
     public CustomerDTO createCustomer(CreateCustomerRequest request) {
         log.info("Request: Create new customer - name: {}, phone: {}, email: {}",
@@ -229,6 +249,12 @@ public class CustomerService {
                 .stream().map(this::mapToDTO).collect(java.util.stream.Collectors.toList());
     }
 
+    /** Returns all customers whose birthday is in {@code month} (1–12), ordered by day ascending. */
+    public List<CustomerDTO> getCustomersByBirthdayMonth(int month) {
+        return customerRepository.findByBirthdayMonth(month)
+                .stream().map(this::mapToDTO).collect(java.util.stream.Collectors.toList());
+    }
+
     public Long getCustomerCount() {
         log.info("Request: Get customer count");
         long count = customerRepository.countAllActive();
@@ -292,7 +318,174 @@ public class CustomerService {
                 .loyaltyPoints(customer.getLoyaltyPoints() != null ? customer.getLoyaltyPoints() : 0)
                 .totalSpent(customer.getTotalSpent())
                 .walkIn(customer.isWalkIn())
+                .avatarUrl(customer.getAvatarUrl())
                 .build();
+    }
+
+    // ── Avatar ────────────────────────────────────────────────────────────────
+
+    /**
+     * Upload and store an avatar for a customer.
+     * Resizes to 256×256 JPEG (85%), stores in R2 under customers/{tenantId}/{id}.jpg,
+     * removes the old file after DB commit (fire-and-forget).
+     */
+    public CustomerDTO uploadAvatar(Long id, MultipartFile file) {
+        String contentType = file.getContentType();
+        if (contentType == null || (!contentType.startsWith("image/jpeg")
+                && !contentType.startsWith("image/png")
+                && !contentType.startsWith("image/webp"))) {
+            throw new BadRequestException(messageService.getMessage("error.user.avatar.invalid.type"));
+        }
+
+        Customer customer = customerRepository.findByIdActive(id)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        messageService.getMessage("error.customer.not.found", id)));
+
+        String oldKey = r2StorageService.keyFromUrl(customer.getAvatarUrl());
+
+        byte[] compressed;
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            Thumbnails.of(file.getInputStream())
+                    .size(256, 256)
+                    .keepAspectRatio(true)
+                    .outputFormat("jpg")
+                    .outputQuality(0.85)
+                    .toOutputStream(out);
+            compressed = out.toByteArray();
+        } catch (IOException e) {
+            log.error("Failed to process avatar image for customer: {}", id, e);
+            throw new BadRequestException(messageService.getMessage("error.user.avatar.process.failed"));
+        }
+
+        String key = "customers/" + tenantContext.getCurrentTenantId() + "/" + id + ".jpg";
+        String url = r2StorageService.upload(key, compressed, "image/jpeg");
+        customer.setAvatarUrl(url.isBlank() ? null : url + "?v=" + System.currentTimeMillis());
+        Customer saved = customerRepository.save(customer);
+
+        r2CleanupService.deleteAsync(oldKey);
+        log.info("Customer avatar uploaded — customerId: {}, key: {}", id, key);
+        return mapToDTO(saved);
+    }
+
+    /**
+     * Remove the customer's avatar from R2 and clear the avatarUrl field.
+     */
+    public CustomerDTO deleteAvatar(Long id) {
+        Customer customer = customerRepository.findByIdActive(id)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        messageService.getMessage("error.customer.not.found", id)));
+
+        String oldKey = r2StorageService.keyFromUrl(customer.getAvatarUrl());
+        customer.setAvatarUrl(null);
+        Customer saved = customerRepository.save(customer);
+
+        r2CleanupService.deleteAsync(oldKey);
+        log.info("Customer avatar deleted — customerId: {}", id);
+        return mapToDTO(saved);
+    }
+
+    // ── Analytics ─────────────────────────────────────────────────────────────
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getAnalyticsSummary(LocalDate from, LocalDate to) {
+        LocalDateTime dtFrom = from.atStartOfDay();
+        LocalDateTime dtTo = to.atTime(LocalTime.MAX);
+
+        long totalCustomers  = customerRepository.countAllActive();
+        long activeCustomers = orderRepository.countActiveCustomers(dtFrom, dtTo);
+        long newCustomers    = customerRepository.countNewInPeriod(dtFrom, dtTo);
+        BigDecimal totalRevenue = orderRepository.getTotalRevenueFromNamedCustomers(dtFrom, dtTo);
+        if (totalRevenue == null) totalRevenue = BigDecimal.ZERO;
+        double avgSpend = activeCustomers > 0
+                ? totalRevenue.doubleValue() / activeCustomers
+                : 0.0;
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("totalCustomers",  totalCustomers);
+        result.put("activeCustomers", activeCustomers);
+        result.put("newCustomers",    newCustomers);
+        result.put("totalRevenue",    totalRevenue);
+        result.put("avgSpend",        avgSpend);
+        return result;
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getAnalyticsTrend(LocalDate from, LocalDate to,
+                                                        String granularity, String metric) {
+        LocalDateTime dtFrom = from.atStartOfDay();
+        LocalDateTime dtTo   = to.atTime(LocalTime.MAX);
+
+        String trunc  = switch (granularity == null ? "day" : granularity) {
+            case "week"  -> "week";
+            case "month" -> "month";
+            case "year"  -> "year";
+            default      -> "day";
+        };
+        String fmt = switch (trunc) {
+            case "month" -> "YYYY-MM";
+            case "year"  -> "YYYY";
+            default      -> "YYYY-MM-DD";
+        };
+
+        String sql = switch (metric == null ? "revenue" : metric) {
+            case "visits" -> String.format(
+                "SELECT TO_CHAR(DATE_TRUNC('%s', o.completed_at), '%s') AS label, COUNT(o.id) AS value " +
+                "FROM orders o JOIN customers c ON o.customer_id = c.id " +
+                "WHERE o.deleted = false AND o.status = 'COMPLETED' " +
+                "AND c.deleted = false AND c.phone != '0000000000' " +
+                "AND o.completed_at BETWEEN :from AND :to " +
+                "GROUP BY label ORDER BY label", trunc, fmt);
+            case "new" -> String.format(
+                "SELECT TO_CHAR(DATE_TRUNC('%s', c.created_at), '%s') AS label, COUNT(c.id) AS value " +
+                "FROM customers c " +
+                "WHERE c.deleted = false AND c.phone != '0000000000' " +
+                "AND c.created_at BETWEEN :from AND :to " +
+                "GROUP BY label ORDER BY label", trunc, fmt);
+            default -> String.format(
+                "SELECT TO_CHAR(DATE_TRUNC('%s', o.completed_at), '%s') AS label, " +
+                "COALESCE(SUM(o.total_amount), 0) AS value " +
+                "FROM orders o JOIN customers c ON o.customer_id = c.id " +
+                "WHERE o.deleted = false AND o.status = 'COMPLETED' " +
+                "AND c.deleted = false AND c.phone != '0000000000' " +
+                "AND o.completed_at BETWEEN :from AND :to " +
+                "GROUP BY label ORDER BY label", trunc, fmt);
+        };
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = entityManager.createNativeQuery(sql)
+                .setParameter("from", dtFrom)
+                .setParameter("to", dtTo)
+                .getResultList();
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object[] row : rows) {
+            result.add(Map.of("label", row[0].toString(), "value", row[1]));
+        }
+        return result;
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getTopCustomersRanking(int limit, boolean allTime,
+                                                             LocalDate from, LocalDate to) {
+        List<Object[]> rows;
+        if (allTime) {
+            rows = orderRepository.getTopCustomersAllTime(PageRequest.of(0, limit));
+        } else {
+            LocalDateTime dtFrom = from.atStartOfDay();
+            LocalDateTime dtTo   = to.atTime(LocalTime.MAX);
+            rows = orderRepository.getTopCustomersByRange(dtFrom, dtTo, PageRequest.of(0, limit));
+        }
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object[] row : rows) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("name",       row[0] != null ? row[0].toString() : "");
+            item.put("orderCount", ((Number) row[1]).longValue());
+            item.put("totalSpend", row[2]);
+            item.put("customerId", row[3] != null ? row[3].toString() : null);
+            result.add(item);
+        }
+        return result;
     }
 }
 

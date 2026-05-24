@@ -36,4 +36,7 @@ public class WorkItemDTO {
 
     private BigDecimal commissionRate;
     private BigDecimal commissionAmount;
+
+    /** Per-item customer note (e.g. "ít đường", "không hành"). Null when no note was set. */
+    private String note;
 }

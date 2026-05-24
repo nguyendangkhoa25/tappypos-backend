@@ -80,6 +80,15 @@ public class ShopExpenseController {
         return ResponseEntity.ok(ApiResponse.success(expenseService.getCategoryBreakdown(year, month), "Category breakdown retrieved"));
     }
 
+    /** Date-range category breakdown — used by mobile Report screen */
+    @GetMapping("/category-breakdown/range")
+    public ResponseEntity<ApiResponse<List<ExpenseCategoryBreakdownDTO>>> getCategoryBreakdownByRange(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        log.info("Endpoint: GET /expenses/category-breakdown/range - from:{} to:{}", from, to);
+        return ResponseEntity.ok(ApiResponse.success(expenseService.getCategoryBreakdown(from, to), "Category breakdown retrieved"));
+    }
+
     @GetMapping("/summary")
     public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> getSummary(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,

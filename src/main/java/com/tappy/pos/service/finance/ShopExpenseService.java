@@ -24,6 +24,9 @@ public interface ShopExpenseService {
 
     List<ExpenseCategoryBreakdownDTO> getCategoryBreakdown(Integer year, Integer month);
 
+    /** Date-range variant — used by mobile Report screen */
+    List<ExpenseCategoryBreakdownDTO> getCategoryBreakdown(LocalDate from, LocalDate to);
+
     java.util.Map<String, Object> getSummary(LocalDate from, LocalDate to);
 
     java.util.List<java.util.Map<String, Object>> getChart(LocalDate from, LocalDate to);

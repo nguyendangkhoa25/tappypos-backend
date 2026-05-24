@@ -100,6 +100,13 @@ public class Order extends TenantAwareEntity {
     @Column(name = "table_label", length = 100)
     private String tableLabel;
 
+    /**
+     * Target pickup time for takeaway orders (null for dine-in / non-F&B orders).
+     * Set by staff at order creation; displayed on kitchen tickets and the takeaway queue.
+     */
+    @Column(name = "pickup_time")
+    private LocalDateTime pickupTime;
+
     @Builder.Default
     @Column(name = "source", length = 20, nullable = false)
     private String source = "POS";

@@ -3,6 +3,7 @@ package com.tappy.pos.controller.table;
 import com.tappy.pos.annotation.RequiresFeature;
 import com.tappy.pos.model.dto.ApiResponse;
 import com.tappy.pos.model.dto.table.CreateTableRequest;
+import com.tappy.pos.model.dto.table.SetTableStatusRequest;
 import com.tappy.pos.model.dto.table.TableDTO;
 import com.tappy.pos.model.dto.table.UpdateTableRequest;
 import com.tappy.pos.service.table.TableService;
@@ -43,5 +44,16 @@ public class TableController {
     public ResponseEntity<ApiResponse<Void>> deleteTable(@PathVariable Long id) {
         tableService.deleteTable(id);
         return ResponseEntity.ok(ApiResponse.success(null, "Xóa bàn thành công"));
+    }
+
+    /**
+     * Staff manually sets a table status: RESERVED (+ name/time), CLEANING, or AVAILABLE.
+     * OCCUPIED transitions are handled by the cart/checkout flow, not this endpoint.
+     */
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<ApiResponse<TableDTO>> setStatus(
+            @PathVariable Long id,
+            @Valid @RequestBody SetTableStatusRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(tableService.setStatus(id, request), "Cập nhật trạng thái bàn thành công"));
     }
 }

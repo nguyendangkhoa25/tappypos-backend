@@ -9,13 +9,22 @@ import com.tappy.pos.model.dto.auth.ProfileRequest;
 import com.tappy.pos.model.dto.auth.UserProfile;
 import com.tappy.pos.model.entity.auth.Role;
 import com.tappy.pos.model.entity.auth.User;
+import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.repository.auth.UserRepository;
+import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.service.storage.R2CleanupService;
+import com.tappy.pos.service.storage.R2StorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.coobird.thumbnailator.Thumbnails;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.stream.Collectors;
 
 /**
@@ -31,6 +40,9 @@ public class ProfileServiceImpl implements ProfileService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final MessageService messageService;
+    private final R2StorageService r2StorageService;
+    private final R2CleanupService r2CleanupService;
+    private final ActivityLogService activityLogService;
 
     /**
      * Get user profile by username
@@ -250,6 +262,86 @@ public class ProfileServiceImpl implements ProfileService {
     }
 
     /**
+     * Upload and store a new avatar image for the user.
+     * Resizes to 512×512 JPEG (85%), stores in R2 under avatars/{userId}.jpg,
+     * clears the old avatar after the new one is safely committed.
+     */
+    @Override
+    public UserProfile uploadAvatar(String username, MultipartFile file) {
+        String contentType = file.getContentType();
+        if (contentType == null || (!contentType.startsWith("image/jpeg")
+                && !contentType.startsWith("image/png")
+                && !contentType.startsWith("image/webp"))) {
+            throw new BadRequestException(messageService.getMessage("error.user.avatar.invalid.type"));
+        }
+
+        User user = userRepository.findByUsernameActive(username)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        messageService.getMessage("error.user.not.found", username)));
+
+        String oldAvatarKey = r2StorageService.keyFromUrl(user.getAvatarUrl());
+
+        // Resize to 512×512 max, JPEG 85% quality (also corrects EXIF orientation)
+        byte[] compressed;
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            Thumbnails.of(file.getInputStream())
+                    .size(512, 512)
+                    .keepAspectRatio(true)
+                    .outputFormat("jpg")
+                    .outputQuality(0.85)
+                    .toOutputStream(out);
+            compressed = out.toByteArray();
+        } catch (IOException e) {
+            log.error("Failed to process avatar image for user: {}", username, e);
+            throw new BadRequestException(messageService.getMessage("error.user.avatar.process.failed"));
+        }
+
+        // Upload new image first — only clean up old after DB is committed
+        String key = "avatars/" + user.getId() + ".jpg";
+        String url = r2StorageService.upload(key, compressed, "image/jpeg");
+        user.setAvatarUrl(url.isBlank() ? null : url);
+        User saved = userRepository.save(user);
+
+        // Fire-and-forget: remove old avatar from R2
+        r2CleanupService.deleteAsync(oldAvatarKey);
+
+        String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync(null, actor, null,
+                ActivityAction.USER_AVATAR_UPDATED, "USER", user.getId().toString(),
+                "Updated avatar for user: " + username, null);
+
+        log.info("Avatar uploaded — userId: {}, key: {}", user.getId(), key);
+        return mapToUserProfile(saved);
+    }
+
+    /**
+     * Delete the current user's avatar from R2 and clear avatarUrl.
+     */
+    @Override
+    public void deleteAvatar(String username) {
+        User user = userRepository.findByUsernameActive(username)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        messageService.getMessage("error.user.not.found", username)));
+
+        String oldAvatarKey = r2StorageService.keyFromUrl(user.getAvatarUrl());
+        if (oldAvatarKey == null) return; // no avatar to delete
+
+        user.setAvatarUrl(null);
+        userRepository.save(user);
+
+        // Fire-and-forget: remove from R2 after DB is committed
+        r2CleanupService.deleteAsync(oldAvatarKey);
+
+        String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync(null, actor, null,
+                ActivityAction.USER_AVATAR_DELETED, "USER", user.getId().toString(),
+                "Deleted avatar for user: " + username, null);
+
+        log.info("Avatar deleted — userId: {}", user.getId());
+    }
+
+    /**
      * Map User entity to UserProfile DTO
      */
     private UserProfile mapToUserProfile(User user) {
@@ -259,6 +351,7 @@ public class ProfileServiceImpl implements ProfileService {
                 .email(user.getEmail())
                 .fullName(user.getFullName())
                 .avatar(user.getAvatar())
+                .avatarUrl(user.getAvatarUrl())
                 .colorPreference(user.getColorPreference())
                 .lang(user.getLang())
                 .active(user.getActive())

@@ -247,7 +247,7 @@ class RevenueServiceImplTest {
     void getPaymentBreakdown_empty() {
         when(orderRepository.groupByPaymentMethod(null, null)).thenReturn(Collections.emptyList());
 
-        List<PaymentBreakdownDTO> result = revenueService.getPaymentBreakdown(null, null);
+        List<PaymentBreakdownDTO> result = revenueService.getPaymentBreakdown((Integer) null, (Integer) null);
 
         assertThat(result).isEmpty();
     }
@@ -260,7 +260,7 @@ class RevenueServiceImplTest {
         rows.add(new Object[]{"CARD", 20L, new BigDecimal("200000")});
         when(orderRepository.groupByPaymentMethod(null, null)).thenReturn(rows);
 
-        List<PaymentBreakdownDTO> result = revenueService.getPaymentBreakdown(null, null);
+        List<PaymentBreakdownDTO> result = revenueService.getPaymentBreakdown((Integer) null, (Integer) null);
 
         assertThat(result).hasSize(2);
         PaymentBreakdownDTO cash = result.get(0);
@@ -275,7 +275,7 @@ class RevenueServiceImplTest {
         rows.add(new Object[]{null, 10L, new BigDecimal("100000")});
         when(orderRepository.groupByPaymentMethod(null, null)).thenReturn(rows);
 
-        List<PaymentBreakdownDTO> result = revenueService.getPaymentBreakdown(null, null);
+        List<PaymentBreakdownDTO> result = revenueService.getPaymentBreakdown((Integer) null, (Integer) null);
 
         assertThat(result.get(0).getPaymentMethod()).isEqualTo("UNKNOWN");
     }
@@ -354,7 +354,7 @@ class RevenueServiceImplTest {
     void getCategoryBreakdown_empty() {
         when(orderRepository.sumRevenueGroupedByCategory(null, null)).thenReturn(Collections.emptyList());
 
-        List<CategoryRevenueDTO> result = revenueService.getCategoryBreakdown(null, null);
+        List<CategoryRevenueDTO> result = revenueService.getCategoryBreakdown((Integer) null, (Integer) null);
 
         assertThat(result).isEmpty();
     }
@@ -367,7 +367,7 @@ class RevenueServiceImplTest {
         rows.add(new Object[]{"Thực phẩm", 20L, new BigDecimal("400000")});
         when(orderRepository.sumRevenueGroupedByCategory(null, null)).thenReturn(rows);
 
-        List<CategoryRevenueDTO> result = revenueService.getCategoryBreakdown(null, null);
+        List<CategoryRevenueDTO> result = revenueService.getCategoryBreakdown((Integer) null, (Integer) null);
 
         assertThat(result).hasSize(2);
         assertThat(result.get(0).getCategoryName()).isEqualTo("Đồ uống");
@@ -381,7 +381,7 @@ class RevenueServiceImplTest {
         rows.add(new Object[]{"Khác", 5L, null});
         when(orderRepository.sumRevenueGroupedByCategory(null, null)).thenReturn(rows);
 
-        List<CategoryRevenueDTO> result = revenueService.getCategoryBreakdown(null, null);
+        List<CategoryRevenueDTO> result = revenueService.getCategoryBreakdown((Integer) null, (Integer) null);
 
         assertThat(result.get(0).getRevenue()).isEqualByComparingTo(ZERO);
         assertThat(result.get(0).getPercentage()).isEqualTo(0.0);
@@ -478,7 +478,7 @@ class RevenueServiceImplTest {
         rows.add(new Object[]{"Electronics", 10L, 300000L}); // Long, not BigDecimal
         when(orderRepository.sumRevenueGroupedByCategory(null, null)).thenReturn(rows);
 
-        List<CategoryRevenueDTO> result = revenueService.getCategoryBreakdown(null, null);
+        List<CategoryRevenueDTO> result = revenueService.getCategoryBreakdown((Integer) null, (Integer) null);
 
         assertThat(result.get(0).getRevenue()).isEqualByComparingTo("300000");
     }

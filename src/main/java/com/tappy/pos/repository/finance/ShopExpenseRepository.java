@@ -74,6 +74,15 @@ public interface ShopExpenseRepository extends JpaRepository<ShopExpense, Long> 
     @Query(value = "SELECT COALESCE(SUM(amount), 0) FROM shop_expense WHERE deleted = FALSE AND expense_date >= :from AND expense_date <= :to", nativeQuery = true)
     java.math.BigDecimal sumByDateRange(@Param("from") LocalDate from, @Param("to") LocalDate to);
 
+    // Category breakdown by date range: [category, total]
+    @Query(value = "SELECT category, COALESCE(SUM(amount), 0) " +
+           "FROM shop_expense WHERE deleted = FALSE " +
+           "AND (CAST(:from AS date) IS NULL OR expense_date >= CAST(:from AS date)) " +
+           "AND (CAST(:to   AS date) IS NULL OR expense_date <= CAST(:to   AS date)) " +
+           "GROUP BY category ORDER BY SUM(amount) DESC",
+           nativeQuery = true)
+    List<Object[]> sumGroupedByCategoryDateRange(@Param("from") LocalDate from, @Param("to") LocalDate to);
+
     @Query(value = "SELECT TO_CHAR(expense_date, 'YYYY-MM-DD') as label, COALESCE(SUM(amount),0) as value FROM shop_expense WHERE deleted = FALSE AND expense_date >= :from AND expense_date <= :to GROUP BY label ORDER BY label", nativeQuery = true)
     List<Object[]> getDailyChart(@Param("from") LocalDate from, @Param("to") LocalDate to);
 

@@ -126,11 +126,11 @@ public class TenantSeedService {
                     "  'POS_RECEIPT'," +
                     "  '" + tName.replace("'", "''") + "'," +
                     "  '" + tConfig.replace("'", "''") + "'," +
-                    "  FALSE, FALSE, NOW(), NOW()" +
+                    "  TRUE, FALSE, NOW(), NOW()" +
                     ") ON CONFLICT (template_type, name, tenant_id) DO NOTHING"
                 );
                 conn.releaseSavepoint(sp);
-                log.info("Seeded shop-type print template '{}' for shopType={}", tName, shopType);
+                log.info("Seeded shop-type print template '{}' (isDefault=true) for shopType={}", tName, shopType);
             } catch (Exception e) {
                 conn.rollback(sp);
                 log.warn("Could not seed print template for shopType {}: {}", shopType, e.getMessage());
@@ -164,11 +164,11 @@ public class TenantSeedService {
                     "  'POS_RECEIPT'," +
                     "  '" + name.replace("'", "''") + "'," +
                     "  '" + config.replace("'", "''") + "'," +
-                    "  FALSE, FALSE, NOW(), NOW()" +
+                    "  TRUE, FALSE, NOW(), NOW()" +
                     ") ON CONFLICT (template_type, name, tenant_id) DO NOTHING"
                 );
                 conn.releaseSavepoint(sp);
-                log.info("Seeded gold guarantee certificate template");
+                log.info("Seeded gold guarantee certificate template (isDefault=true)");
             } catch (Exception e) {
                 conn.rollback(sp);
                 log.warn("Could not seed gold certificate template: {}", e.getMessage());

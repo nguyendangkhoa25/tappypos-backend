@@ -117,6 +117,33 @@ public class ShopExpenseServiceImpl implements ShopExpenseService {
                 .collect(Collectors.toList());
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<ExpenseCategoryBreakdownDTO> getCategoryBreakdown(LocalDate from, LocalDate to) {
+        List<Object[]> rows = expenseRepository.sumGroupedByCategoryDateRange(from, to);
+
+        BigDecimal grandTotal = rows.stream()
+                .map(r -> (BigDecimal) r[1])
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return rows.stream()
+                .map(row -> {
+                    ExpenseCategory cat = ExpenseCategory.valueOf(row[0].toString());
+                    BigDecimal total = (BigDecimal) row[1];
+                    double pct = grandTotal.compareTo(BigDecimal.ZERO) > 0
+                            ? total.divide(grandTotal, 4, RoundingMode.HALF_UP)
+                                    .multiply(BigDecimal.valueOf(100)).doubleValue()
+                            : 0.0;
+                    return ExpenseCategoryBreakdownDTO.builder()
+                            .category(cat)
+                            .categoryDisplayName(cat.getDisplayName())
+                            .total(total)
+                            .percentage(Math.round(pct * 10.0) / 10.0)
+                            .build();
+                })
+                .collect(Collectors.toList());
+    }
+
     private static final List<String> FIXED_CATEGORIES = of(
             "RENT", "ELECTRICITY", "WATER", "INTERNET", "PHONE", "SOFTWARE", "INSURANCE");
 

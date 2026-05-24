@@ -290,6 +290,54 @@ public class RevenueServiceImpl implements RevenueService {
                 .collect(Collectors.toList());
     }
 
+    @Override
+    public List<PaymentBreakdownDTO> getPaymentBreakdown(LocalDate from, LocalDate to) {
+        List<Object[]> rows = orderRepository.groupByPaymentMethodDateRange(from, to);
+
+        BigDecimal grandTotal = rows.stream()
+                .map(r -> (BigDecimal) r[2])
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return rows.stream()
+                .map(row -> {
+                    BigDecimal amount = (BigDecimal) row[2];
+                    double pct = grandTotal.compareTo(BigDecimal.ZERO) > 0
+                            ? amount.divide(grandTotal, 4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100)).doubleValue()
+                            : 0.0;
+                    return PaymentBreakdownDTO.builder()
+                            .paymentMethod(row[0] != null ? (String) row[0] : "UNKNOWN")
+                            .orderCount(((Number) row[1]).longValue())
+                            .totalAmount(amount)
+                            .percentage(Math.round(pct * 10.0) / 10.0)
+                            .build();
+                })
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<CategoryRevenueDTO> getCategoryBreakdown(LocalDate from, LocalDate to) {
+        List<Object[]> rows = orderRepository.sumRevenueGroupedByCategoryDateRange(from, to);
+
+        BigDecimal grandTotal = rows.stream()
+                .map(r -> toBigDecimal(r[2]))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return rows.stream()
+                .map(row -> {
+                    BigDecimal revenue = toBigDecimal(row[2]);
+                    double pct = grandTotal.compareTo(BigDecimal.ZERO) > 0
+                            ? revenue.divide(grandTotal, 4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100)).doubleValue()
+                            : 0.0;
+                    return CategoryRevenueDTO.builder()
+                            .categoryName((String) row[0])
+                            .orderCount(((Number) row[1]).longValue())
+                            .revenue(revenue)
+                            .percentage(Math.round(pct * 10.0) / 10.0)
+                            .build();
+                })
+                .collect(Collectors.toList());
+    }
+
     private BigDecimal toBigDecimal(Object value) {
         if (value == null) return BigDecimal.ZERO;
         if (value instanceof BigDecimal) return (BigDecimal) value;

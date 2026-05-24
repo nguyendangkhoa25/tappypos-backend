@@ -197,6 +197,8 @@ public class OrderServiceImpl implements OrderService {
                 .promotionDiscount(order.getPromotionDiscount())
                 .loyaltyPointsRedeemed(order.getLoyaltyPointsRedeemed())
                 .loyaltyDiscount(order.getLoyaltyDiscount())
+                .tableLabel(order.getTableLabel())
+                .pickupTime(order.getPickupTime())
                 .items(items)
                 .build();
     }
@@ -458,6 +460,9 @@ public class OrderServiceImpl implements OrderService {
                 .taxAmount(item.getTaxAmount())
                 .itemType(item.getItemType())
                 .metadata(item.getMetadata())
+                .note(item.getNote())
+                .itemStatus(item.getStatus() != null ? item.getStatus().name() : "PENDING")
+                .durationMinutes(item.getDurationMinutes() != null ? item.getDurationMinutes() : 0)
                 .assignedEmployeeId(item.getAssignedEmployeeId())
                 .assignedEmployeeName(item.getAssignedEmployeeName())
                 .commissionRate(item.getCommissionRate())
@@ -541,6 +546,31 @@ public class OrderServiceImpl implements OrderService {
             result.add(item);
         }
         return result;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.List<java.util.Map<String, Object>> getTopCustomersByFrequency(int limit, LocalDateTime from, LocalDateTime to) {
+        List<Object[]> rows = orderRepository.getTopCustomersByFrequency(from, to, org.springframework.data.domain.PageRequest.of(0, limit));
+        java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
+        for (Object[] row : rows) {
+            java.util.Map<String, Object> item = new java.util.HashMap<>();
+            item.put("name",        row[0] != null ? row[0].toString() : "");
+            item.put("orderCount",  ((Number) row[1]).longValue());
+            item.put("totalSpend",  row[2]);
+            item.put("customerId",  row[3] != null ? row[3].toString() : "");
+            result.add(item);
+        }
+        return result;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Object> getCustomerStats(LocalDateTime from, LocalDateTime to) {
+        long total     = orderRepository.countActiveCustomers(from, to);
+        long newCount  = orderRepository.countNewCustomers(from, to);
+        long returning = Math.max(0L, total - newCount);
+        return java.util.Map.of("total", total, "newCount", newCount, "returningCount", returning);
     }
 
     @Override
@@ -746,6 +776,9 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private WorkItemDTO mapRowToWorkItemDTO(Object[] row) {
+        // Columns 0-14: base fields (same for all queries)
+        // Columns 15-16: commission_rate, commission_amount (real values for completed query, NULL for active queries)
+        // Column 17: note (all queries emit this column)
         return WorkItemDTO.builder()
                 .itemId(toLong(row[0]))
                 .orderId(toLong(row[1]))
@@ -764,6 +797,7 @@ public class OrderServiceImpl implements OrderService {
                 .orderCreatedAt(toLocalDateTime(row[14]))
                 .commissionRate(row.length > 15 ? toBigDecimal(row[15]) : null)
                 .commissionAmount(row.length > 16 ? toBigDecimal(row[16]) : null)
+                .note(row.length > 17 ? toString(row[17]) : null)
                 .build();
     }
 
@@ -779,12 +813,13 @@ public class OrderServiceImpl implements OrderService {
                 .quantity(item.getQuantity())
                 .unitPrice(item.getUnitPrice())
                 .amount(item.getAmount())
-                .durationMinutes(0)
+                .durationMinutes(item.getDurationMinutes() != null ? item.getDurationMinutes() : 0)
                 .status(item.getStatus().name())
                 .completedAt(item.getCompletedAt())
                 .assignedEmployeeId(item.getAssignedEmployeeId())
                 .assignedEmployeeName(item.getAssignedEmployeeName())
                 .orderCreatedAt(order.getCreatedAt())
+                .note(item.getNote())
                 .build();
     }
 
@@ -841,11 +876,25 @@ public class OrderServiceImpl implements OrderService {
         BigDecimal avg = completedCount > 0
                 ? totalRevenue.divide(BigDecimal.valueOf(completedCount), 0, java.math.RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
-        return java.util.Map.of(
-                "totalRevenue", totalRevenue,
-                "orderCount", orderCount,
-                "completedCount", completedCount,
-                "avgOrderValue", avg);
+
+        // Last visit date (overall — not scoped to the date range filter)
+        LocalDateTime lastVisit = orderRepository.findLastVisitDateByCustomer(customerId);
+        long daysSinceLastVisit = lastVisit != null
+                ? java.time.temporal.ChronoUnit.DAYS.between(lastVisit.toLocalDate(), LocalDate.now())
+                : -1L;
+
+        // Favorite service in the selected period
+        String favoriteService = orderItemRepository.findFavoriteProductByCustomer(customerId, dtFrom, dtTo);
+
+        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("totalRevenue", totalRevenue);
+        result.put("orderCount", orderCount);
+        result.put("completedCount", completedCount);
+        result.put("avgOrderValue", avg);
+        result.put("lastVisitDate", lastVisit != null ? lastVisit.toLocalDate().toString() : null);
+        result.put("daysSinceLastVisit", daysSinceLastVisit);
+        result.put("favoriteService", favoriteService);
+        return result;
     }
 
     @Override
@@ -882,6 +931,33 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public Page<OrderDTO> getStaffOrders(String createdBy, String status, LocalDate from, LocalDate to, Pageable pageable) {
         return orderRepository.findAllByCreatedBy(createdBy, status, from, to, pageable).map(this::mapToDTO);
+    }
+
+    // ── Kitchen Display ────────────────────────────────────────────────────────
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderDTO> getKitchenOrders() {
+        return orderRepository.findAllKitchenOrders()
+                .stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public OrderItemDTO bumpKitchenItem(Long itemId) {
+        OrderItem item = orderItemRepository.findById(itemId)
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.order.item.not.found", itemId)));
+        switch (item.getStatus()) {
+            case PENDING     -> item.setStatus(OrderItem.ItemStatus.IN_PROGRESS);
+            case IN_PROGRESS -> {
+                item.setStatus(OrderItem.ItemStatus.COMPLETED);
+                item.setCompletedAt(LocalDateTime.now());
+            }
+            case COMPLETED   -> item.setStatus(OrderItem.ItemStatus.PENDING); // allow undo
+        }
+        return mapItemToDTO(orderItemRepository.save(item));
     }
 
     @Override
@@ -934,6 +1010,10 @@ public class OrderServiceImpl implements OrderService {
                 oi.setAssignedEmployeeId(emp.getId());
                 oi.setAssignedEmployeeName(emp.getFullName());
             });
+        }
+
+        if (request.getNote() != null && !request.getNote().isBlank()) {
+            oi.setNote(request.getNote().trim());
         }
 
         // Deduct inventory
@@ -1002,7 +1082,7 @@ public class OrderServiceImpl implements OrderService {
             throw new BadRequestException(messageService.getMessage("error.order.invalid.status.for.start", order.getStatus()));
         }
         if (quantity <= 0) {
-            throw new BadRequestException("Số lượng phải lớn hơn 0");
+            throw new BadRequestException(messageService.getMessage("error.order.quantity.positive"));
         }
 
         OrderItem item = orderItemRepository.findById(itemId)
@@ -1069,6 +1149,27 @@ public class OrderServiceImpl implements OrderService {
 
         OrderItem saved = orderItemRepository.save(item);
         log.info("Updated employee for item {} in order {}: employeeId={}", itemId, orderId, employeeId);
+        return mapItemToDTO(saved);
+    }
+
+    @Override
+    @Transactional
+    public OrderItemDTO updateItemNote(Long orderId, Long itemId, String note) {
+        log.info("Request: Update note of item {} in order {}", itemId, orderId);
+        Order order = findActiveOrder(orderId);
+        if (order.getStatus() != Order.OrderStatus.IN_PROGRESS) {
+            throw new BadRequestException(messageService.getMessage("error.order.invalid.status.for.start", order.getStatus()));
+        }
+
+        OrderItem item = orderItemRepository.findById(itemId)
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.order.item.not.found", itemId)));
+        if (!item.getOrder().getId().equals(orderId)) {
+            throw new BadRequestException(messageService.getMessage("error.order.item.not.found", itemId));
+        }
+
+        item.setNote(note == null || note.isBlank() ? null : note.trim());
+        OrderItem saved = orderItemRepository.save(item);
+        log.info("Updated note for item {} in order {}", itemId, orderId);
         return mapItemToDTO(saved);
     }
 

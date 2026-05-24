@@ -83,5 +83,9 @@ public class Customer extends TenantAwareEntity {
     @Builder.Default
     @Column(name = "total_spent", nullable = false)
     private BigDecimal totalSpent = BigDecimal.ZERO;
+
+    /** R2 public URL for the customer's avatar photo. */
+    @Column(name = "avatar_url", length = 500)
+    private String avatarUrl;
 }
 

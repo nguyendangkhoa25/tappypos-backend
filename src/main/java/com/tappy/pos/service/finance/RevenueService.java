@@ -9,6 +9,7 @@ import com.tappy.pos.model.dto.revenue.RevenuePeriodDTO;
 import com.tappy.pos.model.dto.revenue.TopEmployeeDTO;
 import com.tappy.pos.model.dto.revenue.TopProductDTO;
 
+import java.time.LocalDate;
 import java.util.List;
 
 public interface RevenueService {
@@ -30,4 +31,9 @@ public interface RevenueService {
     List<CategoryRevenueDTO> getCategoryBreakdown(Integer year, Integer month);
 
     List<TopEmployeeDTO> getTopEmployees(Integer year, Integer month, int limit);
+
+    /** Date-range variants — used by the mobile Report screen */
+    List<PaymentBreakdownDTO> getPaymentBreakdown(LocalDate from, LocalDate to);
+
+    List<CategoryRevenueDTO> getCategoryBreakdown(LocalDate from, LocalDate to);
 }

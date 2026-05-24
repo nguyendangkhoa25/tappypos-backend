@@ -395,8 +395,8 @@ public class OnboardingController {
         // Assigns a product_category row when the suggestion has a category_name that
         // matches a category seeded for this tenant (barber/nail/spa seed SQLs do this).
         String insertCategory = """
-                INSERT INTO product_category (product_id, category_id)
-                SELECT p.id, c.id
+                INSERT INTO product_category (product_id, category_id, tenant_id)
+                SELECT p.id, c.id, :tenantId
                 FROM product p
                 JOIN product_suggestions ps ON ps.id = :templateId AND ps.category_name IS NOT NULL
                 JOIN category c ON c.name = ps.category_name AND c.tenant_id = :tenantId

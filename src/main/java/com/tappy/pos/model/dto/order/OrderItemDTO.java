@@ -26,6 +26,15 @@ public class OrderItemDTO {
     private BigDecimal commissionRate;
     private BigDecimal commissionAmount;
 
+    /** Per-item customer note (e.g. "ít đường", "không hành"). */
+    private String note;
+
+    /** Kitchen status: "PENDING" | "IN_PROGRESS" | "COMPLETED" */
+    private String itemStatus;
+
+    /** Service duration in minutes (0 = no timer). Snapshotted from product at order time. */
+    private Integer durationMinutes;
+
     // Alias for mobile client
     public BigDecimal getSubtotal() { return amount; }
 }

@@ -166,11 +166,24 @@ public class TenantInterceptor implements HandlerInterceptor {
             return false;
         }
 
+        // Soft-deleted shops: return 410 Gone so mobile can detect and route to onboarding
+        if (tenant.isDeleted()) {
+            log.warn("Deleted tenant {} attempted access to {}", tenantId, requestPath);
+            response.setStatus(HttpStatus.GONE.value());
+            response.setContentType("application/json");
+            String message = messageService.getMessage("error.tenant.deleted");
+            response.getWriter().write(
+                    "{\"success\": false, \"error\": \"SHOP_DELETED\", " +
+                            "\"message\": \"" + message + "\"}"
+            );
+            return false;
+        }
+
         if (!tenant.isActive()) {
             log.warn("Inactive tenant {} attempted access to {}", tenantId, requestPath);
             response.setStatus(HttpStatus.FORBIDDEN.value());
             response.setContentType("application/json");
-            
+
             // Get i18n message for inactive tenant
             String message = messageService.getMessage("error.tenant.inactive");
             response.getWriter().write(

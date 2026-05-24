@@ -18,5 +18,11 @@ public class CreateUserRequest {
     private Long vendorId;
     private Set<String> roleNames;
     private String notes;
+    /**
+     * Optional per-user feature overrides. When non-empty, the JWT features for this
+     * user become: tenant_features ∩ featureNames (overrides role_features intersection).
+     * When null or empty, the default role-based feature resolution applies.
+     */
+    private Set<String> featureNames;
 }
 

@@ -8,14 +8,23 @@ import com.tappy.pos.model.dto.tenant.ShopInfoDTO;
 import com.tappy.pos.model.dto.tenant.UpdateMobileShopConfigRequest;
 import com.tappy.pos.model.entity.tenant.ShopInfo;
 import com.tappy.pos.model.enums.ShopConfigKey;
+import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.tenant.ShopInfoRepository;
+import com.tappy.pos.service.MessageService;
+import com.tappy.pos.service.storage.R2CleanupService;
+import com.tappy.pos.service.storage.R2StorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.coobird.thumbnailator.Thumbnails;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.Collections;
@@ -33,6 +42,10 @@ public class ShopInfoService {
     private final ShopInfoRepository shopInfoRepository;
     private final ShopConfigService shopConfigService;
     private final ObjectMapper objectMapper;
+    private final R2StorageService r2StorageService;
+    private final R2CleanupService r2CleanupService;
+    private final TenantContext tenantContext;
+    private final MessageService messageService;
 
     public ShopInfoDTO getShopInfo() {
         log.info("Request: Get shop info");
@@ -206,6 +219,50 @@ public class ShopInfoService {
             log.warn("Failed to parse taxRateByProductType config: {}", e.getMessage());
             return new HashMap<>();
         }
+    }
+
+    /**
+     * Upload or replace the shop logo.
+     * PUT /shop-config/logo  (multipart/form-data, field: "file")
+     * Accepts JPEG / PNG / WebP. Resizes to ≤ 512 px and stores as JPEG in R2
+     * under logos/{tenantId}.jpg. Returns the updated MobileShopInfoDTO.
+     */
+    public MobileShopInfoDTO uploadLogo(String shopTypeCode, MultipartFile file) {
+        String contentType = file.getContentType();
+        if (contentType == null || (!contentType.startsWith("image/jpeg")
+                && !contentType.startsWith("image/png")
+                && !contentType.startsWith("image/webp"))) {
+            throw new IllegalArgumentException(messageService.getMessage("error.shop.logo.invalid.type"));
+        }
+
+        ShopInfo shopInfo = findOrCreate();
+        String oldLogoKey = r2StorageService.keyFromUrl(shopInfo.getLogoUrl());
+
+        byte[] compressed;
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            Thumbnails.of(file.getInputStream())
+                    .size(512, 512)
+                    .keepAspectRatio(true)
+                    .outputFormat("jpg")
+                    .outputQuality(0.85)
+                    .toOutputStream(out);
+            compressed = out.toByteArray();
+        } catch (IOException e) {
+            throw new RuntimeException(messageService.getMessage("error.shop.logo.process.failed"), e);
+        }
+
+        String tenantId = tenantContext.getCurrentTenantId();
+        String key = "logos/" + tenantId + ".jpg";
+        String url = r2StorageService.upload(key, compressed, MediaType.IMAGE_JPEG_VALUE);
+
+        shopInfo.setLogoUrl(url.isBlank() ? null : url);
+        shopInfoRepository.save(shopInfo);
+
+        r2CleanupService.deleteAsync(oldLogoKey);
+
+        log.info("Shop logo uploaded — tenant: {}, key: {}", tenantId, key);
+        return getMobileShopConfig(shopTypeCode);
     }
 
     private ShopInfo findOrCreate() {

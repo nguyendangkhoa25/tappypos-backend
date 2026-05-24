@@ -20,10 +20,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -86,7 +89,14 @@ public class AppointmentServiceImpl implements AppointmentService {
         Appointment saved = appointmentRepository.save(appointment);
         pushAppointmentNotification("notification.appointment.booked.title",
                 "notification.appointment.booked.message", saved, tenantId, username);
-        return mapToDTO(saved);
+
+        List<String> warnings = buildConflictWarnings(
+                request.getServices(),
+                saved.getScheduledDate(),
+                saved.getScheduledStartTime(),
+                saved.getDurationMinutes(),
+                saved.getId());
+        return mapToDTO(saved, warnings);
     }
 
     @Override
@@ -110,7 +120,13 @@ public class AppointmentServiceImpl implements AppointmentService {
             }
         }
 
-        return mapToDTO(appointmentRepository.save(appointment));
+        Appointment saved = appointmentRepository.save(appointment);
+        // Only re-check conflicts when services (and thus employee assignments) changed.
+        List<String> warnings = request.getServices() != null
+                ? buildConflictWarnings(request.getServices(), saved.getScheduledDate(),
+                        saved.getScheduledStartTime(), saved.getDurationMinutes(), saved.getId())
+                : List.of();
+        return mapToDTO(saved, warnings);
     }
 
     @Override
@@ -180,6 +196,19 @@ public class AppointmentServiceImpl implements AppointmentService {
         appointmentRepository.save(appointment);
     }
 
+    @Override
+    public AppointmentWeekSummaryDTO getWeekSummary(LocalDate from, LocalDate to) {
+        String tenantId = tenantContext.getCurrentTenantId();
+        List<Object[]> rows = appointmentRepository.countByDateRange(tenantId, from, to);
+        Map<String, Long> countByDate = new HashMap<>();
+        for (Object[] row : rows) {
+            LocalDate date = (LocalDate) row[0];
+            Long count = (Long) row[1];
+            countByDate.put(date.toString(), count);
+        }
+        return AppointmentWeekSummaryDTO.builder().countByDate(countByDate).build();
+    }
+
     // ---- helpers ----
 
     private Appointment findOrThrow(Long id) {
@@ -217,6 +246,10 @@ public class AppointmentServiceImpl implements AppointmentService {
     }
 
     private AppointmentDTO mapToDTO(Appointment a) {
+        return mapToDTO(a, List.of());
+    }
+
+    private AppointmentDTO mapToDTO(Appointment a, List<String> warnings) {
         List<AppointmentServiceItemDTO> services = a.getServices() == null ? List.of()
                 : a.getServices().stream().map(this::mapServiceItemToDTO).collect(Collectors.toList());
 
@@ -235,7 +268,56 @@ public class AppointmentServiceImpl implements AppointmentService {
                 .createdBy(a.getCreatedBy())
                 .createdAt(a.getCreatedAt())
                 .services(services)
+                .warnings(warnings)
                 .build();
+    }
+
+    /**
+     * For each service with an assigned employee, checks whether that employee
+     * already has an overlapping appointment on the same date.  The appointment
+     * is saved regardless; these are advisory warnings only.
+     *
+     * @param excludeId the id of the appointment being created/updated (pass -1 for new)
+     */
+    private List<String> buildConflictWarnings(
+            List<AppointmentServiceRequest> services,
+            LocalDate date,
+            LocalTime startTime,
+            int durationMins,
+            Long excludeId) {
+        if (services == null || services.isEmpty()) return List.of();
+        LocalTime endTime = startTime.plusMinutes(durationMins);
+        List<String> warnings = new ArrayList<>();
+        String tenantId = tenantContext.getCurrentTenantId();
+
+        for (AppointmentServiceRequest svc : services) {
+            if (svc.getAssignedEmployeeId() == null) continue;
+            List<Appointment> candidates = appointmentRepository.findByEmployeeAndDate(
+                    tenantId, svc.getAssignedEmployeeId(), date,
+                    excludeId != null ? excludeId : -1L);
+
+            boolean conflict = candidates.stream().anyMatch(existing -> {
+                LocalTime existStart = existing.getScheduledStartTime();
+                LocalTime existEnd = existStart.plusMinutes(existing.getDurationMinutes());
+                // Two intervals overlap when start1 < end2 AND start2 < end1
+                return existStart.isBefore(endTime) && existEnd.isAfter(startTime);
+            });
+
+            if (conflict) {
+                Appointment first = candidates.stream()
+                        .filter(existing -> {
+                            LocalTime es = existing.getScheduledStartTime();
+                            LocalTime ee = es.plusMinutes(existing.getDurationMinutes());
+                            return es.isBefore(endTime) && ee.isAfter(startTime);
+                        })
+                        .findFirst().orElseThrow();
+                String msg = messageService.getMessage("warning.appointment.employee.conflict",
+                        svc.getAssignedEmployeeName() != null ? svc.getAssignedEmployeeName() : "nhân viên",
+                        first.getScheduledStartTime().format(TIME_FMT));
+                if (!warnings.contains(msg)) warnings.add(msg);
+            }
+        }
+        return warnings;
     }
 
     private AppointmentServiceItemDTO mapServiceItemToDTO(AppointmentServiceItem s) {

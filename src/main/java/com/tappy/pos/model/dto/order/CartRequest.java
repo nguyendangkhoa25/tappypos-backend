@@ -52,6 +52,9 @@ public class CartRequest {
     
     private String discountReason;
     
+    /** When set, marks this item as part of a combo (used internally by addComboToCart). */
+    private Long comboId;
+
     // Commission (COMMISSION feature)
     private Long assignedEmployeeId;
     private BigDecimal commissionAmount;

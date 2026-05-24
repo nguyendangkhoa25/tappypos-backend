@@ -142,6 +142,14 @@ public class CartItemEntity {
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
 
+    /** Combo this item belongs to, null for standalone items. */
+    @Column(name = "combo_id")
+    private Long comboId;
+
+    @Builder.Default
+    @Column(name = "duration_minutes", nullable = false, columnDefinition = "INT DEFAULT 0")
+    private Integer durationMinutes = 0;
+
     @CreationTimestamp
     @Column(name = "added_at", nullable = false, updatable = false)
     private LocalDateTime addedAt;

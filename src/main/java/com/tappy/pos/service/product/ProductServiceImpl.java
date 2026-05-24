@@ -20,11 +20,17 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
 import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.service.storage.R2StorageService;
+import com.tappy.pos.service.storage.R2CleanupService;
 import com.tappy.pos.client.OpenFoodFactsClient;
 import com.tappy.pos.util.BarcodeValidator;
+import net.coobird.thumbnailator.Thumbnails;
+import org.springframework.web.multipart.MultipartFile;
 
 @Slf4j
 @Service
@@ -47,6 +53,9 @@ public class ProductServiceImpl implements ProductService {
     private final ProductCatalogService productCatalogService;
     private final InventoryRepository inventoryRepository;
     private final ProductVariantRepository productVariantRepository;
+    private final R2StorageService r2StorageService;
+    private final R2CleanupService r2CleanupService;
+    private final com.tappy.pos.repository.order.OrderItemRepository orderItemRepository;
 
     @Override
     public ProductDTO createProduct(CreateProductRequest request) {
@@ -320,13 +329,90 @@ public class ProductServiceImpl implements ProductService {
                 });
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         String productName = product.getName();
+        String oldImageUrl = product.getImageUrl();
         product.softDelete();
         productRepository.save(product);
         log.info("Product deleted: {}", id);
 
+        // Fire-and-forget: clean up R2 image if present
+        r2CleanupService.deleteAsync(r2StorageService.keyFromUrl(oldImageUrl));
+
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.PRODUCT_DELETED, "PRODUCT", id.toString(),
                 "Deleted product: " + productName, null);
+    }
+
+    @Override
+    public ProductDTO uploadImage(Long id, MultipartFile file) {
+        // Validate MIME type via MessageService (supports i18n)
+        String contentType = file.getContentType();
+        if (contentType == null || (!contentType.startsWith("image/jpeg")
+                && !contentType.startsWith("image/png")
+                && !contentType.startsWith("image/webp"))) {
+            throw new IllegalArgumentException(
+                    messageService.getMessage("error.product.image.invalid.type"));
+        }
+
+        Product product = productRepository.findByIdAndDeletedFalse(id)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        messageService.getMessage("error.product.not.found", id)));
+
+        String oldImageKey = r2StorageService.keyFromUrl(product.getImageUrl());
+
+        // Resize to max 1024px, output as JPEG at 85% quality (corrects EXIF orientation)
+        byte[] compressed;
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            Thumbnails.of(file.getInputStream())
+                    .size(1024, 1024)
+                    .keepAspectRatio(true)
+                    .outputFormat("jpg")
+                    .outputQuality(0.85)
+                    .toOutputStream(out);
+            compressed = out.toByteArray();
+        } catch (IOException e) {
+            throw new RuntimeException(
+                    messageService.getMessage("error.product.image.process.failed"), e);
+        }
+
+        // Upload new image first — only delete old after the new one is safely stored
+        String key = "products/" + tenantContext.getCurrentTenantId() + "/" + id + ".jpg";
+        String url = r2StorageService.upload(key, compressed, "image/jpeg");
+
+        product.setImageUrl(url.isBlank() ? null : url);
+        productRepository.save(product);
+
+        // Fire-and-forget: remove old R2 object now that DB is committed
+        r2CleanupService.deleteAsync(oldImageKey);
+
+        String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.PRODUCT_IMAGE_UPDATED, "PRODUCT", id.toString(),
+                "Updated image for product: " + product.getName(), null);
+
+        log.info("Product image uploaded — productId: {}, key: {}", id, key);
+        return mapToDTO(product);
+    }
+
+    @Override
+    public void deleteImage(Long id) {
+        Product product = productRepository.findByIdAndDeletedFalse(id)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        messageService.getMessage("error.product.not.found", id)));
+
+        String oldImageKey = r2StorageService.keyFromUrl(product.getImageUrl());
+        product.setImageUrl(null);
+        productRepository.save(product);
+
+        // Fire-and-forget: remove from R2 after DB is committed
+        r2CleanupService.deleteAsync(oldImageKey);
+
+        String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.PRODUCT_IMAGE_DELETED, "PRODUCT", id.toString(),
+                "Deleted image for product: " + product.getName(), null);
+
+        log.info("Product image deleted — productId: {}", id);
     }
 
     @Override
@@ -524,6 +610,7 @@ public class ProductServiceImpl implements ProductService {
                 .hasVariants(hasVariants)
                 .stockQuantity(stockQuantity)
                 .inStock(inStock)
+                .imageUrl(product.getImageUrl())
                 .createdAt(product.getCreatedAt())
                 .updatedAt(product.getUpdatedAt())
                 .build();
@@ -582,6 +669,7 @@ public class ProductServiceImpl implements ProductService {
                 .hasVariants(hasVariants)
                 .stockQuantity(stockQuantity)
                 .inStock(inStock)
+                .imageUrl(product.getImageUrl())
                 .createdAt(product.getCreatedAt())
                 .updatedAt(product.getUpdatedAt())
                 .build();
@@ -682,6 +770,63 @@ public class ProductServiceImpl implements ProductService {
                 .total(productRepository.countActive())
                 .outOfStock(inventoryRepository.countOutOfStock())
                 .lowStock(inventoryRepository.countLowStock())
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ProductStatsDTO getProductStats(Long id, int days) {
+        log.info("Request: Get stats for product {} days={}", id, days);
+        java.time.LocalDateTime from = java.time.LocalDateTime.now().minusDays(days);
+        java.time.LocalDate today = java.time.LocalDate.now();
+
+        // ── Core period stats ─────────────────────────────────────────────────
+        List<Object[]> periodRows = orderItemRepository.getProductPeriodStats(id, from);
+        Object[] row = periodRows.isEmpty() ? new Object[4] : periodRows.get(0);
+        long orderCount = row[0] != null ? ((Number) row[0]).longValue() : 0L;
+        long qtySold    = row[1] != null ? ((Number) row[1]).longValue() : 0L;
+        java.math.BigDecimal revenue = row[2] != null
+                ? new java.math.BigDecimal(row[2].toString()) : java.math.BigDecimal.ZERO;
+        java.time.LocalDateTime lastSoldAt = row[3] != null
+                ? ((java.sql.Timestamp) row[3]).toLocalDateTime() : null;
+
+        // ── Month-on-month comparison ─────────────────────────────────────────
+        java.math.BigDecimal revenueThisMonth = orderItemRepository
+                .getProductMonthRevenue(id, today.getYear(), today.getMonthValue());
+        java.time.LocalDate lastMonth = today.minusMonths(1);
+        java.math.BigDecimal revenueLastMonth = orderItemRepository
+                .getProductMonthRevenue(id, lastMonth.getYear(), lastMonth.getMonthValue());
+
+        // ── Top customers (top 3) ─────────────────────────────────────────────
+        List<Object[]> customerRows = orderItemRepository.getTopCustomersForProduct(
+                id, from, org.springframework.data.domain.PageRequest.of(0, 3));
+        List<ProductStatsDTO.TopBuyerDTO> topCustomers = customerRows.stream()
+                .map(r -> ProductStatsDTO.TopBuyerDTO.builder()
+                        .name(r[0] != null ? r[0].toString() : "")
+                        .orderCount(r[1] != null ? ((Number) r[1]).longValue() : 0L)
+                        .totalSpend(r[2] != null ? new java.math.BigDecimal(r[2].toString()) : java.math.BigDecimal.ZERO)
+                        .build())
+                .collect(Collectors.toList());
+
+        // ── Top employees (top 3) ─────────────────────────────────────────────
+        List<Object[]> employeeRows = orderItemRepository.getTopEmployeesForProduct(
+                id, from, org.springframework.data.domain.PageRequest.of(0, 3));
+        List<ProductStatsDTO.TopEmployeeDTO> topEmployees = employeeRows.stream()
+                .map(r -> ProductStatsDTO.TopEmployeeDTO.builder()
+                        .name(r[0] != null ? r[0].toString() : "")
+                        .orderCount(r[1] != null ? ((Number) r[1]).longValue() : 0L)
+                        .build())
+                .collect(Collectors.toList());
+
+        return ProductStatsDTO.builder()
+                .orderCount(orderCount)
+                .qtySold(qtySold)
+                .revenue(revenue)
+                .lastSoldAt(lastSoldAt)
+                .revenueThisMonth(revenueThisMonth != null ? revenueThisMonth : java.math.BigDecimal.ZERO)
+                .revenueLastMonth(revenueLastMonth != null ? revenueLastMonth : java.math.BigDecimal.ZERO)
+                .topCustomers(topCustomers)
+                .topEmployees(topEmployees)
                 .build();
     }
 }

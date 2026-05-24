@@ -17,5 +17,7 @@ public class UpdateCategoryRequest {
     @Size(min = 2, max = 100, message = "Category name must be between 2 and 100 characters")
     private String name;
 
+    private String emoji;
+
     private Long parentId;
 }

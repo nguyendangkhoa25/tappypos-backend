@@ -47,6 +47,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
+import com.tappy.pos.model.entity.order.Combo;
+import com.tappy.pos.model.entity.order.ComboItem;
+import com.tappy.pos.repository.order.ComboRepository;
 import com.tappy.pos.service.inventory.InventoryService;
 import com.tappy.pos.service.notification.NotificationService;
 import com.tappy.pos.service.product.ProductService;
@@ -107,6 +110,7 @@ public class CartServiceImpl implements CartService {
     private final TableService tableService;
     private final NotificationService notificationService;
     private final SubscriptionService subscriptionService;
+    private final ComboRepository comboRepository;
 
     /**
      * Initialize a new cart session
@@ -276,9 +280,11 @@ public class CartServiceImpl implements CartService {
         String variantsJson = request.getVariants() != null ?
                 objectMapper.writeValueAsString(request.getVariants()) : "{}";
 
+        // Combo items are never merged with standalone items (preserve combo_id tracking)
         List<CartItemEntity> duplicates = cart.getItems().stream()
                 .filter(item -> item.getProductId().equals(request.getProductId())
-                        && item.getVariants().equals(variantsJson))
+                        && item.getVariants().equals(variantsJson)
+                        && java.util.Objects.equals(item.getComboId(), request.getComboId()))
                 .toList();
 
         if (!duplicates.isEmpty()) {
@@ -320,6 +326,8 @@ public class CartServiceImpl implements CartService {
                     .variants(variantsJson)
                     .variantId(request.getVariantId())
                     .taxRate(itemTaxRate)
+                    .comboId(request.getComboId())
+                    .durationMinutes(product.getDurationMinutes() != null ? product.getDurationMinutes() : 0)
                     .build();
 
             // Employee assignment: always allowed when an employee ID is supplied.
@@ -356,6 +364,31 @@ public class CartServiceImpl implements CartService {
     }
 
     /**
+     * Add all items of a combo to the cart in one shot.
+     * Each generated cart item carries the combo_id so analytics can group them back.
+     */
+    public CartResponse addComboToCart(String cartId, Long comboId) throws JsonProcessingException {
+        log.info("Adding combo {} to cart {}", comboId, cartId);
+        Combo combo = comboRepository.findById(comboId)
+                .orElseThrow(() -> new ResourceNotFoundException("Combo not found: " + comboId));
+        if (Boolean.FALSE.equals(combo.getActive())) {
+            throw new BadRequestException(messageService.getMessage("combo.inactive"));
+        }
+        for (ComboItem item : combo.getItems()) {
+            CartRequest req = CartRequest.builder()
+                    .productId(item.getProductId())
+                    .quantity(item.getQuantity())
+                    .unitPrice(item.getPrice().compareTo(BigDecimal.ZERO) > 0 ? item.getPrice() : null)
+                    .comboId(comboId)
+                    .build();
+            addItemToCart(cartId, req);
+        }
+        CartEntity saved = cartRepository.findByCartId(cartId)
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("cart.not.found")));
+        return mapToResponse(saved);
+    }
+
+    /**
      * Update cart item quantity
      * Removes item if quantity <= 0
      */
@@ -388,6 +421,23 @@ public class CartServiceImpl implements CartService {
         cart.recalculateTotals();
         CartEntity saved = cartRepository.save(cart);
 
+        return mapToResponse(saved);
+    }
+
+    @Override
+    public CartResponse updateCartItemNote(String cartId, Long cartItemId, String note) {
+        log.info("Updating cart item note: cartId={}, itemId={}", cartId, cartItemId);
+
+        CartEntity cart = cartRepository.findByCartId(cartId)
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("cart.not.found")));
+
+        CartItemEntity item = cart.getItems().stream()
+                .filter(i -> i.getId().equals(cartItemId))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("cart.item.not.found")));
+
+        item.setNotes(note == null || note.isBlank() ? null : note.trim());
+        CartEntity saved = cartRepository.save(cart);
         return mapToResponse(saved);
     }
 
@@ -641,6 +691,7 @@ public class CartServiceImpl implements CartService {
         order.setTaxAmount(BigDecimal.ZERO);
         order.setNotes(request.getNotes());
         order.setTableLabel(request.getTableLabel());
+        order.setPickupTime(request.getPickupTime());
         order.setSource("POS");
         if (resolvedCustomer != null) order.setCustomer(resolvedCustomer);
         String currentUser = SecurityContextHolder.getContext().getAuthentication().getName();
@@ -659,11 +710,14 @@ public class CartServiceImpl implements CartService {
             oi.setUnitCost(cartItem.getUnitCost());
             oi.setItemType(OrderItem.ItemType.valueOf(cartItem.getItemType().name()));
             oi.setMetadata(cartItem.getMetadata());
+            oi.setNote(cartItem.getNotes());
             oi.setStatus(OrderItem.ItemStatus.PENDING);
             oi.setAssignedEmployeeId(cartItem.getAssignedEmployeeId());
             oi.setAssignedEmployeeName(cartItem.getAssignedEmployeeName());
             oi.setCommissionRate(cartItem.getCommissionRate() != null ? cartItem.getCommissionRate() : BigDecimal.ZERO);
             oi.setCommissionAmount(cartItem.getCommissionAmount() != null ? cartItem.getCommissionAmount() : BigDecimal.ZERO);
+            oi.setDurationMinutes(cartItem.getDurationMinutes() != null ? cartItem.getDurationMinutes() : 0);
+            oi.setComboId(cartItem.getComboId());
             orderItems.add(oi);
         }
         order.setOrderItems(orderItems);
@@ -700,7 +754,7 @@ public class CartServiceImpl implements CartService {
             throw new BadRequestException(messageService.getMessage("cart.not.active"));
         }
         if (request.getItemType() == CartItemEntity.ItemType.STANDARD) {
-            throw new BadRequestException("Item type must be GOLD_IN or GOLD_OUT");
+            throw new BadRequestException(messageService.getMessage("error.cart.gold.item.type"));
         }
 
         BigDecimal weight   = request.getGoldWeight();
@@ -926,6 +980,7 @@ public class CartServiceImpl implements CartService {
         order.setPromotionDiscount(promotionDiscount);
         order.setLoyaltyPointsRedeemed(loyaltyPointsRedeemed);
         order.setLoyaltyDiscount(loyaltyDiscount);
+        order.setPickupTime(request.getPickupTime());
         if (resolvedCustomer != null) order.setCustomer(resolvedCustomer);
         String currentUser = SecurityContextHolder.getContext().getAuthentication().getName();
         order.setCreatedBy(currentUser);
@@ -947,11 +1002,14 @@ public class CartServiceImpl implements CartService {
             oi.setUnitCost(cartItem.getUnitCost());
             oi.setItemType(OrderItem.ItemType.valueOf(cartItem.getItemType().name()));
             oi.setMetadata(cartItem.getMetadata());
+            oi.setNote(cartItem.getNotes());
             oi.setStatus(inProgress ? OrderItem.ItemStatus.PENDING : OrderItem.ItemStatus.COMPLETED);
             oi.setAssignedEmployeeId(cartItem.getAssignedEmployeeId());
             oi.setAssignedEmployeeName(cartItem.getAssignedEmployeeName());
             oi.setCommissionRate(cartItem.getCommissionRate() != null ? cartItem.getCommissionRate() : BigDecimal.ZERO);
             oi.setCommissionAmount(cartItem.getCommissionAmount() != null ? cartItem.getCommissionAmount() : BigDecimal.ZERO);
+            oi.setDurationMinutes(cartItem.getDurationMinutes() != null ? cartItem.getDurationMinutes() : 0);
+            oi.setComboId(cartItem.getComboId());
             orderItems.add(oi);
 
             // Deduct stock only for catalog items that track inventory; gold and service items skip this

@@ -1,6 +1,7 @@
 package com.tappy.pos.controller.inventory;
 
 import com.tappy.pos.model.dto.ApiResponse;
+import com.tappy.pos.model.dto.inventory.AdjustInventoryRequest;
 import com.tappy.pos.model.dto.inventory.CreateInventoryRequest;
 import com.tappy.pos.model.dto.inventory.InventoryDTO;
 import com.tappy.pos.model.dto.inventory.UpdateInventoryRequest;
@@ -233,6 +234,24 @@ public class InventoryController {
         log.info("PATCH /api/v1/inventory/{}/remove-stock - Remove stock: {}", id, quantity);
         InventoryDTO inventory = inventoryService.removeStock(id, quantity);
         return ResponseEntity.ok(ApiResponse.success(inventory, "Stock removed successfully"));
+    }
+
+    /**
+     * Adjust inventory by productId — mobile-friendly convenience endpoint.
+     * POST /api/v1/inventory/adjust
+     *
+     * The mobile app sends {@code productId} and a signed {@code quantity}:
+     *   positive → add stock, negative → remove stock, zero → no-op.
+     * Resolves the product-level inventory record automatically via productId,
+     * so the mobile does not need to know the internal inventory record ID.
+     */
+    @PostMapping("/adjust")
+    public ResponseEntity<ApiResponse<InventoryDTO>> adjustInventory(
+            @RequestBody @Valid AdjustInventoryRequest request) {
+        log.info("POST /api/v1/inventory/adjust - productId: {}, quantity: {}",
+                request.getProductId(), request.getQuantity());
+        InventoryDTO result = inventoryService.adjustByProductId(request);
+        return ResponseEntity.ok(ApiResponse.success(result, "Inventory adjusted successfully"));
     }
 }
 

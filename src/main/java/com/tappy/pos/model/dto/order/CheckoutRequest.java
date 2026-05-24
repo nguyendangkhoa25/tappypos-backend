@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 /**
  * Request body for POST /carts/{cartId}/checkout
@@ -67,4 +68,10 @@ public class CheckoutRequest {
      * Used by service shops for the two-phase flow: start service → pay later.
      */
     private boolean createAsInProgress;
+
+    /**
+     * Target pickup time for F&B takeaway orders. Null for dine-in orders.
+     * When set, the order is treated as takeaway on the kitchen display.
+     */
+    private LocalDateTime pickupTime;
 }

@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.util.List;
 import com.tappy.pos.annotation.RequiresFeature;
+import org.springframework.format.annotation.DateTimeFormat;
 
 @Slf4j
 @RestController
@@ -91,6 +92,24 @@ public class RevenueController {
             @RequestParam(required = false) Integer month) {
         log.info("Endpoint: GET /revenue/categories - year: {}, month: {}", year, month);
         return ResponseEntity.ok(ApiResponse.success(revenueService.getCategoryBreakdown(year, month), "Category breakdown retrieved"));
+    }
+
+    /** Date-range payment breakdown — used by mobile Report screen */
+    @GetMapping("/payment-methods/range")
+    public ResponseEntity<ApiResponse<List<PaymentBreakdownDTO>>> getPaymentBreakdownByRange(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        log.info("Endpoint: GET /revenue/payment-methods/range - from:{} to:{}", from, to);
+        return ResponseEntity.ok(ApiResponse.success(revenueService.getPaymentBreakdown(from, to), "Payment breakdown retrieved"));
+    }
+
+    /** Date-range category breakdown — used by mobile Report screen */
+    @GetMapping("/categories/range")
+    public ResponseEntity<ApiResponse<List<CategoryRevenueDTO>>> getCategoryBreakdownByRange(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        log.info("Endpoint: GET /revenue/categories/range - from:{} to:{}", from, to);
+        return ResponseEntity.ok(ApiResponse.success(revenueService.getCategoryBreakdown(from, to), "Category breakdown retrieved"));
     }
 
     @GetMapping("/top-employees")

@@ -13,16 +13,22 @@ import com.tappy.pos.repository.employee.EmployeeRepository;
 import com.tappy.pos.repository.auth.UserRepository;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.service.storage.R2CleanupService;
+import com.tappy.pos.service.storage.R2StorageService;
 import com.tappy.pos.model.enums.ActivityAction;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.coobird.thumbnailator.Thumbnails;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -37,6 +43,8 @@ public class EmployeeServiceImpl implements EmployeeService {
     private final MessageService messageService;
     private final TenantContext tenantContext;
     private final ActivityLogService activityLogService;
+    private final R2StorageService r2StorageService;
+    private final R2CleanupService r2CleanupService;
 
     @Override
     public Page<EmployeeDTO> getAll(String search, int page, int size) {
@@ -220,6 +228,57 @@ public class EmployeeServiceImpl implements EmployeeService {
                 .idCardIssuedPlace(e.getIdCardIssuedPlace())
                 .idCardFrontImage(e.getIdCardFrontImage())
                 .idCardBackImage(e.getIdCardBackImage())
+                .avatarUrl(e.getAvatarUrl())
                 .build();
+    }
+
+    // ── Avatar ────────────────────────────────────────────────────────────────
+
+    @Override
+    public EmployeeDTO uploadAvatar(Long id, MultipartFile file) {
+        String contentType = file.getContentType();
+        if (contentType == null || (!contentType.startsWith("image/jpeg")
+                && !contentType.startsWith("image/png")
+                && !contentType.startsWith("image/webp"))) {
+            throw new BadRequestException(messageService.getMessage("error.user.avatar.invalid.type"));
+        }
+
+        Employee employee = findById(id);
+        String oldKey = r2StorageService.keyFromUrl(employee.getAvatarUrl());
+
+        byte[] compressed;
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            Thumbnails.of(file.getInputStream())
+                    .size(256, 256)
+                    .keepAspectRatio(true)
+                    .outputFormat("jpg")
+                    .outputQuality(0.85)
+                    .toOutputStream(out);
+            compressed = out.toByteArray();
+        } catch (IOException e) {
+            log.error("Failed to process avatar image for employee: {}", id, e);
+            throw new BadRequestException(messageService.getMessage("error.user.avatar.process.failed"));
+        }
+
+        String key = "employees/" + tenantContext.getCurrentTenantId() + "/" + id + ".jpg";
+        String url = r2StorageService.upload(key, compressed, "image/jpeg");
+        employee.setAvatarUrl(url.isBlank() ? null : url + "?v=" + System.currentTimeMillis());
+        Employee saved = employeeRepository.save(employee);
+
+        r2CleanupService.deleteAsync(oldKey);
+        log.info("Employee avatar uploaded — employeeId: {}, key: {}", id, key);
+        return toDTO(saved);
+    }
+
+    @Override
+    public EmployeeDTO deleteAvatar(Long id) {
+        Employee employee = findById(id);
+        String oldKey = r2StorageService.keyFromUrl(employee.getAvatarUrl());
+        employee.setAvatarUrl(null);
+        Employee saved = employeeRepository.save(employee);
+        r2CleanupService.deleteAsync(oldKey);
+        log.info("Employee avatar deleted — employeeId: {}", id);
+        return toDTO(saved);
     }
 }

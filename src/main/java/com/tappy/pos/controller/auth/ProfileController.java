@@ -6,10 +6,12 @@ import com.tappy.pos.model.dto.auth.UserProfile;
 import com.tappy.pos.service.auth.ProfileService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * ProfileController - REST API endpoints for user profile management
@@ -171,6 +173,34 @@ public class ProfileController {
     public ResponseEntity<ApiResponse<String>> getPreferences() {
         String prefs = profileService.getPreferences(getCurrentUsername());
         return ResponseEntity.ok(ApiResponse.success(prefs, "Preferences retrieved"));
+    }
+
+    /**
+     * POST /profiles/me/avatar
+     * Upload a new avatar image for the authenticated user (multipart/form-data).
+     * Accepts: file (JPEG, PNG, or WebP). Resized to 512×512 and stored in R2.
+     */
+    @PostMapping(value = "/me/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<UserProfile>> uploadAvatar(
+            @RequestParam("file") MultipartFile file) {
+        String username = getCurrentUsername();
+        log.info("Request: Upload avatar for username: {}", username);
+        UserProfile response = profileService.uploadAvatar(username, file);
+        log.info("Avatar uploaded for username: {}", username);
+        return ResponseEntity.ok(ApiResponse.success(response, "Avatar uploaded successfully"));
+    }
+
+    /**
+     * DELETE /profiles/me/avatar
+     * Remove the authenticated user's avatar from R2 and clear avatarUrl.
+     */
+    @DeleteMapping("/me/avatar")
+    public ResponseEntity<ApiResponse<Void>> deleteAvatar() {
+        String username = getCurrentUsername();
+        log.info("Request: Delete avatar for username: {}", username);
+        profileService.deleteAvatar(username);
+        log.info("Avatar deleted for username: {}", username);
+        return ResponseEntity.ok(ApiResponse.success(null, "Avatar deleted successfully"));
     }
 
     /**

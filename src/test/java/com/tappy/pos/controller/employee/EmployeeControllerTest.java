@@ -11,6 +11,8 @@ import com.tappy.pos.model.dto.employee.CreateEmployeeRequest;
 import com.tappy.pos.model.dto.employee.EmployeeDTO;
 import com.tappy.pos.model.dto.employee.UpdateEmployeeRequest;
 import com.tappy.pos.multitenant.TenantInterceptor;
+import com.tappy.pos.repository.order.OrderItemRepository;
+import com.tappy.pos.repository.order.OrderRepository;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.auth.SessionRegistry;
 import com.tappy.pos.service.employee.EmployeeService;
@@ -80,6 +82,8 @@ class EmployeeControllerTest {
     @MockBean JwtAuthenticationEntryPoint  jwtAuthenticationEntryPoint;
     @MockBean MessageService               messageService;
     @MockBean EmployeeService              employeeService;
+    @MockBean OrderRepository              orderRepository;
+    @MockBean OrderItemRepository          orderItemRepository;
 
     @BeforeEach
     void setUp() throws Exception {

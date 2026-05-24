@@ -10,8 +10,10 @@ import com.tappy.pos.model.dto.auth.CreateUserRequest;
 import com.tappy.pos.model.dto.auth.ChangePasswordRequest;
 import com.tappy.pos.model.dto.auth.PasswordResetResponse;
 import com.tappy.pos.model.dto.auth.RoleDTO;
+import com.tappy.pos.model.entity.auth.Feature;
 import com.tappy.pos.model.entity.auth.Role;
 import com.tappy.pos.model.entity.auth.User;
+import com.tappy.pos.repository.auth.RoleFeatureRepository;
 import com.tappy.pos.model.enums.RoleEnum;
 import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.multitenant.TenantContext;
@@ -50,6 +52,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
+    private final RoleFeatureRepository roleFeatureRepository;
     private final PasswordEncoder passwordEncoder;
     private final MessageService messageService;
     private final EmployeeRepository employeeRepository;
@@ -107,6 +110,13 @@ public class UserService {
                 roles.add(role);
             }
             user.setRoles(roles);
+        }
+
+        // Assign per-user feature overrides if provided
+        if (request.getFeatureNames() != null && !request.getFeatureNames().isEmpty()) {
+            Set<Feature> features = roleFeatureRepository.findByNameIn(request.getFeatureNames());
+            user.setUserFeatures(features);
+            log.info("Setting {} user-specific features for new user: {}", features.size(), request.getUsername());
         }
 
         User createdUser = userRepository.save(user);
@@ -220,6 +230,19 @@ public class UserService {
         // Update notes if provided
         if (request.getNotes() != null) {
             user.setNotes(request.getNotes());
+        }
+
+        // Update per-user feature overrides
+        // null = don't touch; empty set = clear overrides (revert to role defaults); non-empty = replace
+        if (request.getFeatureNames() != null) {
+            if (request.getFeatureNames().isEmpty()) {
+                user.setUserFeatures(new HashSet<>());
+                log.info("Cleared user-specific features for user: {}", id);
+            } else {
+                Set<Feature> features = roleFeatureRepository.findByNameIn(request.getFeatureNames());
+                user.setUserFeatures(features);
+                log.info("Updated {} user-specific features for user: {}", features.size(), id);
+            }
         }
 
         User updatedUser = userRepository.save(user);
@@ -381,10 +404,14 @@ public class UserService {
                 .failedLoginAttempts(user.getFailedLoginAttempts() != null ? user.getFailedLoginAttempts() : 0)
                 .credentialsNonExpired(user.getCredentialsNonExpired())
                 .accountNonExpired(user.getAccountNonExpired())
+                .avatarUrl(user.getAvatarUrl())
                 .employeeId(employeeId)
                 .vendorId(vendorId)
                 .vendorName(vendorName)
                 .roles(roleDTOs)
+                .userFeatureNames(user.getUserFeatures() != null
+                        ? user.getUserFeatures().stream().map(Feature::getName).collect(Collectors.toSet())
+                        : null)
                 .notes(user.getNotes())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())

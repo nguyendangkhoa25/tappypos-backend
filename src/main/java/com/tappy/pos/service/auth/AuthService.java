@@ -167,7 +167,7 @@ public class AuthService {
                 .map(Role::getName)
                 .toList();
 
-        List<String> featureNames = tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(roleNames);
+        List<String> featureNames = tenantFeatureService.getAccessibleFeaturesByUserAndTenant(user, roleNames);
         log.info("User {} has access to {} features (tenant + role intersection): {}",
                 loginRequest.getUsername(), featureNames.size(), featureNames);
 
@@ -324,8 +324,8 @@ public class AuthService {
                 .map(Role::getName)
                 .toList();
 
-        // Get accessible features: intersection of tenant features and role features
-        List<String> featureNames = tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(roleNames);
+        // Get accessible features: intersection of tenant features and role/user features
+        List<String> featureNames = tenantFeatureService.getAccessibleFeaturesByUserAndTenant(user, roleNames);
         log.info("User {} has access to {} features during token refresh (tenant + role intersection): {}",
                 username, featureNames.size(), featureNames);
 
@@ -436,7 +436,7 @@ public class AuthService {
                 user.setAccountNonLocked(false);
             }
             userRepository.save(user);
-            throw new BadRequestException("Sai mã PIN.");
+            throw new BadRequestException(messageService.getMessage("error.auth.pin.invalid"));
         }
         user.setFailedLoginAttempts(0);
         userRepository.save(user);
@@ -445,7 +445,7 @@ public class AuthService {
         List<String> roleNames = user.getRoles().stream()
                 .map(com.tappy.pos.model.entity.auth.Role::getName)
                 .toList();
-        List<String> featureNames = tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(roleNames);
+        List<String> featureNames = tenantFeatureService.getAccessibleFeaturesByUserAndTenant(user, roleNames);
         String sessionId = UUID.randomUUID().toString();
         String shopType = tenantContext.getCurrentTenant() != null && tenantContext.getCurrentTenant().getShopType() != null
                 ? tenantContext.getCurrentTenant().getShopType().name() : null;
@@ -474,10 +474,11 @@ public class AuthService {
      */
     public AuthResponse registerUser(String phone, String password, String clientIp, String userAgent) {
         if (userRepository.findByUsernameGlobal(phone).isPresent()) {
-            throw new DuplicateResourceException("Số điện thoại đã được đăng ký.");
+            throw new DuplicateResourceException(messageService.getMessage("error.auth.phone.registered"));
         }
         User user = User.builder()
                 .username(phone)
+                .phone(phone)
                 .password(passwordEncoder.encode(password))
                 .active(true)
                 .accountNonLocked(true)
@@ -491,7 +492,7 @@ public class AuthService {
         List<String> roleNames = user.getRoles().stream()
                 .map(com.tappy.pos.model.entity.auth.Role::getName)
                 .toList();
-        List<String> featureNames = tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(roleNames);
+        List<String> featureNames = tenantFeatureService.getAccessibleFeaturesByUserAndTenant(user, roleNames);
         String shopType = tenantContext.getCurrentTenant() != null && tenantContext.getCurrentTenant().getShopType() != null
                 ? tenantContext.getCurrentTenant().getShopType().name() : null;
         String tenantId = isMasterUser ? "master" : tenantContext.getCurrentTenant().getTenantId();

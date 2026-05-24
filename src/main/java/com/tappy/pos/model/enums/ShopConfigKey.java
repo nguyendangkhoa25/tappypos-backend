@@ -43,6 +43,15 @@ public enum ShopConfigKey {
     // NAVIGATION
     NAV_CONFIG("nav_config", "GENERAL", false),
 
+    // ZALO OA (per-tenant Official Account credentials)
+    ZALO_APP_ID("zalo_app_id", "ZALO", false),
+    ZALO_APP_SECRET("zalo_app_secret", "ZALO", true),
+    ZALO_OA_ACCESS_TOKEN("zalo_oa_access_token", "ZALO", true),
+    ZALO_OA_REFRESH_TOKEN("zalo_oa_refresh_token", "ZALO", true),
+    ZALO_OA_TOKEN_EXPIRY("zalo_oa_token_expiry", "ZALO", false),
+    ZALO_OA_NAME("zalo_oa_name", "ZALO", false),
+    ZALO_OA_ID("zalo_oa_id", "ZALO", false),
+
     // PRICING
     PRICE_BOARD_CODE("price_board_code", "PRICING", false);
 

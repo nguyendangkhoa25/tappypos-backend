@@ -15,7 +15,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -33,9 +36,23 @@ public class CategoryServiceImpl implements CategoryService {
     @Transactional(readOnly = true)
     public List<CategoryDTO> getAllCategories() {
         log.info("Getting all categories");
+
+        // Compute this-month date range for revenue stats.
+        LocalDate today = LocalDate.now();
+        LocalDateTime fromDt = today.withDayOfMonth(1).atStartOfDay();
+        LocalDateTime toDt   = today.withDayOfMonth(1).plusMonths(1).atStartOfDay();
+
+        // Single query: all category stats in one round-trip.
+        Map<Long, Object[]> statsMap = categoryRepository.findAllCategoryStats(fromDt, toDt)
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> ((Number) row[0]).longValue(),
+                        row -> row
+                ));
+
         return categoryRepository.findByDeletedFalseOrderByName()
                 .stream()
-                .map(this::mapToDTO)
+                .map(c -> mapToDTO(c, statsMap))
                 .collect(Collectors.toList());
     }
 
@@ -45,7 +62,7 @@ public class CategoryServiceImpl implements CategoryService {
         log.info("Getting category by id: {}", id);
         Category category = categoryRepository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Category not found: " + id));
-        return mapToDTO(category);
+        return mapToDTO(category, null);
     }
 
     @Override
@@ -55,6 +72,7 @@ public class CategoryServiceImpl implements CategoryService {
         Category category = Category.builder()
                 .tenantId(tenantContext.getCurrentTenantId())
                 .name(request.getName())
+                .emoji(request.getEmoji() != null && !request.getEmoji().isBlank() ? request.getEmoji() : "📦")
                 .deleted(false)
                 .build();
 
@@ -66,7 +84,7 @@ public class CategoryServiceImpl implements CategoryService {
 
         Category saved = categoryRepository.save(category);
         log.info("Category created: {} (id={})", saved.getName(), saved.getId());
-        return mapToDTO(saved);
+        return mapToDTO(saved, null);
     }
 
     @Override
@@ -78,6 +96,10 @@ public class CategoryServiceImpl implements CategoryService {
 
         String oldName = category.getName();
         category.setName(request.getName());
+
+        if (request.getEmoji() != null && !request.getEmoji().isBlank()) {
+            category.setEmoji(request.getEmoji());
+        }
 
         if (request.getParentId() != null) {
             if (request.getParentId().equals(id)) {
@@ -92,13 +114,12 @@ public class CategoryServiceImpl implements CategoryService {
 
         Category updated = categoryRepository.save(category);
 
-        // Keep gold_price denormalized cache in sync when name changes.
         if (!oldName.equals(request.getName())) {
             syncGoldPriceLabel(updated);
         }
 
         log.info("Category updated: {} (id={})", updated.getName(), updated.getId());
-        return mapToDTO(updated);
+        return mapToDTO(updated, null);
     }
 
     @Override
@@ -117,7 +138,6 @@ public class CategoryServiceImpl implements CategoryService {
             throw new IllegalStateException(messageService.getMessage("error.category.hasProducts"));
         }
 
-        // Soft-delete any linked gold price so it doesn't become a ghost record.
         goldPriceRepository.findByCategoryIdAndDeletedFalse(id).ifPresent(price -> {
             price.softDelete();
             goldPriceRepository.save(price);
@@ -137,9 +157,11 @@ public class CategoryServiceImpl implements CategoryService {
                 .orElseThrow(() -> new ResourceNotFoundException("Category not found: " + parentId));
         return categoryRepository.findByParentIdAndDeletedFalse(parentId)
                 .stream()
-                .map(this::mapToDTO)
+                .map(c -> mapToDTO(c, null))
                 .collect(Collectors.toList());
     }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
 
     private void syncGoldPriceLabel(Category category) {
         goldPriceRepository.findByCategoryIdAndDeletedFalse(category.getId()).ifPresent(price -> {
@@ -151,16 +173,38 @@ public class CategoryServiceImpl implements CategoryService {
         });
     }
 
-    private CategoryDTO mapToDTO(Category category) {
+    /**
+     * @param statsMap  Map from category ID → Object[] row from findAllCategoryStats.
+     *                  Pass null (e.g. getCategoryById, create, update) to skip stats.
+     */
+    private CategoryDTO mapToDTO(Category category, Map<Long, Object[]> statsMap) {
         int childCount = categoryRepository.findByParentIdAndDeletedFalse(category.getId()).size();
+
+        int productCount     = 0;
+        int outOfStockCount  = 0;
+        double revenueThisMonth = 0.0;
+
+        if (statsMap != null) {
+            Object[] row = statsMap.get(category.getId());
+            if (row != null) {
+                productCount     = row[1] != null ? ((Number) row[1]).intValue()    : 0;
+                outOfStockCount  = row[2] != null ? ((Number) row[2]).intValue()    : 0;
+                revenueThisMonth = row[3] != null ? ((Number) row[3]).doubleValue() : 0.0;
+            }
+        }
+
         return CategoryDTO.builder()
                 .id(category.getId())
                 .name(category.getName())
+                .emoji(category.getEmoji() != null ? category.getEmoji() : "📦")
                 .parentId(category.getParent() != null ? category.getParent().getId() : null)
                 .parentName(category.getParent() != null ? category.getParent().getName() : null)
                 .childCount(childCount)
                 .createdAt(category.getCreatedAt())
                 .updatedAt(category.getUpdatedAt())
+                .productCount(productCount)
+                .outOfStockCount(outOfStockCount)
+                .revenueThisMonth(revenueThisMonth)
                 .build();
     }
 }

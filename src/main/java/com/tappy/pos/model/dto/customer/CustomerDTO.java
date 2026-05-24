@@ -42,5 +42,8 @@ public class CustomerDTO {
     private Integer loyaltyPoints;
     private BigDecimal totalSpent;
     private boolean walkIn;
+
+    /** R2 public URL for the customer's avatar photo; null if no avatar set. */
+    private String avatarUrl;
 }
 

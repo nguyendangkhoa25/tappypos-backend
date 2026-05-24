@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS tenants (
     updated_by              VARCHAR(100) DEFAULT NULL,
     setup_complete           BOOLEAN      NOT NULL DEFAULT TRUE,
     vendor_id               BIGINT       DEFAULT NULL,
+    deleted_at              TIMESTAMP DEFAULT NULL,
+    deleted_by              VARCHAR(100) DEFAULT NULL,
     CONSTRAINT fk_tenant_vendor FOREIGN KEY (vendor_id) REFERENCES agents (id) ON DELETE SET NULL,
     CONSTRAINT uq_tenants_tenant_id UNIQUE (tenant_id)
 );
@@ -87,17 +89,18 @@ CREATE TABLE IF NOT EXISTS user_feedback (
 
 -- 2.1 banks — VietQR BIN reference (seeded once, read-only for shops)
 CREATE TABLE IF NOT EXISTS banks (
-    id         BIGSERIAL    PRIMARY KEY,
-    code       VARCHAR(20)  NOT NULL,
-    bin        VARCHAR(10)  DEFAULT NULL,
-    name       VARCHAR(255) NOT NULL,
-    short_name VARCHAR(100) DEFAULT NULL,
-    sort_order INT          NOT NULL DEFAULT 999,
-    is_active  BOOLEAN      NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMP    DEFAULT NOW(),
-    updated_at TIMESTAMP    DEFAULT NOW(),
-    deleted    BOOLEAN      NOT NULL DEFAULT FALSE,
-    deleted_at TIMESTAMP    DEFAULT NULL,
+    id          BIGSERIAL    PRIMARY KEY,
+    code        VARCHAR(20)  NOT NULL,
+    bin         VARCHAR(10)  DEFAULT NULL,
+    name        VARCHAR(255) NOT NULL,
+    short_name  VARCHAR(100) DEFAULT NULL,
+    vietqr_code VARCHAR(30)  DEFAULT NULL,
+    sort_order  INT          NOT NULL DEFAULT 999,
+    is_active   BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at  TIMESTAMP    DEFAULT NOW(),
+    updated_at  TIMESTAMP    DEFAULT NOW(),
+    deleted     BOOLEAN      NOT NULL DEFAULT FALSE,
+    deleted_at  TIMESTAMP    DEFAULT NULL,
     CONSTRAINT uq_banks_code UNIQUE (code)
 );
 
@@ -156,6 +159,8 @@ CREATE TABLE IF NOT EXISTS users (
     avatar                  TEXT         DEFAULT NULL,
     color_preference        VARCHAR(50)  DEFAULT NULL,
     lang                    VARCHAR(10)  DEFAULT 'vi',
+    avatar_url              VARCHAR(500) DEFAULT NULL,
+    phone                   VARCHAR(20)  DEFAULT NULL,
     preferences             TEXT         DEFAULT NULL,
     created_at              TIMESTAMP    DEFAULT NOW(),
     updated_at              TIMESTAMP    DEFAULT NOW(),
@@ -323,6 +328,7 @@ CREATE TABLE IF NOT EXISTS category (
     created_at TIMESTAMP    NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP    NOT NULL DEFAULT NOW(),
     deleted    BOOLEAN      NOT NULL DEFAULT FALSE,
+    emoji VARCHAR(20) NOT NULL DEFAULT '📦',
     deleted_at TIMESTAMP    DEFAULT NULL,
     CONSTRAINT fk_category_parent FOREIGN KEY (parent_id) REFERENCES category (id)
 );
@@ -369,6 +375,7 @@ CREATE TABLE IF NOT EXISTS product (
     shelf_location   VARCHAR(100)   DEFAULT NULL,
     legacy_id        VARCHAR(50)    DEFAULT NULL,
     commission_rate  DECIMAL(5,2)   DEFAULT NULL,
+    image_url        VARCHAR(500) DEFAULT NULL,
     CONSTRAINT uq_product_sku_tenant     UNIQUE (sku, tenant_id),
     CONSTRAINT fk_product_type           FOREIGN KEY (product_type_id) REFERENCES product_type (id),
     CONSTRAINT fk_product_vendor         FOREIGN KEY (vendor_id)       REFERENCES vendors       (id)
@@ -527,6 +534,7 @@ CREATE TABLE IF NOT EXISTS customers (
     loyalty_points              INT            NOT NULL DEFAULT 0,
     total_spent                 DECIMAL(15,2)  NOT NULL DEFAULT 0.00,
     legacy_id                   VARCHAR(50)    DEFAULT NULL,
+    avatar_url                  VARCHAR(500)    DEFAULT NULL,
     created_at                  TIMESTAMP      DEFAULT NOW(),
     updated_at                  TIMESTAMP      DEFAULT NOW(),
     deleted                     BOOLEAN        NOT NULL DEFAULT FALSE,
@@ -534,6 +542,7 @@ CREATE TABLE IF NOT EXISTS customers (
     CONSTRAINT uq_customers_phone_tenant    UNIQUE (phone, tenant_id),
     CONSTRAINT uq_customers_idcard_tenant   UNIQUE (id_card_number, tenant_id)
 );
+
 
 -- 4.14 invoice_buyers
 CREATE TABLE IF NOT EXISTS invoice_buyers (
@@ -591,6 +600,7 @@ CREATE TABLE IF NOT EXISTS orders (
     updated_at              TIMESTAMP      DEFAULT NOW(),
     deleted                 BOOLEAN        NOT NULL DEFAULT FALSE,
     deleted_at              TIMESTAMP      DEFAULT NULL,
+    pickup_time             TIMESTAMPTZ    DEFAULT NULL,
     CONSTRAINT uq_orders_number_tenant  UNIQUE (order_number, tenant_id),
     CONSTRAINT chk_orders_status        CHECK  (status IN ('PENDING','IN_PROGRESS','COMPLETED','CANCELLED','VOIDED')),
     CONSTRAINT chk_orders_order_type    CHECK  (order_type IN ('SELL', 'BUY', 'EXCHANGE')),
@@ -621,6 +631,9 @@ CREATE TABLE IF NOT EXISTS order_items (
     is_salary_calculated  BOOLEAN        NOT NULL DEFAULT FALSE,
     item_type             VARCHAR(20)    NOT NULL DEFAULT 'STANDARD',
     metadata              JSONB          DEFAULT NULL,
+    duration_minutes      INT NOT NULL   DEFAULT 0,
+    combo_id BIGINT       DEFAULT NULL,
+    note                  VARCHAR(500)   DEFAULT NULL,
     completed_at          TIMESTAMP      DEFAULT NULL,
     created_at            TIMESTAMP      DEFAULT NOW(),
     updated_at            TIMESTAMP      DEFAULT NOW(),
@@ -763,6 +776,8 @@ CREATE TABLE IF NOT EXISTS cart_items (
     commission_rate        DECIMAL(5,2)   DEFAULT 0.00,
     commission_amount      DECIMAL(10,2)  DEFAULT 0.00,
     product_type_code      VARCHAR(50)    DEFAULT NULL,
+    combo_id BIGINT        DEFAULT        NULL,
+    duration_minutes       INT            NOT NULL DEFAULT 0,
     added_at               TIMESTAMP      NOT NULL DEFAULT NOW(),
     updated_at             TIMESTAMP      NOT NULL DEFAULT NOW(),
     CONSTRAINT chk_ci_item_type CHECK (item_type IN ('STANDARD', 'GOLD_IN', 'GOLD_OUT')),
@@ -869,6 +884,7 @@ CREATE TABLE IF NOT EXISTS employees (
     id_card_front_image    TEXT           DEFAULT NULL,
     id_card_back_image     TEXT           DEFAULT NULL,
     legacy_id              VARCHAR(50)    DEFAULT NULL,
+    avatar_url             VARCHAR(500)   DEFAULT NULL,
     created_at             TIMESTAMP      NOT NULL DEFAULT NOW(),
     updated_at             TIMESTAMP      DEFAULT NOW(),
     deleted                BOOLEAN        NOT NULL DEFAULT FALSE,
@@ -1917,62 +1933,63 @@ ON CONFLICT (user_id, role_id) DO NOTHING;
 
 -- ── 5. Vietnamese bank list (VietQR BIN reference) ───────────────
 -- Source: VietQR API — all licensed banks in Vietnam as of 2025.
-INSERT INTO banks (code, bin, name, short_name, sort_order) VALUES
+-- vietqr_code: used to construct the logo URL https://cdn.vietqr.io/img/{vietqr_code}.png
+INSERT INTO banks (code, bin, name, short_name, vietqr_code, sort_order) VALUES
 -- ── Big 4 state-owned / majority state-owned ──────────────────────────────────────────────
-('VCB',      '970436', 'Ngân hàng TMCP Ngoại thương Việt Nam',                              'Vietcombank',           1),
-('CTG',      '970415', 'Ngân hàng TMCP Công thương Việt Nam',                               'VietinBank',            2),
-('BID',      '970418', 'Ngân hàng TMCP Đầu tư và Phát triển Việt Nam',                      'BIDV',                  3),
-('AGR',      '970405', 'Ngân hàng Nông nghiệp và Phát triển Nông thôn Việt Nam',            'Agribank',              4),
+('VCB',      '970436', 'Ngân hàng TMCP Ngoại thương Việt Nam',                              'Vietcombank',           'VCB',       1),
+('CTG',      '970415', 'Ngân hàng TMCP Công thương Việt Nam',                               'VietinBank',            'ICB',       2),
+('BID',      '970418', 'Ngân hàng TMCP Đầu tư và Phát triển Việt Nam',                      'BIDV',                  'BIDV',      3),
+('AGR',      '970405', 'Ngân hàng Nông nghiệp và Phát triển Nông thôn Việt Nam',            'Agribank',              'VBA',       4),
 -- ── Top private joint-stock banks ────────────────────────────────────────────────────────
-('MBB',      '970422', 'Ngân hàng TMCP Quân đội',                                           'MB Bank',               5),
-('TCB',      '970407', 'Ngân hàng TMCP Kỹ thương Việt Nam',                                 'Techcombank',           6),
-('VPB',      '970432', 'Ngân hàng TMCP Việt Nam Thịnh Vượng',                               'VPBank',                7),
-('ACB',      '970416', 'Ngân hàng TMCP Á Châu',                                             'ACB',                   8),
-('STB',      '970403', 'Ngân hàng TMCP Sài Gòn Thương Tín',                                 'Sacombank',             9),
-('TPB',      '970423', 'Ngân hàng TMCP Tiên Phong',                                         'TPBank',               10),
-('HDB',      '970437', 'Ngân hàng TMCP Phát triển TP.HCM',                                  'HDBank',               11),
-('VIB',      '970441', 'Ngân hàng TMCP Quốc tế Việt Nam',                                   'VIB',                  12),
-('SHB',      '970443', 'Ngân hàng TMCP Sài Gòn - Hà Nội',                                  'SHB',                  13),
-('EIB',      '970431', 'Ngân hàng TMCP Xuất Nhập khẩu Việt Nam',                            'Eximbank',             14),
-('LPB',      '970449', 'Ngân hàng TMCP Bưu điện Liên Việt',                                 'LienVietPostBank',     15),
-('MSB',      '970426', 'Ngân hàng TMCP Hàng Hải Việt Nam',                                  'MSB',                  16),
-('OCB',      '970448', 'Ngân hàng TMCP Phương Đông',                                        'OCB',                  17),
-('SSB',      '970440', 'Ngân hàng TMCP Đông Nam Á',                                         'SeABank',              18),
-('ABB',      '970425', 'Ngân hàng TMCP An Bình',                                             'ABBank',               19),
-('BAB',      '970409', 'Ngân hàng TMCP Bắc Á',                                              'BacABank',             20),
-('BVB',      '970454', 'Ngân hàng TMCP Bản Việt',                                           'BVBank',               21),
-('KLB',      '970462', 'Ngân hàng TMCP Kiên Long',                                          'KienLongBank',         22),
-('NAB',      '970428', 'Ngân hàng TMCP Nam Á',                                              'NamABank',             23),
-('NCB',      '970419', 'Ngân hàng TMCP Quốc Dân',                                           'NCB',                  24),
-('PGB',      '970430', 'Ngân hàng TMCP Xăng dầu Petrolimex',                                'PGBank',               25),
-('PVCB',     '970452', 'Ngân hàng TMCP Đại Chúng Việt Nam',                                 'PVcomBank',            26),
-('DAB',      '970406', 'Ngân hàng TMCP Đông Á',                                             'DongABank',            27),
-('VAB',      '970427', 'Ngân hàng TMCP Việt Á',                                             'VietABank',            28),
-('VBB',      '970433', 'Ngân hàng TMCP Việt Nam Thương Tín',                                'VietBank',             29),
-('SGCB',     '970400', 'Ngân hàng TMCP Sài Gòn Công Thương',                                'SaigonBank',           30),
-('BAOVIET',  '970438', 'Ngân hàng TMCP Bảo Việt',                                           'BaoViet Bank',         31),
-('SCB',      '970429', 'Ngân hàng TMCP Sài Gòn',                                            'SCB',                  32),
+('MBB',      '970422', 'Ngân hàng TMCP Quân đội',                                           'MB Bank',               'MB',        5),
+('TCB',      '970407', 'Ngân hàng TMCP Kỹ thương Việt Nam',                                 'Techcombank',           'TCB',       6),
+('VPB',      '970432', 'Ngân hàng TMCP Việt Nam Thịnh Vượng',                               'VPBank',                'VPB',       7),
+('ACB',      '970416', 'Ngân hàng TMCP Á Châu',                                             'ACB',                   'ACB',       8),
+('STB',      '970403', 'Ngân hàng TMCP Sài Gòn Thương Tín',                                 'Sacombank',             'STB',       9),
+('TPB',      '970423', 'Ngân hàng TMCP Tiên Phong',                                         'TPBank',                'TPB',      10),
+('HDB',      '970437', 'Ngân hàng TMCP Phát triển TP.HCM',                                  'HDBank',                'HDB',      11),
+('VIB',      '970441', 'Ngân hàng TMCP Quốc tế Việt Nam',                                   'VIB',                   'VIB',      12),
+('SHB',      '970443', 'Ngân hàng TMCP Sài Gòn - Hà Nội',                                  'SHB',                   'SHB',      13),
+('EIB',      '970431', 'Ngân hàng TMCP Xuất Nhập khẩu Việt Nam',                            'Eximbank',              'EIB',      14),
+('LPB',      '970449', 'Ngân hàng TMCP Bưu điện Liên Việt',                                 'LienVietPostBank',      'LPB',      15),
+('MSB',      '970426', 'Ngân hàng TMCP Hàng Hải Việt Nam',                                  'MSB',                   'MSB',      16),
+('OCB',      '970448', 'Ngân hàng TMCP Phương Đông',                                        'OCB',                   'OCB',      17),
+('SSB',      '970440', 'Ngân hàng TMCP Đông Nam Á',                                         'SeABank',               'SEAB',     18),
+('ABB',      '970425', 'Ngân hàng TMCP An Bình',                                             'ABBank',                'ABB',      19),
+('BAB',      '970409', 'Ngân hàng TMCP Bắc Á',                                              'BacABank',              'BAB',      20),
+('BVB',      '970454', 'Ngân hàng TMCP Bản Việt',                                           'BVBank',                'VCCB',     21),
+('KLB',      '970462', 'Ngân hàng TMCP Kiên Long',                                          'KienLongBank',          'KBHN',     22),
+('NAB',      '970428', 'Ngân hàng TMCP Nam Á',                                              'NamABank',              'NAB',      23),
+('NCB',      '970419', 'Ngân hàng TMCP Quốc Dân',                                           'NCB',                   'NCB',      24),
+('PGB',      '970430', 'Ngân hàng TMCP Xăng dầu Petrolimex',                                'PGBank',                'PGB',      25),
+('PVCB',     '970452', 'Ngân hàng TMCP Đại Chúng Việt Nam',                                 'PVcomBank',             'KLB',      26),
+('DAB',      '970406', 'Ngân hàng TMCP Đông Á',                                             'DongABank',             'Vikki',    27),
+('VAB',      '970427', 'Ngân hàng TMCP Việt Á',                                             'VietABank',             'VAB',      28),
+('VBB',      '970433', 'Ngân hàng TMCP Việt Nam Thương Tín',                                'VietBank',              'VIETBANK', 29),
+('SGCB',     '970400', 'Ngân hàng TMCP Sài Gòn Công Thương',                                'SaigonBank',            'SGICB',    30),
+('BAOVIET',  '970438', 'Ngân hàng TMCP Bảo Việt',                                           'BaoViet Bank',          'BVB',      31),
+('SCB',      '970429', 'Ngân hàng TMCP Sài Gòn',                                            'SCB',                   'SCB',      32),
 -- ── Policy / cooperative banks ───────────────────────────────────────────────────────────
-('COOPBANK', '970446', 'Ngân hàng Hợp tác xã Việt Nam',                                     'Co-opBank',            35),
-('VBSP',     '999888', 'Ngân hàng Chính sách xã hội Việt Nam',                              'VBSP',                 36),
-('VDB',      '006',    'Ngân hàng Phát triển Việt Nam',                                     'VDB',                  37),
+('COOPBANK', '970446', 'Ngân hàng Hợp tác xã Việt Nam',                                     'Co-opBank',             'COOPBANK', 35),
+('VBSP',     '999888', 'Ngân hàng Chính sách xã hội Việt Nam',                              'VBSP',                  'VBSP',     36),
+('VDB',      '006',    'Ngân hàng Phát triển Việt Nam',                                     'VDB',                   NULL,       37),
 -- ── Banks under special control ─────────────────────────────────────────────────────────
-('OJB',      '970414', 'Ngân hàng TMCP Đại Dương',                                          'OceanBank',            38),
-('CBB',      '970444', 'Ngân hàng Thương mại TNHH MTV Xây dựng Việt Nam',                   'CBBank',               39),
-('GPB',      '970408', 'Ngân hàng TMCP Dầu khí Toàn cầu',                                   'GPBank',               40),
+('OJB',      '970414', 'Ngân hàng TMCP Đại Dương',                                          'OceanBank',             'MBV',      38),
+('CBB',      '970444', 'Ngân hàng Thương mại TNHH MTV Xây dựng Việt Nam',                   'CBBank',                'CBB',      39),
+('GPB',      '970408', 'Ngân hàng TMCP Dầu khí Toàn cầu',                                   'GPBank',                'GPB',      40),
 -- ── Digital / neobanks ───────────────────────────────────────────────────────────────────
-('CAKE',     '546034', 'CAKE by VPBank',                                                     'CAKE',                 45),
-('UBANK',    '546035', 'Ubank by VPBank',                                                    'Ubank',                46),
+('CAKE',     '546034', 'CAKE by VPBank',                                                     'CAKE',                  'CAKE',     45),
+('UBANK',    '546035', 'Ubank by VPBank',                                                    'Ubank',                 'UBANK',    46),
 -- ── Foreign bank branches & JV banks ────────────────────────────────────────────────────
-('HSBC',     '458761', 'Ngân hàng TNHH MTV HSBC Việt Nam',                                  'HSBC Vietnam',         50),
-('SC',       '970410', 'Ngân hàng TNHH MTV Standard Chartered Việt Nam',                    'Standard Chartered',   51),
-('SHIN',     '970424', 'Ngân hàng TNHH MTV Shinhan Việt Nam',                               'Shinhan Vietnam',      52),
-('WOORI',    '970457', 'Ngân hàng TNHH MTV Woori Việt Nam',                                 'Woori Vietnam',        53),
-('UOB',      '970458', 'Ngân hàng UOB Việt Nam',                                            'UOB Vietnam',          54),
-('CIMB',     '422589', 'Ngân hàng TNHH MTV CIMB Việt Nam',                                  'CIMB Vietnam',         55),
-('PBVN',     '970439', 'Ngân hàng TNHH MTV Public Bank Việt Nam',                           'PublicBank Vietnam',   56),
-('IVB',      '970434', 'Ngân hàng TNHH Indochina',                                          'Indovina Bank',        57),
-('ANZ',      '970421', 'Ngân hàng ANZ Việt Nam',                                            'ANZ Vietnam',          58)
+('HSBC',     '458761', 'Ngân hàng TNHH MTV HSBC Việt Nam',                                  'HSBC Vietnam',          'HSBC',     50),
+('SC',       '970410', 'Ngân hàng TNHH MTV Standard Chartered Việt Nam',                    'Standard Chartered',    'SCVN',     51),
+('SHIN',     '970424', 'Ngân hàng TNHH MTV Shinhan Việt Nam',                               'Shinhan Vietnam',       'SHBVN',    52),
+('WOORI',    '970457', 'Ngân hàng TNHH MTV Woori Việt Nam',                                 'Woori Vietnam',         'WVN',      53),
+('UOB',      '970458', 'Ngân hàng UOB Việt Nam',                                            'UOB Vietnam',           'UOB',      54),
+('CIMB',     '422589', 'Ngân hàng TNHH MTV CIMB Việt Nam',                                  'CIMB Vietnam',          'CIMB',     55),
+('PBVN',     '970439', 'Ngân hàng TNHH MTV Public Bank Việt Nam',                           'PublicBank Vietnam',    'PBVN',     56),
+('IVB',      '970434', 'Ngân hàng TNHH Indochina',                                          'Indovina Bank',         'IVB',      57),
+('ANZ',      '970421', 'Ngân hàng ANZ Việt Nam',                                            'ANZ Vietnam',           'VRB',      58)
 ON CONFLICT (code) DO NOTHING;
 
 -- ── 6. Backfill shop-type-specific print templates for existing tenants ──────
@@ -2683,6 +2700,7 @@ CREATE TABLE IF NOT EXISTS appointments (
     duration_minutes    INT          NOT NULL DEFAULT 60,
     status              VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
     note                TEXT,
+    reminder_sent       BOOLEAN NOT NULL DEFAULT FALSE,
     linked_order_id     BIGINT,
     created_by          VARCHAR(255) NOT NULL,
     created_at          TIMESTAMP    NOT NULL DEFAULT NOW(),
@@ -3407,10 +3425,13 @@ CREATE TABLE IF NOT EXISTS shop_table (
     location         VARCHAR(50),
     display_order    INT          NOT NULL DEFAULT 0,
     deleted          BOOLEAN      NOT NULL DEFAULT FALSE,
+    reserved_for    VARCHAR(100) DEFAULT NULL,
+    reserved_time   VARCHAR(10)  DEFAULT NULL,
     deleted_at       TIMESTAMPTZ,
     created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
+
 
 ALTER TABLE shop_table ENABLE ROW LEVEL SECURITY;
 ALTER TABLE shop_table FORCE ROW LEVEL SECURITY;
@@ -4254,3 +4275,176 @@ ON CONFLICT (name) DO UPDATE SET
         SELECT array_agg(DISTINCT t ORDER BY t)
         FROM unnest(product_suggestions.shop_types || EXCLUDED.shop_types) t
     );
+
+
+CREATE INDEX IF NOT EXISTS idx_users_phone
+    ON users (phone) WHERE phone IS NOT NULL AND deleted = false;
+
+-- 2. OTP tracking table (master-level, no tenant_id — issued pre-auth)
+CREATE TABLE IF NOT EXISTS password_reset_otps (
+    id               BIGSERIAL    PRIMARY KEY,
+    user_id          BIGINT       NOT NULL REFERENCES users(id),
+    phone            VARCHAR(20)  NOT NULL,
+    -- OTP credential (SHA-256 of otp || salt — not BCrypt: speed irrelevant for 6-digit codes)
+    otp_hash         VARCHAR(64)  NOT NULL,
+    otp_salt         VARCHAR(32)  NOT NULL,
+    -- Reset token issued after OTP is verified (SHA-256 of UUID)
+    reset_token_hash VARCHAR(64)  DEFAULT NULL,
+    -- Lifecycle: PENDING → VERIFIED → USED  |  or LOCKED / EXPIRED
+    status           VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
+    wrong_attempts   INT          NOT NULL DEFAULT 0,
+    resend_count     INT          NOT NULL DEFAULT 0,
+    last_resend_at   TIMESTAMP    DEFAULT NULL,
+    -- Zalo ZNS delivery tracking
+    zns_message_id   VARCHAR(100) DEFAULT NULL,
+    ip_address       VARCHAR(45)  DEFAULT NULL,
+    expires_at       TIMESTAMP    NOT NULL,       -- OTP validity (NOW + 5 min)
+    token_expires_at TIMESTAMP    DEFAULT NULL,   -- resetToken validity (NOW + 10 min)
+    used_at          TIMESTAMP    DEFAULT NULL,
+    created_at       TIMESTAMP    NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMP    NOT NULL DEFAULT NOW(),
+    deleted          BOOLEAN      NOT NULL DEFAULT FALSE,
+    deleted_at       TIMESTAMP    DEFAULT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_prot_phone_status
+    ON password_reset_otps (phone, status, expires_at);
+CREATE INDEX IF NOT EXISTS idx_prot_reset_token
+    ON password_reset_otps (reset_token_hash) WHERE reset_token_hash IS NOT NULL;
+
+
+-- Follows the same pattern as ORDER_VIEW_ALL (see CLAUDE.md)
+
+INSERT INTO features (name, display_name, description)
+VALUES (
+    'COMMISSION_VIEW_ALL',
+    'Xem Hoa Hồng Toàn Đội',
+    'Xem hoa hồng của tất cả nhân viên và báo cáo tổng; nếu không có quyền này, chỉ xem được hoa hồng của bản thân'
+) ON CONFLICT (name) DO NOTHING;
+
+-- Assign to SHOP_OWNER and MANAGER roles (tenant-scoped role_features table)
+INSERT INTO role_features (role_id, feature_id)
+SELECT r.id, f.id
+FROM roles r, features f
+WHERE r.name IN ('SHOP_OWNER', 'MANAGER')
+  AND f.name = 'COMMISSION_VIEW_ALL'
+ON CONFLICT DO NOTHING;
+
+
+-- ============================================================
+-- Merged from V007__add_user_features.sql
+-- ============================================================
+
+-- V007: Per-user feature overrides
+-- When a user has rows in this table, their JWT features = tenant_features ∩ user_features
+-- (overrides the default role_features intersection).
+-- An empty user_features means "use role defaults" (no rows = no override).
+
+CREATE TABLE IF NOT EXISTS user_features (
+    user_id  BIGINT NOT NULL,
+    feature_id BIGINT NOT NULL,
+    PRIMARY KEY (user_id, feature_id),
+    FOREIGN KEY (user_id)   REFERENCES users(id)    ON DELETE CASCADE,
+    FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_features_user_id ON user_features (user_id);
+
+
+-- Per-tenant Zalo ZNS message template registry.
+-- Each row stores a friendly name + the Zalo-assigned template ID for a given
+-- message type (e.g. APPOINTMENT_REMINDER).  Exactly one row per type is
+-- marked is_default; the scheduler uses that ID when dispatching notifications.
+-- If no row exists for a tenant, the global application.properties value is used.
+
+CREATE TABLE IF NOT EXISTS zalo_message_templates (
+    id              BIGSERIAL    PRIMARY KEY,
+    tenant_id       VARCHAR(50)  NOT NULL,
+    name            VARCHAR(100) NOT NULL,
+    template_type   VARCHAR(50)  NOT NULL,
+    template_id     VARCHAR(100) NOT NULL,
+    is_default      BOOLEAN      NOT NULL DEFAULT FALSE,
+    created_at      TIMESTAMP    NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP    NOT NULL DEFAULT NOW(),
+    deleted         BOOLEAN      NOT NULL DEFAULT FALSE,
+    deleted_at      TIMESTAMP
+);
+
+ALTER TABLE zalo_message_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE zalo_message_templates FORCE ROW LEVEL SECURITY;
+
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE tablename = 'zalo_message_templates'
+          AND policyname = 'zalo_message_templates_tenant_isolation'
+    ) THEN
+        CREATE POLICY zalo_message_templates_tenant_isolation ON zalo_message_templates
+            USING (tenant_id = current_setting('app.current_tenant'));
+    END IF;
+END
+$$;
+
+CREATE INDEX IF NOT EXISTS idx_zalo_templates_tenant_type
+    ON zalo_message_templates (tenant_id, template_type)
+    WHERE deleted = FALSE;
+
+
+-- ============================================================
+-- Merged from V009__appointment_reminder_sent.sql
+-- ============================================================
+
+CREATE INDEX IF NOT EXISTS idx_appointments_reminder
+    ON appointments (tenant_id, scheduled_date, scheduled_start_time)
+    WHERE reminder_sent = FALSE
+      AND deleted = FALSE
+      AND status NOT IN ('CANCELLED', 'NO_SHOW');
+
+
+-- Partial indexes: only non-null rows indexed (combo-linked items are a minority)
+CREATE INDEX IF NOT EXISTS idx_oi_combo_id ON order_items (tenant_id, combo_id) WHERE combo_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_ci_combo_id ON cart_items  (tenant_id, combo_id) WHERE combo_id IS NOT NULL;
+
+
+-- Shop invitation codes — master DB table (not per-tenant).
+-- A shop owner generates a short-lived code that an existing registered user
+-- can redeem to join the shop with a pre-assigned role and feature set.
+CREATE TABLE IF NOT EXISTS shop_invitations (
+                                                id          BIGSERIAL    PRIMARY KEY,
+                                                tenant_id   VARCHAR(50)  NOT NULL,               -- shop that is inviting
+    code        VARCHAR(8)   NOT NULL UNIQUE,         -- e.g. "A7XK3Q"
+    role_name   VARCHAR(50)  NOT NULL,               -- role to assign on join
+    features    JSONB        NOT NULL DEFAULT '[]',  -- feature list JSON array
+    created_by  VARCHAR(100) NOT NULL,               -- username of inviter
+    expires_at  TIMESTAMP    NOT NULL,               -- typically created_at + 5 min
+    used_at     TIMESTAMP    DEFAULT NULL,           -- NULL = not yet used
+    used_by     VARCHAR(100) DEFAULT NULL,           -- username who accepted
+    created_at  TIMESTAMP    NOT NULL DEFAULT NOW()
+    );
+
+-- Fast lookup by code (only for un-used invitations)
+CREATE INDEX idx_shop_invitations_code
+    ON shop_invitations(code)
+    WHERE used_at IS NULL;
+
+-- For the owner to list/audit their shop's invitations
+CREATE INDEX idx_shop_invitations_tenant
+    ON shop_invitations(tenant_id);
+
+
+-- 2. Audit log for shop deletion actions
+CREATE TABLE IF NOT EXISTS shop_deletion_log (
+                                                 id          BIGSERIAL PRIMARY KEY,
+                                                 tenant_id   VARCHAR(50)  NOT NULL,
+    shop_name   VARCHAR(255) NOT NULL,
+    deleted_by  VARCHAR(100) NOT NULL,
+    deleted_at  TIMESTAMP    NOT NULL DEFAULT NOW(),
+    reason      TEXT         DEFAULT NULL,
+    user_count  INT          NOT NULL DEFAULT 0
+    );
+
+CREATE INDEX IF NOT EXISTS idx_sdl_tenant ON shop_deletion_log(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_sdl_deleted_at ON shop_deletion_log(deleted_at DESC);
+

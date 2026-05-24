@@ -32,4 +32,8 @@ public class Bank extends BaseEntity {
     @Builder.Default
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
+
+    /** VietQR code used to construct logo URL: https://cdn.vietqr.io/img/{vietqrCode}.png */
+    @Column(name = "vietqr_code", length = 30)
+    private String vietqrCode;
 }

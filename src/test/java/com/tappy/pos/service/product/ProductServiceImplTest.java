@@ -21,8 +21,11 @@ import com.tappy.pos.repository.product.ProductAttributeValueRepository;
 import com.tappy.pos.repository.inventory.InventoryRepository;
 import com.tappy.pos.repository.product.ProductVariantRepository;
 import com.tappy.pos.repository.vendor.VendorRepository;
+import com.tappy.pos.repository.order.OrderItemRepository;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.service.storage.R2CleanupService;
+import com.tappy.pos.service.storage.R2StorageService;
 import com.tappy.pos.multitenant.TenantContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -93,6 +96,15 @@ class ProductServiceImplTest {
 
     @Mock
     private InventoryRepository inventoryRepository;
+
+    @Mock
+    private R2StorageService r2StorageService;
+
+    @Mock
+    private R2CleanupService r2CleanupService;
+
+    @Mock
+    private OrderItemRepository orderItemRepository;
 
     @InjectMocks
     private ProductServiceImpl productService;

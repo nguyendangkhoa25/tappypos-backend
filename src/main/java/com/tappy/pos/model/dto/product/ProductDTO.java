@@ -39,6 +39,7 @@ public class ProductDTO {
     private Boolean hasVariants;
     private Long stockQuantity;
     private Boolean inStock;
+    private String imageUrl;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

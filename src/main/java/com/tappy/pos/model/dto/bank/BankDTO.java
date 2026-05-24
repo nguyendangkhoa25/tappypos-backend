@@ -17,4 +17,6 @@ public class BankDTO {
     private String shortName;
     private Integer sortOrder;
     private Boolean isActive;
+    /** Ready-to-use logo URL — null when VietQR does not provide a logo for this bank. */
+    private String logoUrl;
 }

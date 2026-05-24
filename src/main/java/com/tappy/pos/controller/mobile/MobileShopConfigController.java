@@ -12,8 +12,10 @@ import com.tappy.pos.service.finance.BankAccountService;
 import com.tappy.pos.service.tenant.ShopInfoService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -62,6 +64,27 @@ public class MobileShopConfigController {
                 .posMode(dto.getPosMode())
                 .build();
         return ResponseEntity.ok(ApiResponse.success(withType, "Shop config updated successfully"));
+    }
+
+    /**
+     * Upload or replace the shop logo.
+     * PUT /shop-config/logo  (multipart/form-data, field: "file")
+     */
+    @PutMapping(value = "/logo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @RequiresFeature("SHOP_INFO")
+    public ResponseEntity<ApiResponse<MobileShopInfoDTO>> uploadLogo(
+            @RequestParam("file") MultipartFile file) {
+        log.info("Endpoint: PUT /shop-config/logo — size: {} bytes", file.getSize());
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("BAD_REQUEST", "File không được để trống"));
+        }
+        String shopTypeCode = Optional.ofNullable(tenantContext.getCurrentTenant())
+                .map(t -> t.getShopType())
+                .map(ShopType::name)
+                .orElse(null);
+        MobileShopInfoDTO dto = shopInfoService.uploadLogo(shopTypeCode, file);
+        return ResponseEntity.ok(ApiResponse.success(dto, "Logo cửa hàng đã được cập nhật"));
     }
 
     @GetMapping("/pos-config")

@@ -1,5 +1,6 @@
 package com.tappy.pos.service.inventory;
 
+import com.tappy.pos.model.dto.inventory.AdjustInventoryRequest;
 import com.tappy.pos.model.dto.inventory.CreateInventoryRequest;
 import com.tappy.pos.model.dto.inventory.InventoryDTO;
 import com.tappy.pos.model.dto.inventory.UpdateInventoryRequest;
@@ -120,5 +121,13 @@ public interface InventoryService {
      * Locate products by name, SKU, batch, zone, aisle, shelf, or bin keyword
      */
     List<InventoryDTO> locateProduct(String keyword);
+
+    /**
+     * Adjust stock by productId (mobile-friendly).
+     * Looks up the product-level inventory record by productId, then adds or removes
+     * stock based on the sign of {@code request.quantity}:
+     *   positive → add stock, negative → remove stock, zero → no-op (returns current state).
+     */
+    InventoryDTO adjustByProductId(AdjustInventoryRequest request);
 }
 

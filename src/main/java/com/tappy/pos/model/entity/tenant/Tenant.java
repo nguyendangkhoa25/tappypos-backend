@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "tenants")
@@ -92,6 +93,17 @@ public class Tenant {
     @Builder.Default
     @Column(name = "setup_complete", nullable = false)
     private boolean setupComplete = true;
+
+    /** Soft-delete: set when shop owner deletes the shop. */
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
+    @Column(name = "deleted_by", length = 100)
+    private String deletedBy;
+
+    public boolean isDeleted() {
+        return deletedAt != null;
+    }
 
     @PrePersist
     protected void onCreate() {

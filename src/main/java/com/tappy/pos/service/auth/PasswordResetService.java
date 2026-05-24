@@ -1,0 +1,225 @@
+package com.tappy.pos.service.auth;
+
+import com.tappy.pos.exception.BadRequestException;
+import com.tappy.pos.model.entity.auth.PasswordResetOtp;
+import com.tappy.pos.model.entity.auth.User;
+import com.tappy.pos.repository.auth.PasswordResetOtpRepository;
+import com.tappy.pos.repository.auth.UserRepository;
+import com.tappy.pos.service.MessageService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.time.LocalDateTime;
+import java.util.HexFormat;
+import java.util.UUID;
+
+/**
+ * Forgot-password flow via Zalo ZNS OTP.
+ *
+ * Three steps:
+ *  1. requestOtp(phone)          — lookup user, issue OTP, fire ZNS send (async)
+ *  2. verifyOtp(phone, otp)      — validate OTP, return short-lived resetToken
+ *  3. resetPassword(token, pwd)  — validate token, hash new password, mark used
+ *
+ * Security invariants:
+ *  - Step 1 always returns HTTP 200 (never reveals if phone exists).
+ *  - OTP hash stored as SHA-256(otp || salt); token stored as SHA-256(UUID).
+ *  - 3 wrong OTP guesses → LOCKED for 15 minutes.
+ *  - 3 OTP requests per 10 minutes → 429.
+ *  - Reset token valid for 10 minutes and single-use.
+ */
+@Service
+@RequiredArgsConstructor
+@Transactional
+@Slf4j
+public class PasswordResetService {
+
+    static final int OTP_TTL_MINUTES          = 5;
+    static final int RESET_TOKEN_TTL_MINUTES  = 10;
+    static final int MAX_WRONG_ATTEMPTS       = 3;
+    static final int LOCK_EXTRA_MINUTES       = 15;   // added on top of OTP_TTL
+    static final int MAX_RESENDS_PER_WINDOW   = 3;
+    static final int RESEND_WINDOW_MINUTES    = 10;
+
+    private final PasswordResetOtpRepository otpRepository;
+    private final UserRepository             userRepository;
+    private final PasswordEncoder            passwordEncoder;
+    private final ZaloZnsService             zaloZnsService;
+    private final MessageService             messageService;
+
+    // ── Step 1 ────────────────────────────────────────────────────────────────
+
+    /**
+     * Request a password-reset OTP for the given phone number.
+     * Always returns the masked phone (caller may show it in the UI).
+     * Never reveals whether the phone is registered — identical HTTP 200 either way.
+     *
+     * @throws ResponseStatusException 429 when rate-limit is exceeded.
+     */
+    public String requestOtp(String rawPhone, String ipAddress) {
+        String phone = ZaloZnsService.normalizePhone(rawPhone);
+        String masked = ZaloZnsService.maskPhone(phone);
+
+        // Rate-limit: ≤ MAX_RESENDS_PER_WINDOW requests in the past RESEND_WINDOW_MINUTES
+        LocalDateTime windowStart = LocalDateTime.now().minusMinutes(RESEND_WINDOW_MINUTES);
+        int recentCount = otpRepository.countRecentRequestsByPhone(phone, windowStart);
+        if (recentCount >= MAX_RESENDS_PER_WINDOW) {
+            log.warn("[OTP] Rate limit hit for phone={}", masked);
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                    messageService.getMessage("error.otp.too.many.requests"));
+        }
+
+        // Silent exit if no user found — same response so callers can't enumerate phones
+        var userOpt = userRepository.findByPhoneGlobal(phone);
+        if (userOpt.isEmpty()) {
+            log.info("[OTP] Reset requested for unregistered phone={}", masked);
+            return masked;
+        }
+        User user = userOpt.get();
+
+        String otp  = generateOtp();
+        String salt = generateSalt();
+
+        PasswordResetOtp record = PasswordResetOtp.builder()
+                .userId(user.getId())
+                .phone(phone)
+                .otpHash(sha256(otp + salt))
+                .otpSalt(salt)
+                .status("PENDING")
+                .wrongAttempts(0)
+                .resendCount(recentCount)
+                .ipAddress(ipAddress)
+                .expiresAt(LocalDateTime.now().plusMinutes(OTP_TTL_MINUTES))
+                .build();
+        otpRepository.save(record);
+
+        // Fire-and-forget: ZNS send runs in a separate thread; exceptions swallowed internally
+        zaloZnsService.sendOtpAsync(phone, otp, record.getId());
+
+        log.info("[OTP] Issued for user={} phone={} rowId={}",
+                user.getUsername(), masked, record.getId());
+        return masked;
+    }
+
+    // ── Step 2 ────────────────────────────────────────────────────────────────
+
+    /**
+     * Verify the 6-digit OTP entered by the user.
+     *
+     * @return a short-lived reset token (UUID, valid for {@value #RESET_TOKEN_TTL_MINUTES} minutes)
+     * @throws BadRequestException       on invalid / expired OTP or wrong guess
+     * @throws ResponseStatusException   429 when OTP is LOCKED
+     */
+    public String verifyOtp(String rawPhone, String submittedOtp) {
+        String phone  = ZaloZnsService.normalizePhone(rawPhone);
+        String masked = ZaloZnsService.maskPhone(phone);
+
+        PasswordResetOtp record = otpRepository.findLatestPendingByPhone(phone)
+                .orElseThrow(() -> new BadRequestException(
+                        messageService.getMessage("error.otp.invalid.or.expired")));
+
+        // Check locked status (may already be LOCKED from a previous transaction)
+        if (record.getWrongAttempts() >= MAX_WRONG_ATTEMPTS) {
+            log.warn("[OTP] Verify attempted on locked OTP rowId={} phone={}", record.getId(), masked);
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                    messageService.getMessage("error.otp.locked"));
+        }
+
+        // Validate hash
+        String expectedHash = sha256(submittedOtp + record.getOtpSalt());
+        if (!expectedHash.equals(record.getOtpHash())) {
+            int newAttempts = record.getWrongAttempts() + 1;
+            record.setWrongAttempts(newAttempts);
+            if (newAttempts >= MAX_WRONG_ATTEMPTS) {
+                record.setStatus("LOCKED");
+                log.warn("[OTP] Locked after {} wrong attempts rowId={} phone={}",
+                        MAX_WRONG_ATTEMPTS, record.getId(), masked);
+            }
+            otpRepository.save(record);
+            int remaining = MAX_WRONG_ATTEMPTS - newAttempts;
+            if (remaining <= 0) {
+                throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                        messageService.getMessage("error.otp.locked"));
+            }
+            throw new BadRequestException(
+                    messageService.getMessage("error.otp.wrong.remaining", remaining));
+        }
+
+        // OTP correct — generate single-use reset token
+        String resetToken = UUID.randomUUID().toString();
+        record.setStatus("VERIFIED");
+        record.setResetTokenHash(sha256(resetToken));
+        record.setTokenExpiresAt(LocalDateTime.now().plusMinutes(RESET_TOKEN_TTL_MINUTES));
+        otpRepository.save(record);
+
+        log.info("[OTP] Verified rowId={} phone={}", record.getId(), masked);
+        return resetToken;
+    }
+
+    // ── Step 3 ────────────────────────────────────────────────────────────────
+
+    /**
+     * Set a new password using the reset token from step 2.
+     * Also unlocks the account and clears failed-login counter.
+     *
+     * @throws BadRequestException on expired/invalid token or weak password
+     */
+    public void resetPassword(String resetToken, String newPassword) {
+        if (newPassword == null || newPassword.length() < 8) {
+            throw new BadRequestException(
+                    messageService.getMessage("error.otp.password.min.length"));
+        }
+
+        String tokenHash = sha256(resetToken);
+        PasswordResetOtp record = otpRepository.findByResetTokenHash(tokenHash)
+                .orElseThrow(() -> new BadRequestException(
+                        messageService.getMessage("error.otp.reset.token.invalid")));
+
+        User user = userRepository.findById(record.getUserId())
+                .orElseThrow(() -> new BadRequestException(
+                        messageService.getMessage("error.user.not.found", record.getUserId())));
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        user.setAccountNonLocked(true);
+        user.setFailedLoginAttempts(0);
+        userRepository.save(user);
+
+        record.setStatus("USED");
+        record.setUsedAt(LocalDateTime.now());
+        otpRepository.save(record);
+
+        log.info("[OTP] Password reset completed for user={} rowId={}",
+                user.getUsername(), record.getId());
+    }
+
+    // ── Crypto helpers ────────────────────────────────────────────────────────
+
+    private String generateOtp() {
+        // Pad to 6 digits, e.g. 007 becomes "000007"
+        return String.format("%06d", new SecureRandom().nextInt(1_000_000));
+    }
+
+    private String generateSalt() {
+        byte[] bytes = new byte[16];
+        new SecureRandom().nextBytes(bytes);
+        return HexFormat.of().formatHex(bytes);
+    }
+
+    static String sha256(String input) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(input.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
+        } catch (Exception e) {
+            throw new RuntimeException("SHA-256 unavailable", e);
+        }
+    }
+}

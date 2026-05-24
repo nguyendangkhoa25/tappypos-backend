@@ -3,6 +3,7 @@ package com.tappy.pos.service.inventory;
 import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.exception.ResourceNotFoundException;
+import com.tappy.pos.model.dto.inventory.AdjustInventoryRequest;
 import com.tappy.pos.model.dto.inventory.CreateInventoryRequest;
 import com.tappy.pos.model.dto.inventory.InventoryDTO;
 import com.tappy.pos.model.dto.inventory.UpdateInventoryRequest;
@@ -402,6 +403,32 @@ public class InventoryServiceImpl implements InventoryService {
         List<Inventory> results = inventoryRepository.locateByKeyword(keyword.trim());
         log.info("Found {} location results for keyword: {}", results.size(), keyword);
         return results.stream().map(InventoryDTO::fromEntity).collect(Collectors.toList());
+    }
+
+    @Override
+    public InventoryDTO adjustByProductId(AdjustInventoryRequest request) {
+        Long productId = request.getProductId();
+        Long quantity  = request.getQuantity();
+        log.info("Request: Adjust inventory by productId - productId: {}, quantity: {}", productId, quantity);
+
+        Inventory inventory = inventoryRepository.findProductLevelInventory(productId)
+                .orElseThrow(() -> {
+                    log.error("No product-level inventory found - productId: {}", productId);
+                    return new ResourceNotFoundException(
+                            messageService.getMessage("error.inventory.not.found", productId));
+                });
+
+        if (quantity == 0L) {
+            log.info("Quantity delta is 0 — no-op, returning current state for productId: {}", productId);
+            return InventoryDTO.fromEntity(inventory);
+        }
+
+        Long inventoryId = inventory.getId();
+        if (quantity > 0) {
+            return addStock(inventoryId, quantity);
+        } else {
+            return removeStock(inventoryId, -quantity);
+        }
     }
 }
 

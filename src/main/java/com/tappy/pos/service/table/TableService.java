@@ -1,6 +1,7 @@
 package com.tappy.pos.service.table;
 
 import com.tappy.pos.model.dto.table.CreateTableRequest;
+import com.tappy.pos.model.dto.table.SetTableStatusRequest;
 import com.tappy.pos.model.dto.table.TableDTO;
 import com.tappy.pos.model.dto.table.UpdateTableRequest;
 
@@ -13,4 +14,6 @@ public interface TableService {
     void deleteTable(Long id);
     void occupyTable(Long tableId, Long orderId);
     void releaseTable(Long tableId);
+    /** Staff-facing: set a table to RESERVED (with optional name+time), CLEANING, or AVAILABLE. */
+    TableDTO setStatus(Long tableId, SetTableStatusRequest request);
 }

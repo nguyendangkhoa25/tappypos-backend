@@ -2,7 +2,9 @@ package com.tappy.pos.service.table;
 
 import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.exception.ResourceNotFoundException;
+import com.tappy.pos.service.MessageService;
 import com.tappy.pos.model.dto.table.CreateTableRequest;
+import com.tappy.pos.model.dto.table.SetTableStatusRequest;
 import com.tappy.pos.model.dto.table.TableDTO;
 import com.tappy.pos.model.dto.table.UpdateTableRequest;
 import com.tappy.pos.model.entity.order.Order;
@@ -30,6 +32,7 @@ public class TableServiceImpl implements TableService {
     private final TableRepository tableRepository;
     private final OrderRepository orderRepository;
     private final TenantContext tenantContext;
+    private final MessageService messageService;
 
     @Override
     public List<TableDTO> getTables() {
@@ -79,7 +82,7 @@ public class TableServiceImpl implements TableService {
     public void deleteTable(Long id) {
         ShopTable table = findActiveById(id);
         if (table.getStatus() != TableStatus.AVAILABLE) {
-            throw new BadRequestException("Chỉ có thể xóa bàn đang trống");
+            throw new BadRequestException(messageService.getMessage("error.table.delete.not.empty"));
         }
         table.softDelete();
         tableRepository.save(table);
@@ -105,6 +108,33 @@ public class TableServiceImpl implements TableService {
         log.debug("Table {} released", tableId);
     }
 
+    @Override
+    @Transactional
+    public TableDTO setStatus(Long tableId, SetTableStatusRequest request) {
+        ShopTable table = findActiveById(tableId);
+        TableStatus newStatus = request.getStatus();
+
+        if (newStatus == TableStatus.OCCUPIED) {
+            throw new BadRequestException(messageService.getMessage("error.table.cannot.set.occupied"));
+        }
+        if (table.getStatus() == TableStatus.OCCUPIED) {
+            throw new BadRequestException(messageService.getMessage("error.table.occupied.cannot.change"));
+        }
+        if (newStatus == TableStatus.RESERVED) {
+            if (request.getReservedFor() == null || request.getReservedFor().isBlank()) {
+                throw new BadRequestException(messageService.getMessage("error.table.reservation.name.required"));
+            }
+            table.setReservedFor(request.getReservedFor().strip());
+            table.setReservedTime(request.getReservedTime() != null ? request.getReservedTime().strip() : null);
+        } else {
+            // Clear reservation info when transitioning away from RESERVED
+            table.setReservedFor(null);
+            table.setReservedTime(null);
+        }
+        table.setStatus(newStatus);
+        return toDTO(tableRepository.save(table));
+    }
+
     private ShopTable findActiveById(Long id) {
         return tableRepository.findById(id)
                 .filter(t -> !t.isDeleted())
@@ -114,12 +144,15 @@ public class TableServiceImpl implements TableService {
     private TableDTO toDTO(ShopTable t) {
         String orderNumber = null;
         Long elapsedMinutes = null;
+        java.math.BigDecimal orderTotal = null;
         if (t.getCurrentOrderId() != null) {
             Optional<Order> order = orderRepository.findById(t.getCurrentOrderId());
             if (order.isPresent()) {
-                orderNumber = order.get().getOrderNumber();
-                if (order.get().getCreatedAt() != null) {
-                    elapsedMinutes = Duration.between(order.get().getCreatedAt(), LocalDateTime.now()).toMinutes();
+                Order o = order.get();
+                orderNumber = o.getOrderNumber();
+                orderTotal = o.getTotalAmount();
+                if (o.getCreatedAt() != null) {
+                    elapsedMinutes = Duration.between(o.getCreatedAt(), LocalDateTime.now()).toMinutes();
                 }
             }
         }
@@ -130,9 +163,12 @@ public class TableServiceImpl implements TableService {
                 .status(t.getStatus())
                 .currentOrderId(t.getCurrentOrderId())
                 .currentOrderNumber(orderNumber)
+                .currentOrderTotal(orderTotal)
                 .location(t.getLocation())
                 .displayOrder(t.getDisplayOrder())
                 .elapsedMinutes(elapsedMinutes)
+                .reservedFor(t.getReservedFor())
+                .reservedTime(t.getReservedTime())
                 .build();
     }
 }

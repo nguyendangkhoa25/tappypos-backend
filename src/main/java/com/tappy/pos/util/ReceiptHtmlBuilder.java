@@ -47,7 +47,8 @@ public class ReceiptHtmlBuilder {
                         oi.getQuantity(),
                         oi.getUnitPrice(),
                         oi.getAmount(),
-                        oi.getTaxPercentage() != null ? oi.getTaxPercentage() : BigDecimal.ZERO
+                        oi.getTaxPercentage() != null ? oi.getTaxPercentage() : BigDecimal.ZERO,
+                        oi.getNote()
                 ))
                 .toList();
 
@@ -102,7 +103,8 @@ public class ReceiptHtmlBuilder {
                         i.getQuantity(),
                         i.getUnitPrice(),
                         i.getLineTotal(),
-                        i.getTaxRate() != null ? i.getTaxRate() : BigDecimal.TEN
+                        i.getTaxRate() != null ? i.getTaxRate() : BigDecimal.TEN,
+                        null   // preview requests don't carry per-item notes
                 ))
                 .toList();
 
@@ -172,10 +174,13 @@ public class ReceiptHtmlBuilder {
             String skuHtml = (item.sku() != null && !item.sku().isBlank())
                     ? "<br/><small style=\"color:#666\">" + escHtml(item.sku()) + "</small>"
                     : "";
+            String noteHtml = (item.note() != null && !item.note().isBlank())
+                    ? "<br/><span style=\"color:#b45309;font-style:italic;font-size:9px\">&rarr; " + escHtml(item.note()) + "</span>"
+                    : "";
 
             if (showTaxBreakdown) {
                 rows.append("<tr>")
-                        .append("<td>").append(escHtml(item.productName())).append(skuHtml).append("</td>")
+                        .append("<td>").append(escHtml(item.productName())).append(skuHtml).append(noteHtml).append("</td>")
                         .append("<td style=\"text-align:center\">").append(item.quantity()).append("</td>")
                         .append("<td style=\"text-align:right\">").append(fmt(item.unitPrice())).append("</td>")
                         .append("<td style=\"text-align:center\">").append(rate).append("%</td>")
@@ -184,7 +189,7 @@ public class ReceiptHtmlBuilder {
                         .append("</tr>\n");
             } else {
                 rows.append("<tr>")
-                        .append("<td>").append(escHtml(item.productName())).append(skuHtml).append("</td>")
+                        .append("<td>").append(escHtml(item.productName())).append(skuHtml).append(noteHtml).append("</td>")
                         .append("<td style=\"text-align:center\">").append(item.quantity()).append("</td>")
                         .append("<td style=\"text-align:right\">").append(fmt(item.unitPrice())).append("</td>")
                         .append("<td style=\"text-align:right\">").append(fmt(item.lineTotal())).append("</td>")
@@ -367,6 +372,7 @@ public class ReceiptHtmlBuilder {
             int quantity,
             BigDecimal unitPrice,
             BigDecimal lineTotal,
-            BigDecimal taxRate
+            BigDecimal taxRate,
+            String note
     ) {}
 }

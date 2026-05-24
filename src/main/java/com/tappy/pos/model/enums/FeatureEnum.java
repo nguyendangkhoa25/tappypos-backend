@@ -40,6 +40,7 @@ public enum FeatureEnum {
     GOLD_PRICE("Bảng Giá Vàng", "Quản lý bảng giá vàng theo tuổi, dùng cho tính giá mua/bán và cầm đồ"),
     GOLD_PRICE_CHART("Biểu Đồ Giá Vàng", "Xem biểu đồ giá vàng thế giới (XAU/USD) theo thời gian thực"),
     COMMISSION("Hoa Hồng Nhân Viên", "Gán nhân viên thực hiện và tính hoa hồng cho từng sản phẩm/dịch vụ trong đơn hàng"),
+    COMMISSION_VIEW_ALL("Xem Hoa Hồng Toàn Đội", "Xem hoa hồng của tất cả nhân viên và báo cáo tổng; nếu không có quyền này, chỉ xem được hoa hồng của bản thân"),
     GOOGLE_DRIVE("Tích Hợp Google Drive", "Kết nối Google Drive cá nhân để lưu ảnh sản phẩm, hình căn cước khách hàng và ảnh hợp đồng cầm đồ"),
     APPOINTMENT("Lịch Hẹn", "Quản lý lịch hẹn với khách hàng, đặt lịch và xác nhận"),
     TABLE_SERVICE("Quản Lý Bàn", "Theo dõi trạng thái bàn và gọi món theo bàn cho quán ăn / quán nhậu");

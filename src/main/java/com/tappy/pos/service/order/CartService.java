@@ -35,6 +35,11 @@ public interface CartService {
     CartResponse addItemToCart(String cartId, CartRequest request) throws JsonProcessingException;
 
     /**
+     * Add all items of a combo to the cart, tagging each with the combo_id.
+     */
+    CartResponse addComboToCart(String cartId, Long comboId) throws JsonProcessingException;
+
+    /**
      * Add a gold item (GOLD_IN or GOLD_OUT) to the cart.
      * Bypasses catalog lookup and inventory checks.
      */
@@ -45,7 +50,10 @@ public interface CartService {
      * Removes item if quantity <= 0
      */
     CartResponse updateCartItemQuantity(String cartId, Long cartItemId, Integer newQuantity);
-    
+
+    /** Update (or clear) the per-item note on a cart item. Passing null or blank clears the note. */
+    CartResponse updateCartItemNote(String cartId, Long cartItemId, String note);
+
     /**
      * Remove item from cart
      */

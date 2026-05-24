@@ -41,6 +41,12 @@ public class PrintTemplateService {
                 .stream().map(this::toDTO).toList();
     }
 
+    /** Returns all non-deleted templates across every type — used by the mobile list endpoint. */
+    public List<PrintTemplateDTO> getAllTemplates() {
+        return repo.findAllByDeletedFalseOrderByTemplateTypeAscIsDefaultDescNameAsc()
+                .stream().map(this::toDTO).toList();
+    }
+
     public PrintTemplateDTO getTemplate(Long id) {
         return toDTO(findActive(id));
     }
