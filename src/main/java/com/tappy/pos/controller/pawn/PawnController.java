@@ -3,18 +3,25 @@ package com.tappy.pos.controller.pawn;
 import com.tappy.pos.model.dto.ApiResponse;
 import com.tappy.pos.model.dto.pawn.*;
 import com.tappy.pos.service.pawn.PawnService;
+import com.tappy.pos.exception.ForbiddenException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.data.domain.Pageable;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import com.tappy.pos.annotation.RequiresFeature;
 
 /**
@@ -28,9 +35,25 @@ import com.tappy.pos.annotation.RequiresFeature;
 public class PawnController {
     private final PawnService pawnService;
 
+    /**
+     * Guards an endpoint so only SHOP_OWNER may proceed.
+     * Throws ForbiddenException (→ HTTP 403) for any other role.
+     * Mirrors the pattern used in ShopDeletionService.
+     */
+    private void requireShopOwner() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        boolean isShopOwner = auth != null && auth.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch("SHOP_OWNER"::equals);
+        if (!isShopOwner) {
+            throw new ForbiddenException("Chỉ chủ cửa hàng mới có quyền thực hiện thao tác này.");
+        }
+    }
+
     @PostMapping
     public ResponseEntity<ApiResponse<PawnResponse>> createPawn(@Valid @RequestBody PawnRequest pawnRequest) {
         log.info("Request: Create pawn");
+        log.debug("Create pawn request body: {}", pawnRequest);
         PawnResponse response = pawnService.createPawn(pawnRequest);
         log.info("Pawn created successfully");
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -50,6 +73,7 @@ public class PawnController {
     @PutMapping("/{pawnId}")
     public ResponseEntity<ApiResponse<PawnResponse>> updatePawn(@PathVariable Long pawnId, @Valid @RequestBody PawnRequest pawnRequest) {
         log.info("Request: Update pawn: {}", pawnId);
+        log.debug("Update pawn [{}] request body: {}", pawnId, pawnRequest);
         PawnResponse response = pawnService.updatePawn(pawnId, pawnRequest);
         log.info("Pawn updated: {}", pawnId);
         return ResponseEntity.ok(
@@ -69,6 +93,7 @@ public class PawnController {
 
     @DeleteMapping
     public ResponseEntity<ApiResponse<Void>> deletePawnsByPawnIds(@RequestBody List<Long> pawnIds) {
+        requireShopOwner();
         log.info("Request: Delete {} pawns", pawnIds.size());
         pawnService.deletePawnByPawnIds(pawnIds);
         log.info("Pawns deleted successfully");
@@ -159,6 +184,7 @@ public class PawnController {
 
     @PatchMapping("/{pawnId}/visible")
     public ResponseEntity<ApiResponse<Integer>> updateVisibleStatus(@PathVariable Long pawnId, @RequestBody PawnRequest pawnRequest) {
+        requireShopOwner();
         log.info("Request: Update visible status for pawn: {}", pawnId);
         int result = pawnService.updateVisibleStatus(pawnId, pawnRequest.isVisible());
         log.info("Visible status updated: {}", pawnId);
@@ -169,6 +195,7 @@ public class PawnController {
 
     @PostMapping("/settings")
     public ResponseEntity<ApiResponse<PawnSetting>> updatePawnSetting(@RequestBody PawnSetting settingReq) {
+        requireShopOwner();
         log.info("Request: Update pawn settings");
         PawnSetting response = pawnService.updatePawnSetting(settingReq);
         log.info("Pawn settings updated");
@@ -185,5 +212,16 @@ public class PawnController {
         return ResponseEntity.ok(
                 ApiResponse.success(response, "Pawn settings retrieved successfully")
         );
+    }
+
+    @GetMapping("/top-customers")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getTopPawnCustomers(
+            @RequestParam(defaultValue = "5") int limit,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        log.info("Request: Get top pawn customers limit={} from={} to={}", limit, from, to);
+        List<Map<String, Object>> response = pawnService.getTopPawnCustomers(limit, from, to);
+        log.info("Top pawn customers retrieved: {} records", response.size());
+        return ResponseEntity.ok(ApiResponse.success(response, "Top pawn customers retrieved successfully"));
     }
 }

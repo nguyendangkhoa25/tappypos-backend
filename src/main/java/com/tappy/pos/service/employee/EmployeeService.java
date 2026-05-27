@@ -6,7 +6,9 @@ import com.tappy.pos.model.dto.employee.UpdateEmployeeRequest;
 import org.springframework.data.domain.Page;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 public interface EmployeeService {
     Page<EmployeeDTO> getAll(String search, int page, int size);
@@ -18,4 +20,7 @@ public interface EmployeeService {
     void delete(Long id);
     EmployeeDTO uploadAvatar(Long id, MultipartFile file);
     EmployeeDTO deleteAvatar(Long id);
+
+    /** Revenue + commission analytics for the employee list screen. */
+    Map<String, Object> getAnalytics(LocalDateTime from, LocalDateTime to, String granularity, int limit);
 }

@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 public interface ActivityLogRepository extends JpaRepository<ActivityLog, Long> {
 
     @Query(value = "SELECT * FROM activity_log WHERE " +
+           "(tenant_id = current_setting('app.current_tenant', true) OR tenant_id IS NULL) AND " +
            "(:username IS NULL OR actor_username = :username) AND " +
            "(:action IS NULL OR action = :action) AND " +
            "(:targetType IS NULL OR target_type = :targetType) AND " +
@@ -19,6 +20,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, Long> 
            "(CAST(:to AS timestamp) IS NULL OR created_at <= CAST(:to AS timestamp)) " +
            "ORDER BY created_at DESC",
            countQuery = "SELECT COUNT(*) FROM activity_log WHERE " +
+           "(tenant_id = current_setting('app.current_tenant', true) OR tenant_id IS NULL) AND " +
            "(:username IS NULL OR actor_username = :username) AND " +
            "(:action IS NULL OR action = :action) AND " +
            "(:targetType IS NULL OR target_type = :targetType) AND " +

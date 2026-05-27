@@ -16,11 +16,13 @@ import java.util.Optional;
 public interface EmployeeRepository extends JpaRepository<Employee, Long> {
 
     @Query(value = "SELECT * FROM employees WHERE deleted <> true " +
+            "AND tenant_id = current_setting('app.current_tenant', true) " +
             "AND (CAST(:search AS text) IS NULL OR LOWER(full_name) LIKE LOWER('%' || CAST(:search AS text) || '%') " +
             "OR LOWER(phone) LIKE LOWER('%' || CAST(:search AS text) || '%') " +
             "OR LOWER(email) LIKE LOWER('%' || CAST(:search AS text) || '%')) " +
             "ORDER BY id DESC",
            countQuery = "SELECT COUNT(*) FROM employees WHERE deleted <> true " +
+            "AND tenant_id = current_setting('app.current_tenant', true) " +
             "AND (CAST(:search AS text) IS NULL OR LOWER(full_name) LIKE LOWER('%' || CAST(:search AS text) || '%') " +
             "OR LOWER(phone) LIKE LOWER('%' || CAST(:search AS text) || '%') " +
             "OR LOWER(email) LIKE LOWER('%' || CAST(:search AS text) || '%'))",

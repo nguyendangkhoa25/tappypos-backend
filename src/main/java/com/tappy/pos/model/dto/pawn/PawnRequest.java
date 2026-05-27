@@ -48,7 +48,7 @@ public class PawnRequest {
     private List<Long> deletedRequestIds;
     private String interestCalcMode;
     private String requestType = "";
-    private long heldDays;
+    private Long heldDays;
     private boolean visible = true;
     private String pawnCategory;
     private PawnElectronicsDetail electronicsDetail;

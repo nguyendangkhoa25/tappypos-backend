@@ -20,7 +20,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     Optional<Order> findByOrderNumber(String orderNumber);
 
-    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND status NOT IN ('CANCELLED','VOIDED') AND EXTRACT(YEAR FROM created_at) = :year AND EXTRACT(MONTH FROM created_at) = :month",
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status NOT IN ('CANCELLED','VOIDED') AND EXTRACT(YEAR FROM created_at) = :year AND EXTRACT(MONTH FROM created_at) = :month",
            nativeQuery = true)
     long countOrdersThisMonth(@Param("year") int year, @Param("month") int month);
 
@@ -44,59 +44,64 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     // ── Revenue aggregation (SELL orders only — BUY/EXCHANGE excluded from revenue) ──
 
-    @Query("SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.orderType = 'SELL'")
+    @Query(value = "SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND order_type = 'SELL'",
+           nativeQuery = true)
     BigDecimal sumTotalRevenue();
 
-    @Query(value = "SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE deleted = false AND status = 'COMPLETED' AND order_type = 'SELL' AND EXTRACT(YEAR FROM completed_at) = :year AND EXTRACT(MONTH FROM completed_at) = :month",
+    @Query(value = "SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND order_type = 'SELL' AND EXTRACT(YEAR FROM completed_at) = :year AND EXTRACT(MONTH FROM completed_at) = :month",
            nativeQuery = true)
     BigDecimal sumRevenueByMonth(@Param("year") int year, @Param("month") int month);
 
-    @Query(value = "SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE deleted = false AND status = 'COMPLETED' AND order_type = 'SELL' AND EXTRACT(YEAR FROM completed_at) = :year",
+    @Query(value = "SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND order_type = 'SELL' AND EXTRACT(YEAR FROM completed_at) = :year",
            nativeQuery = true)
     BigDecimal sumRevenueByYear(@Param("year") int year);
 
-    @Query("SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.orderType = 'SELL' AND o.completedAt >= :from AND o.completedAt <= :to")
+    @Query(value = "SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND order_type = 'SELL' AND completed_at >= :from AND completed_at <= :to",
+           nativeQuery = true)
     BigDecimal sumRevenueByDateRange(@Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
 
-    @Query("SELECT COALESCE(SUM(o.taxAmount), 0) FROM Order o WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.orderType = 'SELL'")
+    @Query(value = "SELECT COALESCE(SUM(tax_amount), 0) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND order_type = 'SELL'",
+           nativeQuery = true)
     BigDecimal sumTotalTax();
 
-    @Query("SELECT COALESCE(SUM(o.discountAmount), 0) FROM Order o WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.orderType = 'SELL'")
+    @Query(value = "SELECT COALESCE(SUM(discount_amount), 0) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND order_type = 'SELL'",
+           nativeQuery = true)
     BigDecimal sumTotalDiscount();
 
-    @Query("SELECT COUNT(o) FROM Order o WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.orderType = 'SELL'")
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND order_type = 'SELL'",
+           nativeQuery = true)
     Long countCompleted();
 
-    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND status = 'COMPLETED' AND order_type = 'SELL' AND EXTRACT(YEAR FROM completed_at) = :year AND EXTRACT(MONTH FROM completed_at) = :month",
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND order_type = 'SELL' AND EXTRACT(YEAR FROM completed_at) = :year AND EXTRACT(MONTH FROM completed_at) = :month",
            nativeQuery = true)
     Long countCompletedByMonth(@Param("year") int year, @Param("month") int month);
 
-    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND status = 'COMPLETED' AND order_type = 'SELL' AND EXTRACT(YEAR FROM completed_at) = :year",
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND order_type = 'SELL' AND EXTRACT(YEAR FROM completed_at) = :year",
            nativeQuery = true)
     Long countCompletedByYear(@Param("year") int year);
 
     // Monthly breakdown: [month, revenue, orderCount]
-    @Query(value = "SELECT EXTRACT(MONTH FROM completed_at), COALESCE(SUM(total_amount), 0), COUNT(*) FROM orders WHERE deleted = false AND status = 'COMPLETED' AND order_type = 'SELL' AND EXTRACT(YEAR FROM completed_at) = :year GROUP BY EXTRACT(MONTH FROM completed_at) ORDER BY EXTRACT(MONTH FROM completed_at)",
+    @Query(value = "SELECT EXTRACT(MONTH FROM completed_at), COALESCE(SUM(total_amount), 0), COUNT(*) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND order_type = 'SELL' AND EXTRACT(YEAR FROM completed_at) = :year GROUP BY EXTRACT(MONTH FROM completed_at) ORDER BY EXTRACT(MONTH FROM completed_at)",
            nativeQuery = true)
     List<Object[]> sumRevenueGroupedByMonth(@Param("year") int year);
 
     // Daily breakdown: [day, revenue, orderCount]
-    @Query(value = "SELECT EXTRACT(DAY FROM completed_at), COALESCE(SUM(total_amount), 0), COUNT(*) FROM orders WHERE deleted = false AND status = 'COMPLETED' AND order_type = 'SELL' AND EXTRACT(YEAR FROM completed_at) = :year AND EXTRACT(MONTH FROM completed_at) = :month GROUP BY EXTRACT(DAY FROM completed_at) ORDER BY EXTRACT(DAY FROM completed_at)",
+    @Query(value = "SELECT EXTRACT(DAY FROM completed_at), COALESCE(SUM(total_amount), 0), COUNT(*) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND order_type = 'SELL' AND EXTRACT(YEAR FROM completed_at) = :year AND EXTRACT(MONTH FROM completed_at) = :month GROUP BY EXTRACT(DAY FROM completed_at) ORDER BY EXTRACT(DAY FROM completed_at)",
            nativeQuery = true)
     List<Object[]> sumRevenueGroupedByDay(@Param("year") int year, @Param("month") int month);
 
     // Payment method breakdown: [paymentMethod, count, totalAmount]
-    @Query(value = "SELECT payment_method, COUNT(*), COALESCE(SUM(total_amount), 0) FROM orders WHERE deleted = false AND status = 'COMPLETED' AND order_type = 'SELL' AND (CAST(:year AS integer) IS NULL OR EXTRACT(YEAR FROM completed_at) = CAST(:year AS integer)) AND (CAST(:month AS integer) IS NULL OR EXTRACT(MONTH FROM completed_at) = CAST(:month AS integer)) GROUP BY payment_method",
+    @Query(value = "SELECT payment_method, COUNT(*), COALESCE(SUM(total_amount), 0) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND order_type = 'SELL' AND (CAST(:year AS integer) IS NULL OR EXTRACT(YEAR FROM completed_at) = CAST(:year AS integer)) AND (CAST(:month AS integer) IS NULL OR EXTRACT(MONTH FROM completed_at) = CAST(:month AS integer)) GROUP BY payment_method",
            nativeQuery = true)
     List<Object[]> groupByPaymentMethod(@Param("year") Integer year, @Param("month") Integer month);
 
     // Day-of-week breakdown: [dayOfWeek(0=Sun..6=Sat), revenue, orderCount]
-    @Query(value = "SELECT EXTRACT(DOW FROM completed_at), COALESCE(SUM(total_amount), 0), COUNT(*) FROM orders WHERE deleted = false AND status = 'COMPLETED' AND order_type = 'SELL' AND (CAST(:year AS integer) IS NULL OR EXTRACT(YEAR FROM completed_at) = CAST(:year AS integer)) AND (CAST(:month AS integer) IS NULL OR EXTRACT(MONTH FROM completed_at) = CAST(:month AS integer)) GROUP BY EXTRACT(DOW FROM completed_at) ORDER BY EXTRACT(DOW FROM completed_at)",
+    @Query(value = "SELECT EXTRACT(DOW FROM completed_at), COALESCE(SUM(total_amount), 0), COUNT(*) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND order_type = 'SELL' AND (CAST(:year AS integer) IS NULL OR EXTRACT(YEAR FROM completed_at) = CAST(:year AS integer)) AND (CAST(:month AS integer) IS NULL OR EXTRACT(MONTH FROM completed_at) = CAST(:month AS integer)) GROUP BY EXTRACT(DOW FROM completed_at) ORDER BY EXTRACT(DOW FROM completed_at)",
            nativeQuery = true)
     List<Object[]> sumRevenueGroupedByDayOfWeek(@Param("year") Integer year, @Param("month") Integer month);
 
     // Hourly breakdown: [hour(0-23), revenue, orderCount]
-    @Query(value = "SELECT EXTRACT(HOUR FROM completed_at), COALESCE(SUM(total_amount), 0), COUNT(*) FROM orders WHERE deleted = false AND status = 'COMPLETED' AND order_type = 'SELL' AND (CAST(:year AS integer) IS NULL OR EXTRACT(YEAR FROM completed_at) = CAST(:year AS integer)) AND (CAST(:month AS integer) IS NULL OR EXTRACT(MONTH FROM completed_at) = CAST(:month AS integer)) GROUP BY EXTRACT(HOUR FROM completed_at) ORDER BY EXTRACT(HOUR FROM completed_at)",
+    @Query(value = "SELECT EXTRACT(HOUR FROM completed_at), COALESCE(SUM(total_amount), 0), COUNT(*) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND order_type = 'SELL' AND (CAST(:year AS integer) IS NULL OR EXTRACT(YEAR FROM completed_at) = CAST(:year AS integer)) AND (CAST(:month AS integer) IS NULL OR EXTRACT(MONTH FROM completed_at) = CAST(:month AS integer)) GROUP BY EXTRACT(HOUR FROM completed_at) ORDER BY EXTRACT(HOUR FROM completed_at)",
            nativeQuery = true)
     List<Object[]> sumRevenueGroupedByHour(@Param("year") Integer year, @Param("month") Integer month);
 
@@ -110,7 +115,8 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             JOIN product p ON p.id = oi.product_id
             LEFT JOIN product_category pc ON pc.product_id = p.id
             LEFT JOIN category c ON c.id = pc.category_id
-            WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.order_type = 'SELL'
+            WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true)
+              AND o.status = 'COMPLETED' AND o.order_type = 'SELL'
               AND (CAST(:year AS integer) IS NULL OR EXTRACT(YEAR FROM o.completed_at) = CAST(:year AS integer))
               AND (CAST(:month AS integer) IS NULL OR EXTRACT(MONTH FROM o.completed_at) = CAST(:month AS integer))
             GROUP BY COALESCE(c.name, 'Không phân loại')
@@ -126,7 +132,8 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             FROM orders o
             LEFT JOIN users u ON u.username = o.created_by
             LEFT JOIN employees e ON e.user_id = u.id
-            WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.order_type = 'SELL'
+            WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true)
+              AND o.status = 'COMPLETED' AND o.order_type = 'SELL'
               AND (CAST(:year AS integer) IS NULL OR EXTRACT(YEAR FROM o.completed_at) = CAST(:year AS integer))
               AND (CAST(:month AS integer) IS NULL OR EXTRACT(MONTH FROM o.completed_at) = CAST(:month AS integer))
             GROUP BY COALESCE(e.full_name, o.created_by), o.created_by
@@ -135,13 +142,17 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     List<Object[]> sumRevenueGroupedByEmployee(@Param("year") Integer year, @Param("month") Integer month);
 
     // Recent completed orders for dashboard (all types)
-    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.status = 'COMPLETED' ORDER BY o.completedAt DESC")
+    @Query(value = "SELECT * FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' ORDER BY completed_at DESC",
+           nativeQuery = true)
     List<Order> findRecentCompleted(Pageable pageable);
 
-    long countByDeletedFalseAndStatus(Order.OrderStatus status);
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = :#{#status.name()}",
+           nativeQuery = true)
+    long countByDeletedFalseAndStatus(@Param("status") Order.OrderStatus status);
 
     // Total distinct customers who made SELL purchases
-    @Query("SELECT COUNT(DISTINCT o.customer.id) FROM Order o WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.orderType = 'SELL' AND o.customer IS NOT NULL")
+    @Query(value = "SELECT COUNT(DISTINCT customer_id) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND order_type = 'SELL' AND customer_id IS NOT NULL",
+           nativeQuery = true)
     Long countDistinctCustomers();
 
     // ── Order type filters (global) ────────────────────────────────────────────
@@ -190,52 +201,54 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query("SELECT COUNT(o) FROM Order o WHERE o.deleted = false AND o.createdBy = :username AND o.status IN :statuses")
     Long countActiveByCreatedBy(@Param("username") String username, @Param("statuses") Collection<Order.OrderStatus> statuses);
 
-    @Query("SELECT COUNT(o) FROM Order o WHERE o.deleted = false AND o.createdAt >= :from AND o.createdAt <= :to")
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND created_at >= :from AND created_at <= :to",
+           nativeQuery = true)
     long countByDateRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
-    @Query("SELECT COUNT(o) FROM Order o WHERE o.deleted = false AND o.status = :status AND o.createdAt >= :from AND o.createdAt <= :to")
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = :#{#status.name()} AND created_at >= :from AND created_at <= :to",
+           nativeQuery = true)
     long countByDateRangeAndStatus(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to, @Param("status") Order.OrderStatus status);
 
     @Query(value = "SELECT TO_CHAR(DATE_TRUNC('hour', completed_at), 'HH24:00') as label, COALESCE(SUM(total_amount),0) as value " +
-           "FROM orders WHERE deleted = false AND status = 'COMPLETED' " +
+           "FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' " +
            "AND completed_at BETWEEN :from AND :to GROUP BY label ORDER BY label",
            nativeQuery = true)
     List<Object[]> getHourlyRevenue(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
     @Query(value = "SELECT TO_CHAR(DATE_TRUNC('day', completed_at), 'YYYY-MM-DD') as label, COALESCE(SUM(total_amount),0) as value " +
-           "FROM orders WHERE deleted = false AND status = 'COMPLETED' " +
+           "FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' " +
            "AND completed_at BETWEEN :from AND :to GROUP BY label ORDER BY label",
            nativeQuery = true)
     List<Object[]> getDailyRevenue(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
     @Query(value = "SELECT TO_CHAR(DATE_TRUNC('week', completed_at), 'YYYY-MM-DD') as label, COALESCE(SUM(total_amount),0) as value " +
-           "FROM orders WHERE deleted = false AND status = 'COMPLETED' " +
+           "FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' " +
            "AND completed_at BETWEEN :from AND :to GROUP BY label ORDER BY label",
            nativeQuery = true)
     List<Object[]> getWeeklyRevenue(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
     @Query(value = "SELECT TO_CHAR(DATE_TRUNC('month', completed_at), 'YYYY-MM') as label, COALESCE(SUM(total_amount),0) as value " +
-           "FROM orders WHERE deleted = false AND status = 'COMPLETED' " +
+           "FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' " +
            "AND completed_at BETWEEN :from AND :to GROUP BY label ORDER BY label",
            nativeQuery = true)
     List<Object[]> getMonthlyRevenue(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
     @Query(value = "SELECT TO_CHAR(DATE_TRUNC('year', completed_at), 'YYYY') as label, COALESCE(SUM(total_amount),0) as value " +
-           "FROM orders WHERE deleted = false AND status = 'COMPLETED' " +
+           "FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' " +
            "AND completed_at BETWEEN :from AND :to GROUP BY label ORDER BY label",
            nativeQuery = true)
     List<Object[]> getYearlyRevenue(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
     @Query(value = "SELECT oi.product_name, MIN(oi.product_id) as productId, COALESCE(SUM(oi.quantity),0) as cnt, COALESCE(SUM(oi.amount),0) as rev " +
            "FROM order_items oi JOIN orders o ON oi.order_id = o.id " +
-           "WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.created_at >= :since " +
+           "WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND o.created_at >= :since " +
            "GROUP BY oi.product_name ORDER BY cnt DESC",
            nativeQuery = true)
     List<Object[]> getTopProductsSince(@Param("since") LocalDateTime since, org.springframework.data.domain.Pageable pageable);
 
     @Query(value = "SELECT oi.product_name, MIN(oi.product_id) as productId, COALESCE(SUM(oi.quantity),0) as cnt, COALESCE(SUM(oi.amount),0) as rev " +
            "FROM order_items oi JOIN orders o ON oi.order_id = o.id " +
-           "WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.created_at BETWEEN :from AND :to " +
+           "WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND o.created_at BETWEEN :from AND :to " +
            "GROUP BY oi.product_name ORDER BY cnt DESC",
            nativeQuery = true)
     List<Object[]> getTopProductsByRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to, org.springframework.data.domain.Pageable pageable);
@@ -243,7 +256,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query(value = "SELECT c.name, COUNT(o.id) as orderCount, COALESCE(SUM(o.total_amount),0) as totalSpend, " +
            "CAST(c.id AS VARCHAR) as customerId " +
            "FROM orders o JOIN customers c ON o.customer_id = c.id " +
-           "WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.customer_id IS NOT NULL " +
+           "WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND o.customer_id IS NOT NULL " +
            "AND c.deleted = false AND c.phone != '0000000000' " +
            "AND o.created_at BETWEEN :from AND :to " +
            "GROUP BY c.id, c.name ORDER BY totalSpend DESC",
@@ -254,7 +267,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query(value = "SELECT c.name, COUNT(o.id) as orderCount, COALESCE(SUM(o.total_amount),0) as totalSpend, " +
            "CAST(c.id AS VARCHAR) as customerId " +
            "FROM orders o JOIN customers c ON o.customer_id = c.id " +
-           "WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.customer_id IS NOT NULL " +
+           "WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND o.customer_id IS NOT NULL " +
            "AND c.deleted = false AND c.phone != '0000000000' " +
            "AND o.created_at BETWEEN :from AND :to " +
            "GROUP BY c.id, c.name ORDER BY orderCount DESC",
@@ -264,12 +277,13 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     // Count customers making their FIRST EVER order in this period
     @Query(value = "SELECT COUNT(DISTINCT o.customer_id) " +
            "FROM orders o JOIN customers c ON o.customer_id = c.id " +
-           "WHERE o.deleted = false AND o.status = 'COMPLETED' " +
+           "WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' " +
            "AND c.deleted = false AND c.phone != '0000000000' " +
            "AND o.created_at BETWEEN :from AND :to " +
            "AND NOT EXISTS (" +
            "  SELECT 1 FROM orders o2 " +
            "  WHERE o2.customer_id = o.customer_id " +
+           "  AND o2.tenant_id = current_setting('app.current_tenant', true) " +
            "  AND o2.deleted = false " +
            "  AND o2.created_at < :from" +
            ")",
@@ -280,7 +294,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
            "FROM orders o " +
            "LEFT JOIN users u ON u.username = o.created_by " +
            "LEFT JOIN employees e ON e.user_id = u.id " +
-           "WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.created_by IS NOT NULL " +
+           "WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND o.created_by IS NOT NULL " +
            "AND o.created_at BETWEEN :from AND :to " +
            "GROUP BY COALESCE(e.full_name, o.created_by), o.created_by, u.id ORDER BY revenue DESC",
            nativeQuery = true)
@@ -290,7 +304,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     @Query(value = "SELECT COUNT(DISTINCT o.customer_id) " +
            "FROM orders o JOIN customers c ON o.customer_id = c.id " +
-           "WHERE o.deleted = false AND o.status = 'COMPLETED' " +
+           "WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' " +
            "AND c.deleted = false AND c.phone != '0000000000' " +
            "AND o.created_at BETWEEN :from AND :to",
            nativeQuery = true)
@@ -298,7 +312,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     @Query(value = "SELECT COALESCE(SUM(o.total_amount), 0) " +
            "FROM orders o JOIN customers c ON o.customer_id = c.id " +
-           "WHERE o.deleted = false AND o.status = 'COMPLETED' " +
+           "WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' " +
            "AND c.deleted = false AND c.phone != '0000000000' " +
            "AND o.created_at BETWEEN :from AND :to",
            nativeQuery = true)
@@ -307,7 +321,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query(value = "SELECT c.name, COUNT(o.id) as orderCount, COALESCE(SUM(o.total_amount),0) as totalSpend, " +
            "CAST(c.id AS VARCHAR) as customerId " +
            "FROM orders o JOIN customers c ON o.customer_id = c.id " +
-           "WHERE o.deleted = false AND o.status = 'COMPLETED' " +
+           "WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' " +
            "AND c.deleted = false AND c.phone != '0000000000' " +
            "GROUP BY c.id, c.name ORDER BY totalSpend DESC",
            nativeQuery = true)
@@ -316,21 +330,21 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     // ── Customer-scoped analytics ──────────────────────────────────────────────
 
     @Query(value = "SELECT COALESCE(SUM(total_amount), 0) FROM orders " +
-           "WHERE deleted = false AND status = 'COMPLETED' AND customer_id = :customerId " +
+           "WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND customer_id = :customerId " +
            "AND completed_at BETWEEN :from AND :to", nativeQuery = true)
     BigDecimal sumRevenueByCustomerAndDateRange(
             @Param("customerId") Long customerId,
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to);
 
-    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND customer_id = :customerId " +
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND customer_id = :customerId " +
            "AND created_at BETWEEN :from AND :to", nativeQuery = true)
     long countByCustomerAndDateRange(
             @Param("customerId") Long customerId,
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to);
 
-    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND customer_id = :customerId " +
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND customer_id = :customerId " +
            "AND status = :status AND created_at BETWEEN :from AND :to", nativeQuery = true)
     long countByCustomerAndDateRangeAndStatus(
             @Param("customerId") Long customerId,
@@ -339,7 +353,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             @Param("status") String status);
 
     @Query(value = "SELECT TO_CHAR(DATE_TRUNC('day', completed_at), 'YYYY-MM-DD') as label, COALESCE(SUM(total_amount),0) as value " +
-           "FROM orders WHERE deleted = false AND status = 'COMPLETED' AND customer_id = :customerId " +
+           "FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND customer_id = :customerId " +
            "AND completed_at BETWEEN :from AND :to GROUP BY label ORDER BY label", nativeQuery = true)
     List<Object[]> getDailyRevenueByCustomer(
             @Param("customerId") Long customerId,
@@ -347,7 +361,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             @Param("to") LocalDateTime to);
 
     @Query(value = "SELECT TO_CHAR(DATE_TRUNC('week', completed_at), 'YYYY-MM-DD') as label, COALESCE(SUM(total_amount),0) as value " +
-           "FROM orders WHERE deleted = false AND status = 'COMPLETED' AND customer_id = :customerId " +
+           "FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND customer_id = :customerId " +
            "AND completed_at BETWEEN :from AND :to GROUP BY label ORDER BY label", nativeQuery = true)
     List<Object[]> getWeeklyRevenueByCustomer(
             @Param("customerId") Long customerId,
@@ -355,7 +369,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             @Param("to") LocalDateTime to);
 
     @Query(value = "SELECT TO_CHAR(DATE_TRUNC('month', completed_at), 'YYYY-MM') as label, COALESCE(SUM(total_amount),0) as value " +
-           "FROM orders WHERE deleted = false AND status = 'COMPLETED' AND customer_id = :customerId " +
+           "FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND customer_id = :customerId " +
            "AND completed_at BETWEEN :from AND :to GROUP BY label ORDER BY label", nativeQuery = true)
     List<Object[]> getMonthlyRevenueByCustomer(
             @Param("customerId") Long customerId,
@@ -363,7 +377,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             @Param("to") LocalDateTime to);
 
     @Query(value = "SELECT TO_CHAR(DATE_TRUNC('year', completed_at), 'YYYY') as label, COALESCE(SUM(total_amount),0) as value " +
-           "FROM orders WHERE deleted = false AND status = 'COMPLETED' AND customer_id = :customerId " +
+           "FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND customer_id = :customerId " +
            "AND completed_at BETWEEN :from AND :to GROUP BY label ORDER BY label", nativeQuery = true)
     List<Object[]> getYearlyRevenueByCustomer(
             @Param("customerId") Long customerId,
@@ -371,39 +385,39 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             @Param("to") LocalDateTime to);
 
     /** Most recent completed_at for a customer, or NULL if none. */
-    @Query(value = "SELECT MAX(completed_at) FROM orders WHERE deleted = false AND status = 'COMPLETED' AND customer_id = :customerId",
+    @Query(value = "SELECT MAX(completed_at) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND customer_id = :customerId",
            nativeQuery = true)
     java.time.LocalDateTime findLastVisitDateByCustomer(@Param("customerId") Long customerId);
 
     // ── By createdBy (staff performance view) ─────────────────────────────────
 
     @Query(value = "SELECT TO_CHAR(DATE_TRUNC('day', completed_at), 'YYYY-MM-DD'), COALESCE(SUM(total_amount),0) " +
-           "FROM orders WHERE deleted = false AND status = 'COMPLETED' AND created_by = :createdBy " +
+           "FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND created_by = :createdBy " +
            "AND completed_at BETWEEN :from AND :to GROUP BY 1 ORDER BY 1", nativeQuery = true)
     List<Object[]> getDailyRevenueByCreatedBy(@Param("createdBy") String createdBy, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
     @Query(value = "SELECT TO_CHAR(DATE_TRUNC('week', completed_at), 'YYYY-MM-DD'), COALESCE(SUM(total_amount),0) " +
-           "FROM orders WHERE deleted = false AND status = 'COMPLETED' AND created_by = :createdBy " +
+           "FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND created_by = :createdBy " +
            "AND completed_at BETWEEN :from AND :to GROUP BY 1 ORDER BY 1", nativeQuery = true)
     List<Object[]> getWeeklyRevenueByCreatedBy(@Param("createdBy") String createdBy, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
     @Query(value = "SELECT TO_CHAR(DATE_TRUNC('month', completed_at), 'YYYY-MM'), COALESCE(SUM(total_amount),0) " +
-           "FROM orders WHERE deleted = false AND status = 'COMPLETED' AND created_by = :createdBy " +
+           "FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND created_by = :createdBy " +
            "AND completed_at BETWEEN :from AND :to GROUP BY 1 ORDER BY 1", nativeQuery = true)
     List<Object[]> getMonthlyRevenueByCreatedBy(@Param("createdBy") String createdBy, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
     @Query(value = "SELECT TO_CHAR(DATE_TRUNC('year', completed_at), 'YYYY'), COALESCE(SUM(total_amount),0) " +
-           "FROM orders WHERE deleted = false AND status = 'COMPLETED' AND created_by = :createdBy " +
+           "FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND created_by = :createdBy " +
            "AND completed_at BETWEEN :from AND :to GROUP BY 1 ORDER BY 1", nativeQuery = true)
     List<Object[]> getYearlyRevenueByCreatedBy(@Param("createdBy") String createdBy, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
-    @Query(value = "SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE deleted = false AND status = 'COMPLETED' AND created_by = :createdBy AND completed_at BETWEEN :from AND :to", nativeQuery = true)
+    @Query(value = "SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND created_by = :createdBy AND completed_at BETWEEN :from AND :to", nativeQuery = true)
     BigDecimal sumRevenueByCreatedBy(@Param("createdBy") String createdBy, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
-    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND created_by = :createdBy AND created_at BETWEEN :from AND :to", nativeQuery = true)
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND created_by = :createdBy AND created_at BETWEEN :from AND :to", nativeQuery = true)
     long countByCreatedByAndDateRange(@Param("createdBy") String createdBy, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
-    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND created_by = :createdBy AND status = :status AND created_at BETWEEN :from AND :to", nativeQuery = true)
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND created_by = :createdBy AND status = :status AND created_at BETWEEN :from AND :to", nativeQuery = true)
     long countByCreatedByAndDateRangeAndStatus(@Param("createdBy") String createdBy, @Param("status") String status, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
     // ── Filtered list (Report screen) ──────────────────────────────────────────
@@ -411,6 +425,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query(value = """
             SELECT * FROM orders
             WHERE deleted = FALSE
+            AND tenant_id = current_setting('app.current_tenant', true)
             AND (CAST(:status AS text) IS NULL OR status = CAST(:status AS text))
             AND (CAST(:paymentMethod AS text) IS NULL OR payment_method = CAST(:paymentMethod AS text))
             AND (CAST(:from AS date) IS NULL OR DATE(created_at) >= CAST(:from AS date))
@@ -420,6 +435,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
            countQuery = """
             SELECT COUNT(*) FROM orders
             WHERE deleted = FALSE
+            AND tenant_id = current_setting('app.current_tenant', true)
             AND (CAST(:status AS text) IS NULL OR status = CAST(:status AS text))
             AND (CAST(:paymentMethod AS text) IS NULL OR payment_method = CAST(:paymentMethod AS text))
             AND (CAST(:from AS date) IS NULL OR DATE(created_at) >= CAST(:from AS date))
@@ -436,6 +452,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query(value = """
             SELECT * FROM orders
             WHERE deleted = FALSE
+            AND tenant_id = current_setting('app.current_tenant', true)
             AND created_by = :username
             AND (CAST(:status AS text) IS NULL OR status = CAST(:status AS text))
             AND (CAST(:paymentMethod AS text) IS NULL OR payment_method = CAST(:paymentMethod AS text))
@@ -446,6 +463,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
            countQuery = """
             SELECT COUNT(*) FROM orders
             WHERE deleted = FALSE
+            AND tenant_id = current_setting('app.current_tenant', true)
             AND created_by = :username
             AND (CAST(:status AS text) IS NULL OR status = CAST(:status AS text))
             AND (CAST(:paymentMethod AS text) IS NULL OR payment_method = CAST(:paymentMethod AS text))
@@ -464,7 +482,9 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     // Staff performance list — always filters by createdBy, status optional
     @Query(value = """
             SELECT * FROM orders
-            WHERE deleted = FALSE AND created_by = :createdBy
+            WHERE deleted = FALSE
+            AND tenant_id = current_setting('app.current_tenant', true)
+            AND created_by = :createdBy
             AND (CAST(:status AS text) IS NULL OR status = CAST(:status AS text))
             AND (CAST(:from AS date) IS NULL OR DATE(created_at) >= CAST(:from AS date))
             AND (CAST(:to AS date)   IS NULL OR DATE(created_at) <= CAST(:to AS date))
@@ -472,7 +492,9 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             """,
            countQuery = """
             SELECT COUNT(*) FROM orders
-            WHERE deleted = FALSE AND created_by = :createdBy
+            WHERE deleted = FALSE
+            AND tenant_id = current_setting('app.current_tenant', true)
+            AND created_by = :createdBy
             AND (CAST(:status AS text) IS NULL OR status = CAST(:status AS text))
             AND (CAST(:from AS date) IS NULL OR DATE(created_at) >= CAST(:from AS date))
             AND (CAST(:to AS date)   IS NULL OR DATE(created_at) <= CAST(:to AS date))
@@ -493,7 +515,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     // Payment method breakdown by date range: [paymentMethod, count, totalAmount]
     @Query(value = "SELECT payment_method, COUNT(*), COALESCE(SUM(total_amount), 0) " +
-           "FROM orders WHERE deleted = false AND status = 'COMPLETED' AND order_type = 'SELL' " +
+           "FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND order_type = 'SELL' " +
            "AND (CAST(:from AS date) IS NULL OR DATE(completed_at) >= CAST(:from AS date)) " +
            "AND (CAST(:to   AS date) IS NULL OR DATE(completed_at) <= CAST(:to   AS date)) " +
            "GROUP BY payment_method",
@@ -510,7 +532,8 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             JOIN product p ON p.id = oi.product_id
             LEFT JOIN product_category pc ON pc.product_id = p.id
             LEFT JOIN category c ON c.id = pc.category_id
-            WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.order_type = 'SELL'
+            WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true)
+              AND o.status = 'COMPLETED' AND o.order_type = 'SELL'
               AND (CAST(:from AS date) IS NULL OR DATE(o.completed_at) >= CAST(:from AS date))
               AND (CAST(:to   AS date) IS NULL OR DATE(o.completed_at) <= CAST(:to   AS date))
             GROUP BY COALESCE(c.name, 'Không phân loại')
@@ -526,7 +549,8 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query(value = """
             SELECT COUNT(DISTINCT o.created_by)
             FROM orders o
-            WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.order_type = 'SELL'
+            WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true)
+              AND o.status = 'COMPLETED' AND o.order_type = 'SELL'
               AND o.completed_at >= :from AND o.completed_at < :to
             """, nativeQuery = true)
     Long countActiveEmployees(
@@ -545,7 +569,8 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             FROM orders o
             LEFT JOIN users u ON u.username = o.created_by
             LEFT JOIN employees e ON e.user_id = u.id
-            WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.order_type = 'SELL'
+            WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true)
+              AND o.status = 'COMPLETED' AND o.order_type = 'SELL'
               AND o.completed_at >= :from AND o.completed_at < :to
             GROUP BY COALESCE(e.full_name, o.created_by), o.created_by, u.id
             ORDER BY revenue DESC
@@ -563,7 +588,8 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             SELECT DATE_TRUNC('day', o.completed_at)::DATE AS lbl,
                    COALESCE(SUM(o.total_amount), 0)         AS revenue
             FROM orders o
-            WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.order_type = 'SELL'
+            WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true)
+              AND o.status = 'COMPLETED' AND o.order_type = 'SELL'
               AND o.completed_at >= :from AND o.completed_at < :to
             GROUP BY lbl ORDER BY lbl
             """, nativeQuery = true)
@@ -578,7 +604,8 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             SELECT DATE_TRUNC('week', o.completed_at)::DATE AS lbl,
                    COALESCE(SUM(o.total_amount), 0)          AS revenue
             FROM orders o
-            WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.order_type = 'SELL'
+            WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true)
+              AND o.status = 'COMPLETED' AND o.order_type = 'SELL'
               AND o.completed_at >= :from AND o.completed_at < :to
             GROUP BY lbl ORDER BY lbl
             """, nativeQuery = true)
@@ -593,7 +620,8 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             SELECT DATE_TRUNC('month', o.completed_at)::DATE AS lbl,
                    COALESCE(SUM(o.total_amount), 0)           AS revenue
             FROM orders o
-            WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.order_type = 'SELL'
+            WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true)
+              AND o.status = 'COMPLETED' AND o.order_type = 'SELL'
               AND o.completed_at >= :from AND o.completed_at < :to
             GROUP BY lbl ORDER BY lbl
             """, nativeQuery = true)

@@ -2,6 +2,7 @@ package com.tappy.pos.repository.pawn;
 
 import com.tappy.pos.model.entity.pawn.PawnEntity;
 import com.tappy.pos.model.enums.PawnStatus;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -127,4 +128,91 @@ public interface PawnRepository extends JpaRepository<PawnEntity, Long> {
             @Param("pawnStatuses") List<PawnStatus> pawnStatuses,
             @Param("excludeVisibleItem") boolean excludeVisibleItem
     );
+
+    // ── Day-granularity chart queries ─────────────────────────────────────────
+
+    @Query("SELECT COALESCE(SUM(p.pawnAmount), 0), COUNT(DISTINCT p.pawnId), " +
+            "YEAR(p.pawnDate), MONTH(p.pawnDate), DAY(p.pawnDate) " +
+            "FROM PawnEntity p " +
+            "WHERE (:excludeVisible = false OR p.visible IS NULL OR p.visible = true) " +
+            "AND p.pawnDate BETWEEN :fromDate AND :toDate " +
+            "GROUP BY YEAR(p.pawnDate), MONTH(p.pawnDate), DAY(p.pawnDate) " +
+            "ORDER BY YEAR(p.pawnDate), MONTH(p.pawnDate), DAY(p.pawnDate)")
+    List<Object[]> getAmountByDayPawnDate(
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            @Param("excludeVisible") boolean excludeVisible);
+
+    @Query("SELECT COALESCE(SUM(p.pawnAmount), 0), COUNT(DISTINCT p.pawnId), " +
+            "YEAR(p.redeemDate), MONTH(p.redeemDate), DAY(p.redeemDate) " +
+            "FROM PawnEntity p " +
+            "WHERE p.pawnStatus IN :pawnStatuses " +
+            "AND (:excludeVisible = false OR p.visible IS NULL OR p.visible = true) " +
+            "AND p.redeemDate BETWEEN :fromDate AND :toDate " +
+            "GROUP BY YEAR(p.redeemDate), MONTH(p.redeemDate), DAY(p.redeemDate) " +
+            "ORDER BY YEAR(p.redeemDate), MONTH(p.redeemDate), DAY(p.redeemDate)")
+    List<Object[]> getAmountByDayRedeemDate(
+            @Param("pawnStatuses") List<PawnStatus> pawnStatuses,
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            @Param("excludeVisible") boolean excludeVisible);
+
+    @Query("SELECT COALESCE(SUM(p.pawnAmount), 0), COUNT(DISTINCT p.pawnId), " +
+            "YEAR(p.forfeitedDate), MONTH(p.forfeitedDate), DAY(p.forfeitedDate) " +
+            "FROM PawnEntity p " +
+            "WHERE p.pawnStatus IN :pawnStatuses " +
+            "AND (:excludeVisible = false OR p.visible IS NULL OR p.visible = true) " +
+            "AND p.forfeitedDate BETWEEN :fromDate AND :toDate " +
+            "GROUP BY YEAR(p.forfeitedDate), MONTH(p.forfeitedDate), DAY(p.forfeitedDate) " +
+            "ORDER BY YEAR(p.forfeitedDate), MONTH(p.forfeitedDate), DAY(p.forfeitedDate)")
+    List<Object[]> getAmountByDayForfeitedDate(
+            @Param("pawnStatuses") List<PawnStatus> pawnStatuses,
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            @Param("excludeVisible") boolean excludeVisible);
+
+    @Query("SELECT IFNULL(SUM(p.interestAmount), 0), COUNT(DISTINCT p.pawnId), " +
+            "YEAR(p.redeemDate), MONTH(p.redeemDate), DAY(p.redeemDate) " +
+            "FROM PawnEntity p " +
+            "WHERE p.pawnStatus = :pawnStatus " +
+            "AND (:excludeVisible = false OR p.visible IS NULL OR p.visible = true) " +
+            "AND p.redeemDate BETWEEN :fromDate AND :toDate " +
+            "GROUP BY YEAR(p.redeemDate), MONTH(p.redeemDate), DAY(p.redeemDate) " +
+            "ORDER BY YEAR(p.redeemDate), MONTH(p.redeemDate), DAY(p.redeemDate)")
+    List<Object[]> getRedeemedInterestByDay(
+            @Param("pawnStatus") PawnStatus pawnStatus,
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            @Param("excludeVisible") boolean excludeVisible);
+
+    @Query("SELECT IFNULL(SUM(p.interestAmount), 0), COUNT(DISTINCT p.pawnId), " +
+            "YEAR(p.forfeitedDate), MONTH(p.forfeitedDate), DAY(p.forfeitedDate) " +
+            "FROM PawnEntity p " +
+            "WHERE p.pawnStatus = :pawnStatus " +
+            "AND (:excludeVisible = false OR p.visible IS NULL OR p.visible = true) " +
+            "AND p.forfeitedDate BETWEEN :fromDate AND :toDate " +
+            "GROUP BY YEAR(p.forfeitedDate), MONTH(p.forfeitedDate), DAY(p.forfeitedDate) " +
+            "ORDER BY YEAR(p.forfeitedDate), MONTH(p.forfeitedDate), DAY(p.forfeitedDate)")
+    List<Object[]> getForfeitedInterestByDay(
+            @Param("pawnStatus") PawnStatus pawnStatus,
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            @Param("excludeVisible") boolean excludeVisible);
+
+    // ── Top customers by pawn amount ──────────────────────────────────────────
+
+    @Query("SELECT p.customerId, p.customerName, " +
+            "COUNT(DISTINCT p.pawnId), " +
+            "COALESCE(SUM(p.pawnAmount), 0), " +
+            "COALESCE(SUM(p.interestAmount), 0) " +
+            "FROM PawnEntity p " +
+            "WHERE (:excludeVisible = false OR p.visible IS NULL OR p.visible = true) " +
+            "AND p.pawnDate BETWEEN :fromDate AND :toDate " +
+            "GROUP BY p.customerId, p.customerName " +
+            "ORDER BY COALESCE(SUM(p.pawnAmount), 0) DESC")
+    List<Object[]> findTopCustomersByPawnAmount(
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            @Param("excludeVisible") boolean excludeVisible,
+            Pageable pageable);
 }

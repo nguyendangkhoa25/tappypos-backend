@@ -13,4 +13,6 @@ public interface FeedbackService {
     Page<FeedbackDTO> getMyFeedback(Pageable pageable);
     Page<FeedbackDTO> getAllFeedback(String tenantId, FeedbackStatus status, FeedbackType type, Pageable pageable);
     FeedbackDTO updateStatus(Long id, UpdateFeedbackRequest request);
+    long countAllActive();
+    long countByStatus(FeedbackStatus status);
 }

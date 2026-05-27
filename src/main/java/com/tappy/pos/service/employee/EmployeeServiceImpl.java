@@ -11,6 +11,8 @@ import com.tappy.pos.model.entity.auth.User;
 import com.tappy.pos.model.enums.EmployeePosition;
 import com.tappy.pos.repository.employee.EmployeeRepository;
 import com.tappy.pos.repository.auth.UserRepository;
+import com.tappy.pos.repository.order.OrderItemRepository;
+import com.tappy.pos.repository.order.OrderRepository;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.service.audit.ActivityLogService;
 import com.tappy.pos.service.storage.R2CleanupService;
@@ -29,7 +31,11 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -38,13 +44,15 @@ import java.util.stream.Collectors;
 @Transactional
 public class EmployeeServiceImpl implements EmployeeService {
 
-    private final EmployeeRepository employeeRepository;
-    private final UserRepository userRepository;
-    private final MessageService messageService;
-    private final TenantContext tenantContext;
-    private final ActivityLogService activityLogService;
-    private final R2StorageService r2StorageService;
-    private final R2CleanupService r2CleanupService;
+    private final EmployeeRepository  employeeRepository;
+    private final UserRepository       userRepository;
+    private final OrderRepository      orderRepository;
+    private final OrderItemRepository  orderItemRepository;
+    private final MessageService       messageService;
+    private final TenantContext        tenantContext;
+    private final ActivityLogService   activityLogService;
+    private final R2StorageService     r2StorageService;
+    private final R2CleanupService     r2CleanupService;
 
     @Override
     public Page<EmployeeDTO> getAll(String search, int page, int size) {
@@ -280,5 +288,93 @@ public class EmployeeServiceImpl implements EmployeeService {
         r2CleanupService.deleteAsync(oldKey);
         log.info("Employee avatar deleted — employeeId: {}", id);
         return toDTO(saved);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Object> getAnalytics(LocalDateTime from, LocalDateTime to,
+                                            String granularity, int limit) {
+        // ── Summary ──────────────────────────────────────────────────────────
+        BigDecimal totalRevenue = orderRepository.sumRevenueByDateRange(from, to);
+        if (totalRevenue == null) totalRevenue = BigDecimal.ZERO;
+
+        BigDecimal totalCommission = orderItemRepository.sumTeamCommissionByDateRange(from, to);
+        if (totalCommission == null) totalCommission = BigDecimal.ZERO;
+
+        long activeEmployeeCount = orderRepository.countActiveEmployees(from, to);
+        double avgRevenuePerEmployee = activeEmployeeCount > 0
+                ? totalRevenue.doubleValue() / activeEmployeeCount : 0.0;
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("totalRevenue",         totalRevenue.doubleValue());
+        summary.put("totalCommission",       totalCommission.doubleValue());
+        summary.put("activeEmployeeCount",   activeEmployeeCount);
+        summary.put("avgRevenuePerEmployee", avgRevenuePerEmployee);
+
+        // ── Revenue ranking ───────────────────────────────────────────────────
+        List<Map<String, Object>> rankingRevenue = orderRepository
+                .getEmployeeRevenueRankingByDateRange(from, to, Math.max(1, limit))
+                .stream().map(r -> {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("employeeName", r[0] != null ? r[0].toString() : "");
+                    item.put("userId",       r[1] != null ? r[1].toString() : null);
+                    item.put("orderCount",   r[2] != null ? ((Number) r[2]).longValue()   : 0L);
+                    item.put("revenue",      r[3] != null ? ((Number) r[3]).doubleValue() : 0.0);
+                    return item;
+                }).collect(Collectors.toList());
+
+        // ── Commission ranking ────────────────────────────────────────────────
+        List<Map<String, Object>> rankingCommission = orderItemRepository
+                .getEmployeeCommissionRankingByDateRange(from, to, Math.max(1, limit))
+                .stream().map(r -> {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("employeeId",   r[0] != null ? r[0].toString() : null);
+                    item.put("employeeName", r[1] != null ? r[1].toString() : "");
+                    item.put("commission",   r[2] != null ? ((Number) r[2]).doubleValue() : 0.0);
+                    item.put("orderCount",   r[3] != null ? ((Number) r[3]).longValue()   : 0L);
+                    item.put("revenue",      r[4] != null ? ((Number) r[4]).doubleValue() : 0.0);
+                    return item;
+                }).collect(Collectors.toList());
+
+        // ── Trend (revenue + commission merged by label) ──────────────────────
+        List<Object[]> revTrend = switch (granularity) {
+            case "week"  -> orderRepository.getEmployeeRevenueTrendByWeek(from, to);
+            case "month" -> orderRepository.getEmployeeRevenueTrendByMonth(from, to);
+            default      -> orderRepository.getEmployeeRevenueTrendByDay(from, to);
+        };
+        List<Object[]> commTrend = switch (granularity) {
+            case "week"  -> orderItemRepository.getTeamCommissionTrendByWeek(from, to);
+            case "month" -> orderItemRepository.getTeamCommissionTrendByMonth(from, to);
+            default      -> orderItemRepository.getTeamCommissionTrendByDay(from, to);
+        };
+
+        Map<String, double[]> trendMap = new LinkedHashMap<>();
+        for (Object[] r : revTrend) {
+            String lbl = r[0] != null ? r[0].toString() : "";
+            trendMap.computeIfAbsent(lbl, k -> new double[]{0, 0})[0] =
+                    r[1] != null ? ((Number) r[1]).doubleValue() : 0;
+        }
+        for (Object[] r : commTrend) {
+            String lbl = r[0] != null ? r[0].toString() : "";
+            trendMap.computeIfAbsent(lbl, k -> new double[]{0, 0})[1] =
+                    r[1] != null ? ((Number) r[1]).doubleValue() : 0;
+        }
+        List<Map<String, Object>> trend = trendMap.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(e -> {
+                    Map<String, Object> point = new LinkedHashMap<>();
+                    point.put("label",      e.getKey());
+                    point.put("revenue",    e.getValue()[0]);
+                    point.put("commission", e.getValue()[1]);
+                    return point;
+                })
+                .collect(Collectors.toList());
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("summary",          summary);
+        result.put("rankingRevenue",    rankingRevenue);
+        result.put("rankingCommission", rankingCommission);
+        result.put("trend",             trend);
+        return result;
     }
 }

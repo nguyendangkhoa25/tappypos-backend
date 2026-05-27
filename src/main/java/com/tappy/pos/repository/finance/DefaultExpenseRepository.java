@@ -11,11 +11,11 @@ import java.util.List;
 @Repository
 public interface DefaultExpenseRepository extends JpaRepository<DefaultExpense, Long> {
 
-    @Query(value = "SELECT * FROM default_expense WHERE deleted = FALSE ORDER BY display_order ASC, id ASC",
+    @Query(value = "SELECT * FROM default_expense WHERE deleted = FALSE AND tenant_id = current_setting('app.current_tenant', true) ORDER BY display_order ASC, id ASC",
            nativeQuery = true)
     List<DefaultExpense> findAllActive();
 
-    @Query(value = "SELECT EXISTS (SELECT 1 FROM default_expense WHERE deleted = FALSE AND description = :desc)",
+    @Query(value = "SELECT EXISTS (SELECT 1 FROM default_expense WHERE deleted = FALSE AND tenant_id = current_setting('app.current_tenant', true) AND description = :desc)",
            nativeQuery = true)
     boolean existsByDescription(@Param("desc") String description);
 }

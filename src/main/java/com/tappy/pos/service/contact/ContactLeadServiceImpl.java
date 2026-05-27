@@ -67,6 +67,18 @@ public class ContactLeadServiceImpl implements ContactLeadService {
         return toDTO(contactLeadRepository.save(lead));
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public long countAllActive() {
+        return contactLeadRepository.countAllActive();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countByStatus(LeadStatus status) {
+        return contactLeadRepository.countByStatus(status);
+    }
+
     private ContactLeadDTO toDTO(ContactLead l) {
         return ContactLeadDTO.builder()
                 .id(l.getId())

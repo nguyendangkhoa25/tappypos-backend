@@ -9,7 +9,6 @@ import com.tappy.pos.model.entity.tenant.Tenant;
 import com.tappy.pos.model.enums.ExpenseCategory;
 import com.tappy.pos.model.enums.ShopType;
 import com.tappy.pos.multitenant.TenantContext;
-import com.tappy.pos.repository.auth.RoleRepository;
 import com.tappy.pos.model.dto.finance.DefaultExpenseRequest;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.finance.DefaultExpenseService;
@@ -47,7 +46,6 @@ public class OnboardingController {
     private final ShopExpenseService shopExpenseService;
     private final DefaultExpenseService defaultExpenseService;
     private final JwtTokenProvider jwtTokenProvider;
-    private final RoleRepository roleRepository;
     private final NamedParameterJdbcTemplate namedJdbc;
     private final NotificationService notificationService;
     private final MessageService messageService;
@@ -187,39 +185,38 @@ public class OnboardingController {
     @GetMapping("/shop-types")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getShopTypes() {
         List<Map<String, Object>> types = Arrays.asList(
-                shopEntry("CONVENIENCE_STORE", "Cửa hàng tổng hợp", "🏪"),
-                shopEntry("FOOD_BEVERAGE", "Thực phẩm / Đồ uống", "🍱"),
-                shopEntry("RESTAURANT", "Quán ăn / Nhà hàng", "🍜"),
-                shopEntry("COFFEE_SHOP", "Quán cà phê", "☕"),
-                shopEntry("PUB",         "Quán nhậu", "🍺"),
-                shopEntry("PUB_SEAFOOD", "Quán nhậu hải sản", "🦞"),
-                shopEntry("PUB_GOAT",    "Quán nhậu chuyên dê", "🐐"),
-                shopEntry("PUB_BEEF",    "Quán nhậu chuyên bò", "🐄"),
-                shopEntry("FASHION", "Thời trang", "👗"),
-                shopEntry("ELECTRONICS", "Điện tử / Điện máy", "📱"),
-                shopEntry("BARBER_SHOP",     "Salon / Cắt tóc",            "💇"),
-                shopEntry("BARBER_SHOP_MEN", "Tiệm tóc nam / Barber",      "✂️"),
-                shopEntry("HAIR_SALON",      "Salon tóc nữ / Unisex",      "💁"),
-                shopEntry("NAIL_SHOP",       "Tiệm nail / Làm móng",       "💅"),
-                shopEntry("LASH_PMU_STUDIO", "Tiệm mi / Xăm thẩm mỹ",     "👁️"),
-                shopEntry("SPA_SHOP",        "Spa",                         "🧖"),
-                shopEntry("MASSAGE_SHOP",    "Tiệm massage",                "🤲"),
-                shopEntry("BEAUTY_CLINIC",   "Thẩm mỹ viện",               "🏥"),
-                shopEntry("MAKEUP_STUDIO",   "Tiệm trang điểm / Cô dâu",   "💄"),
-                shopEntry("BOOK_STORE", "Nhà sách", "📚"),
-                shopEntry("PHARMACY", "Nhà thuốc / Dược phẩm", "💊"),
-                shopEntry("JEWELRY", "Trang sức / Vàng bạc", "💍"),
-                shopEntry("PAWN_SHOP", "Tiệm cầm đồ", "🏦"),
-                shopEntry("OTHER", "Khác", "🏢")
+                shopEntry("CONVENIENCE_STORE", "Cửa hàng tổng hợp"),
+                shopEntry("FOOD_BEVERAGE", "Thực phẩm / Đồ uống"),
+                shopEntry("RESTAURANT", "Quán ăn / Nhà hàng"),
+                shopEntry("COFFEE_SHOP", "Quán cà phê"),
+                shopEntry("PUB",         "Quán nhậu"),
+                shopEntry("PUB_SEAFOOD", "Quán nhậu hải sản"),
+                shopEntry("PUB_GOAT",    "Quán nhậu chuyên dê"),
+                shopEntry("PUB_BEEF",    "Quán nhậu chuyên bò"),
+                shopEntry("FASHION", "Thời trang"),
+                shopEntry("ELECTRONICS", "Điện tử / Điện máy"),
+                shopEntry("BARBER_SHOP",     "Salon / Cắt tóc"),
+                shopEntry("BARBER_SHOP_MEN", "Tiệm tóc nam / Barber"),
+                shopEntry("HAIR_SALON",      "Salon tóc nữ / Unisex"),
+                shopEntry("NAIL_SHOP",       "Tiệm nail / Làm móng"),
+                shopEntry("LASH_PMU_STUDIO", "Tiệm mi / Xăm thẩm mỹ"),
+                shopEntry("SPA_SHOP",        "Spa"),
+                shopEntry("MASSAGE_SHOP",    "Tiệm massage"),
+                shopEntry("BEAUTY_CLINIC",   "Thẩm mỹ viện"),
+                shopEntry("MAKEUP_STUDIO",   "Tiệm trang điểm / Cô dâu"),
+                shopEntry("BOOK_STORE", "Nhà sách"),
+                shopEntry("PHARMACY", "Nhà thuốc / Dược phẩm"),
+                shopEntry("JEWELRY", "Trang sức / Vàng bạc"),
+                shopEntry("PAWN_SHOP", "Tiệm cầm đồ"),
+                shopEntry("OTHER", "Khác")
         );
         return ResponseEntity.ok(ApiResponse.success(types, "OK"));
     }
 
-    private Map<String, Object> shopEntry(String code, String name, String emoji) {
+    private Map<String, Object> shopEntry(String code, String name) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("code", code);
         m.put("name", name);
-        m.put("emoji", emoji);
         return m;
     }
 
@@ -239,7 +236,7 @@ public class OnboardingController {
             m.put("id", row.get("id").toString());
             m.put("name", row.get("name"));
             m.put("nameEn", row.getOrDefault("name_en", row.get("name")));
-            m.put("emoji", row.getOrDefault("emoji", "📦"));
+            m.put("emoji", row.getOrDefault("emoji", null));
             m.put("price", row.get("default_price"));
             m.put("unit", row.get("unit"));
             m.put("dynamicPrice", Boolean.TRUE.equals(row.get("dynamic_price")));
@@ -267,7 +264,7 @@ public class OnboardingController {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("name", row.get("name"));
             m.put("nameEn", row.getOrDefault("name_en", row.get("name")));
-            m.put("emoji", row.getOrDefault("emoji", "💰"));
+            m.put("emoji", row.getOrDefault("emoji", null));
             m.put("category", row.getOrDefault("category_code", "OTHER"));
             return m;
         }).toList();
@@ -333,9 +330,7 @@ public class OnboardingController {
             seedOnboardingPawnTypes(body, tenantId, shopType);
             seedOnboardingPawnInterest(body, tenantId, shopType);
 
-            List<String> roleNames = roleRepository.findByNameAndTenantId("SHOP_OWNER", tenantId)
-                    .map(r -> List.of(r.getName()))
-                    .orElse(List.of("SHOP_OWNER"));
+            List<String> roleNames = tenantFeatureService.getShopOwnerRoleNames(tenantId);
             List<String> featureNames = tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(roleNames);
 
             String accessToken = jwtTokenProvider.generateTokenWithRolesAndFeatures(

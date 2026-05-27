@@ -8,12 +8,9 @@ import com.tappy.pos.model.dto.tenant.SavePrintTemplateRequest;
 import com.tappy.pos.model.dto.pawn.PawnStampTemplateConfig;
 import com.tappy.pos.model.entity.finance.BankAccount;
 import com.tappy.pos.model.entity.tenant.ShopInfo;
-import com.tappy.pos.repository.finance.BankAccountRepository;
-import com.tappy.pos.repository.tenant.ShopInfoRepository;
 import com.tappy.pos.service.tenant.PrintTemplateService;
 import com.tappy.pos.model.dto.ApiResponse;
 import com.tappy.pos.util.ReceiptHtmlBuilder;
-import org.springframework.http.ResponseEntity;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -31,8 +28,6 @@ import com.tappy.pos.annotation.RequiresFeature;
 public class PrintTemplateController {
 
     private final PrintTemplateService service;
-    private final ShopInfoRepository shopInfoRepository;
-    private final BankAccountRepository bankAccountRepository;
     private final ObjectMapper objectMapper;
 
     /** List all templates for a given type. */
@@ -98,8 +93,8 @@ public class PrintTemplateController {
         }
         cfg.setAutoClose(false);
 
-        ShopInfo shopInfo = shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc().orElse(null);
-        BankAccount bankAccount = cfg.isShowVietQr() ? bankAccountRepository.findDefault().orElse(null) : null;
+        ShopInfo shopInfo = service.getShopInfoForPreview();
+        BankAccount bankAccount = cfg.isShowVietQr() ? service.getDefaultBankAccount().orElse(null) : null;
         return ResponseEntity.ok(ReceiptHtmlBuilder.buildPreview(buildSampleRequest(), shopInfo, cfg, bankAccount));
     }
 

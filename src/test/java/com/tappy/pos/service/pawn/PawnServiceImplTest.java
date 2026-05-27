@@ -1,6 +1,7 @@
 package com.tappy.pos.service.pawn;
 
 import com.tappy.pos.config.AuthContext;
+import com.tappy.pos.config.FeatureContext;
 import com.tappy.pos.exception.PawnStatusNotAllowException;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.pawn.*;
@@ -63,6 +64,7 @@ class PawnServiceImplTest {
     @Mock private CustomerRepository customerRepository;
     @Mock private ReqMoneyRepository reqMoneyRepository;
     @Mock private AuthContext authContext;
+    @Mock private FeatureContext featureContext;
     @Mock private ActivityLogService activityLogService;
     @Mock private PawnAuditRepository auditRepository;
     @Mock private ShopInfoService shopInfoService;
@@ -106,6 +108,8 @@ class PawnServiceImplTest {
         lenient().when(tenantContext.getCurrentTenantId()).thenReturn("test-shop");
         lenient().when(messageService.getMessage(anyString())).thenReturn("error");
         lenient().when(messageService.getMessage(anyString(), any(Object[].class))).thenReturn("error");
+        // Default: grant PAWN_VIEW_ALL so pre-existing tests continue to see all data
+        lenient().when(featureContext.hasFeature(anyString())).thenReturn(true);
     }
 
     // ── getPawnDetails ────────────────────────────────────────────────────────

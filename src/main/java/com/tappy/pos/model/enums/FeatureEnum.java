@@ -32,6 +32,7 @@ public enum FeatureEnum {
     POS("Điểm Bán Hàng", "Bán hàng tại quầy, thanh toán và in hóa đơn"),
     ACTIVITY_LOG("Nhật Ký Hoạt Động", "Xem nhật ký hoạt động của người dùng trong cửa hàng"),
     PAWN("Cầm Đồ", "Quản lý hợp đồng cầm đồ, lãi suất và thanh lý tài sản"),
+    PAWN_VIEW_ALL("Xem Tất Cả Cầm Đồ", "Xem hợp đồng cầm đồ của tất cả nhân viên; nếu không có quyền này, chỉ xem được hợp đồng tự tạo"),
     NOTIFICATION("Thông Báo", "Nhận thông báo và nhắc nhở từ hệ thống"),
     FEEDBACK("Góp Ý", "Gửi phản hồi và đề xuất đến quản trị hệ thống"),
     PRINT_TEMPLATE("Mẫu In", "Quản lý mẫu in biên nhận và hóa đơn"),

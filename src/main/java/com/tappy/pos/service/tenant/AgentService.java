@@ -34,6 +34,28 @@ public class AgentService {
     private final ActivityLogService activityLogService;
     private final NotificationService notificationService;
 
+    @Transactional(readOnly = true)
+    public long countTotal() {
+        return agentRepository.count();
+    }
+
+    /**
+     * Returns a formatted support-contact string for a given vendor/agent ID.
+     * Example: "Liên hệ hỗ trợ: Kim Ngân Phát · 0909123456 · agent@email.com"
+     * Returns empty string when vendorId is null or not found.
+     */
+    @Transactional(readOnly = true)
+    public String getContactInfo(Long vendorId) {
+        if (vendorId == null) return "";
+        return agentRepository.findById(vendorId).map(agent -> {
+            List<String> parts = new java.util.ArrayList<>();
+            if (agent.getName() != null) parts.add(agent.getName());
+            if (agent.getContactPhone() != null) parts.add(agent.getContactPhone());
+            if (agent.getContactEmail() != null) parts.add(agent.getContactEmail());
+            return parts.isEmpty() ? "" : "Liên hệ hỗ trợ: " + String.join(" · ", parts);
+        }).orElse("");
+    }
+
     public List<VendorDTO> getAll(String search) {
         return agentRepository.findAllActive(search).stream()
                 .map(this::toDTO)

@@ -32,7 +32,9 @@ public class PawnMapper {
         entity.setForfeitedReason(req.getForfeitedReason());
         entity.setForfeitedAmount(req.getForfeitedAmount());
         entity.setInterestCalcMode(req.getInterestCalcMode());
-        entity.setHeldDays((int) req.getHeldDays());
+        if (req.getHeldDays() != null) {
+            entity.setHeldDays(req.getHeldDays().intValue());
+        }
         entity.setVisible(req.isVisible());
         entity.setPawnCategory(req.getPawnCategory());
         return entity;

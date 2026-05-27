@@ -85,7 +85,7 @@ public class DefaultExpenseServiceImpl implements DefaultExpenseService {
         List<ShopExpenseDTO> created = new ArrayList<>();
 
         for (DefaultExpense def : defaults) {
-            if (shopExpenseRepository.existsByDescriptionAndDateRange(def.getDescription(), firstDay, lastDay)) {
+            if (shopExpenseRepository.existsByDescriptionAndDateRange(tenantContext.getCurrentTenantId(), def.getDescription(), firstDay, lastDay)) {
                 log.debug("Skipping clone for '{}' — already exists in {}", def.getDescription(), month);
                 continue;
             }

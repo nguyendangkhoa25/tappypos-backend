@@ -6,10 +6,10 @@ import com.tappy.pos.model.dto.dashboard.MasterDashboardStatsDTO;
 import com.tappy.pos.model.dto.tenant.TenantStatsDTO;
 import com.tappy.pos.model.enums.FeedbackStatus;
 import com.tappy.pos.model.enums.LeadStatus;
-import com.tappy.pos.repository.contact.ContactLeadRepository;
-import com.tappy.pos.repository.feedback.FeedbackRepository;
-import com.tappy.pos.repository.product.ProductCatalogRepository;
-import com.tappy.pos.repository.tenant.AgentRepository;
+import com.tappy.pos.service.contact.ContactLeadService;
+import com.tappy.pos.service.feedback.FeedbackService;
+import com.tappy.pos.service.product.ProductCatalogService;
+import com.tappy.pos.service.tenant.AgentService;
 import com.tappy.pos.service.tenant.TenantService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,10 +26,10 @@ import org.springframework.web.bind.annotation.RestController;
 public class MasterDashboardController {
 
     private final TenantService tenantService;
-    private final AgentRepository agentRepository;
-    private final ProductCatalogRepository productCatalogRepository;
-    private final FeedbackRepository feedbackRepository;
-    private final ContactLeadRepository contactLeadRepository;
+    private final AgentService agentService;
+    private final ProductCatalogService productCatalogService;
+    private final FeedbackService feedbackService;
+    private final ContactLeadService contactLeadService;
 
     /**
      * GET /api/master-dashboard/stats
@@ -44,20 +44,20 @@ public class MasterDashboardController {
         TenantStatsDTO tenantStats = tenantService.getStats();
 
         // Agent count — only master admin needs this; agents won't show it in UI
-        long agentTotal = agentRepository.count();
+        long agentTotal = agentService.countTotal();
 
         // Product catalog stats
-        long catalogTotal        = productCatalogRepository.count();
-        long catalogFromOff      = productCatalogRepository.countBySource("OPEN_FOOD_FACTS");
-        long catalogManual       = catalogTotal - catalogFromOff;
+        long catalogTotal   = productCatalogService.getTotalCount();
+        long catalogFromOff = productCatalogService.countBySource("OPEN_FOOD_FACTS");
+        long catalogManual  = catalogTotal - catalogFromOff;
 
         // Feedback stats
-        long feedbackTotal   = feedbackRepository.countAllActive();
-        long feedbackPending = feedbackRepository.countByStatus(FeedbackStatus.PENDING);
+        long feedbackTotal   = feedbackService.countAllActive();
+        long feedbackPending = feedbackService.countByStatus(FeedbackStatus.PENDING);
 
         // Contact lead stats
-        long leadsTotal    = contactLeadRepository.countAllActive();
-        long leadsNew      = contactLeadRepository.countByStatus(LeadStatus.NEW);
+        long leadsTotal = contactLeadService.countAllActive();
+        long leadsNew   = contactLeadService.countByStatus(LeadStatus.NEW);
 
         MasterDashboardStatsDTO stats = MasterDashboardStatsDTO.builder()
                 .tenants(MasterDashboardStatsDTO.TenantStats.builder()

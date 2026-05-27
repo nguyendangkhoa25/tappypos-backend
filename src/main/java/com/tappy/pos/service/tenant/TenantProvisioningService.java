@@ -25,13 +25,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Seeds roles, features, role-feature mappings, shop info, and admin user
@@ -93,24 +97,31 @@ public class TenantProvisioningService {
         SHOP_TYPE_NAV_DEFAULTS = Collections.unmodifiableMap(m);
     }
 
-    // Role → list of feature keys the role receives by default
+    // Role → list of feature keys the role receives by default.
+    // Profile intersection (applyShopTypeFilters) trims this list at provisioning time
+    // so each shop type only gets features that make sense for it.
     private static final Map<String, List<String>> ROLE_FEATURES;
     static {
         Map<String, List<String>> m = new LinkedHashMap<>();
         m.put(RoleEnum.SHOP_OWNER.getCode(), Arrays.asList(
             "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "PROMOTION",
-            "EMPLOYEE", "SALARY", "CUSTOMER", "LOYALTY", "INVOICE", "ACCOUNTING", "REVENUE", "EXPENSE",
+            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "CUSTOMER", "LOYALTY",
+            "INVOICE", "ACCOUNTING", "REVENUE", "EXPENSE",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "POS",
-            "ACTIVITY_LOG", "PAWN", "COMMISSION", "NOTIFICATION", "FEEDBACK", "APPOINTMENT"
+            "TABLE_SERVICE", "ACTIVITY_LOG", "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
+            "COMMISSION", "COMMISSION_VIEW_ALL", "GOOGLE_DRIVE", "NOTIFICATION", "FEEDBACK", "APPOINTMENT"
         ));
         m.put(RoleEnum.MANAGER.getCode(), Arrays.asList(
-            "DASHBOARD", "ORDER", "MY_WORK", "PRODUCT", "PROMOTION",
-            "EMPLOYEE", "CUSTOMER", "LOYALTY", "INVOICE", "ACCOUNTING", "REVENUE", "EXPENSE",
+            "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "PROMOTION",
+            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "CUSTOMER", "LOYALTY",
+            "INVOICE", "ACCOUNTING", "REVENUE", "EXPENSE",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "POS",
-            "ACTIVITY_LOG", "PAWN", "COMMISSION", "NOTIFICATION", "FEEDBACK"
+            "TABLE_SERVICE", "ACTIVITY_LOG", "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
+            "COMMISSION", "COMMISSION_VIEW_ALL", "NOTIFICATION", "FEEDBACK"
         ));
         m.put(RoleEnum.CASHIER.getCode(), Arrays.asList(
-            "DASHBOARD", "MY_WORK", "ORDER", "POS", "CUSTOMER", "PROMOTION",
+            "DASHBOARD", "MY_WORK", "ORDER", "POS", "TABLE_SERVICE",
+            "CUSTOMER", "LOYALTY", "PROMOTION", "COMMISSION",
             "NOTIFICATION", "FEEDBACK"
         ));
         m.put(RoleEnum.ACCOUNTANT.getCode(), Arrays.asList(
@@ -122,25 +133,148 @@ public class TenantProvisioningService {
             "NOTIFICATION", "FEEDBACK"
         ));
         m.put(RoleEnum.PAWN_OFFICER.getCode(), Arrays.asList(
-            "DASHBOARD", "MY_WORK", "PAWN", "CUSTOMER", "ORDER", "PRODUCT",
+            // PAWN_VIEW_ALL intentionally absent: PAWN_OFFICER sees only their own contracts.
+            "DASHBOARD", "MY_WORK", "PAWN", "GOLD_PRICE", "GOLD_PRICE_CHART",
+            "CUSTOMER", "LOYALTY", "ORDER", "PRODUCT",
             "NOTIFICATION", "FEEDBACK"
         ));
         m.put(RoleEnum.SERVICE_STAFF.getCode(), Arrays.asList(
-            "DASHBOARD", "MY_WORK", "ORDER", "POS", "CUSTOMER", "COMMISSION",
-            "NOTIFICATION", "FEEDBACK"
+            "DASHBOARD", "MY_WORK", "ORDER", "POS", "TABLE_SERVICE",
+            "CUSTOMER", "COMMISSION", "NOTIFICATION", "FEEDBACK"
         ));
         m.put(RoleEnum.TECHNICIAN.getCode(), Arrays.asList(
-            "DASHBOARD", "MY_WORK", "ORDER", "PRODUCT", "CUSTOMER", "INVENTORY", "POS", "PAWN",
+            "DASHBOARD", "MY_WORK", "ORDER", "PRODUCT", "CUSTOMER", "INVENTORY", "POS",
             "NOTIFICATION", "FEEDBACK"
         ));
         m.put(RoleEnum.RECEPTIONIST.getCode(), Arrays.asList(
-            "DASHBOARD", "MY_WORK", "ORDER", "CUSTOMER", "POS", "COMMISSION",
-            "NOTIFICATION", "FEEDBACK"
+            "DASHBOARD", "MY_WORK", "ORDER", "CUSTOMER", "POS", "TABLE_SERVICE",
+            "COMMISSION", "NOTIFICATION", "FEEDBACK"
         ));
         m.put(RoleEnum.CLEANER.getCode(), Arrays.asList(
             "DASHBOARD", "MY_WORK", "NOTIFICATION"
         ));
         ROLE_FEATURES = m;
+    }
+
+    // ── Shop-type role whitelist ──────────────────────────────────────────────
+    // Limits which roles are seeded at all for a given shop type.
+    // Shop types NOT in this map get all roles (current behaviour for retail/F&B/etc.).
+    private static final Map<ShopType, List<String>> SHOP_TYPE_ROLE_WHITELIST;
+    static {
+        Map<ShopType, List<String>> m = new EnumMap<>(ShopType.class);
+        List<String> pawnRoles = Arrays.asList(
+                RoleEnum.SHOP_OWNER.getCode(), RoleEnum.PAWN_OFFICER.getCode());
+        m.put(ShopType.PAWN_SHOP, pawnRoles);
+        m.put(ShopType.JEWELRY,   pawnRoles);
+        SHOP_TYPE_ROLE_WHITELIST = Collections.unmodifiableMap(m);
+    }
+
+    // ── Feature profiles ─────────────────────────────────────────────────────
+    // Each profile defines the exact feature set meaningful for a category of shop.
+    // Profile intersection ensures roles never receive features irrelevant to their shop.
+    private static final Map<String, List<String>> FEATURE_PROFILES;
+    static {
+        Map<String, List<String>> m = new LinkedHashMap<>();
+
+        m.put("PAWN", Arrays.asList(
+            "DASHBOARD", "MY_WORK",
+            "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
+            "CUSTOMER", "LOYALTY", "APPOINTMENT",
+            "ORDER", "ORDER_VIEW_ALL", "PRODUCT",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL",
+            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
+            "NOTIFICATION", "FEEDBACK"
+        ));
+
+        m.put("JEWELRY", Arrays.asList(
+            "DASHBOARD", "MY_WORK",
+            "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
+            "ORDER", "ORDER_VIEW_ALL", "POS", "PRODUCT", "INVENTORY", "VENDOR", "PROMOTION",
+            "CUSTOMER", "LOYALTY", "APPOINTMENT",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
+            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
+            "NOTIFICATION", "FEEDBACK"
+        ));
+
+        m.put("RETAIL", Arrays.asList(
+            "DASHBOARD", "MY_WORK",
+            "ORDER", "ORDER_VIEW_ALL", "POS",
+            "PRODUCT", "INVENTORY", "VENDOR", "PROMOTION",
+            "CUSTOMER", "LOYALTY", "APPOINTMENT",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
+            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
+            "NOTIFICATION", "FEEDBACK"
+        ));
+
+        m.put("SERVICE", Arrays.asList(
+            "DASHBOARD", "MY_WORK",
+            "ORDER", "ORDER_VIEW_ALL", "POS",
+            "PRODUCT", "PROMOTION",
+            "CUSTOMER", "LOYALTY", "APPOINTMENT",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
+            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
+            "NOTIFICATION", "FEEDBACK"
+        ));
+
+        // Same as SERVICE + GOOGLE_DRIVE (before/after photos are core to spa/clinic workflows)
+        m.put("BEAUTY", Arrays.asList(
+            "DASHBOARD", "MY_WORK",
+            "ORDER", "ORDER_VIEW_ALL", "POS",
+            "PRODUCT", "PROMOTION",
+            "CUSTOMER", "LOYALTY", "APPOINTMENT",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
+            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
+            "NOTIFICATION", "FEEDBACK", "GOOGLE_DRIVE"
+        ));
+
+        m.put("FNB", Arrays.asList(
+            "DASHBOARD", "MY_WORK",
+            "ORDER", "ORDER_VIEW_ALL", "POS", "TABLE_SERVICE",
+            "PRODUCT", "INVENTORY", "VENDOR", "PROMOTION",
+            "CUSTOMER", "LOYALTY", "APPOINTMENT",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
+            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
+            "NOTIFICATION", "FEEDBACK"
+        ));
+
+        FEATURE_PROFILES = Collections.unmodifiableMap(m);
+    }
+
+    // Shop type → profile name. Types not in this map (e.g. OTHER) get all features.
+    private static final Map<ShopType, String> SHOP_TYPE_FEATURE_PROFILE;
+    static {
+        Map<ShopType, String> m = new EnumMap<>(ShopType.class);
+        m.put(ShopType.PAWN_SHOP,          "PAWN");
+        m.put(ShopType.JEWELRY,            "JEWELRY");
+        m.put(ShopType.CONVENIENCE_STORE,  "RETAIL");
+        m.put(ShopType.PHARMACY,           "RETAIL");
+        m.put(ShopType.ELECTRONICS,        "RETAIL");
+        m.put(ShopType.FASHION,            "RETAIL");
+        m.put(ShopType.BOOK_STORE,         "RETAIL");
+        m.put(ShopType.BARBER_SHOP,        "SERVICE");
+        m.put(ShopType.BARBER_SHOP_MEN,    "SERVICE");
+        m.put(ShopType.HAIR_SALON,         "SERVICE");
+        m.put(ShopType.NAIL_SHOP,          "SERVICE");
+        m.put(ShopType.LASH_PMU_STUDIO,    "SERVICE");
+        m.put(ShopType.MAKEUP_STUDIO,      "SERVICE");
+        m.put(ShopType.MASSAGE_SHOP,       "SERVICE");
+        m.put(ShopType.SPA_SHOP,           "BEAUTY");
+        m.put(ShopType.BEAUTY_CLINIC,      "BEAUTY");
+        m.put(ShopType.FOOD_BEVERAGE,      "FNB");
+        m.put(ShopType.COFFEE_SHOP,        "FNB");
+        m.put(ShopType.RESTAURANT,         "FNB");
+        m.put(ShopType.PUB,                "FNB");
+        m.put(ShopType.PUB_SEAFOOD,        "FNB");
+        m.put(ShopType.PUB_GOAT,           "FNB");
+        m.put(ShopType.PUB_BEEF,           "FNB");
+        // ShopType.OTHER → no entry → all features (safe default)
+        SHOP_TYPE_FEATURE_PROFILE = Collections.unmodifiableMap(m);
     }
 
     /**
@@ -153,8 +287,10 @@ public class TenantProvisioningService {
         log.info("Provisioning self-registered tenant: {}", tenant.getTenantId());
         String tenantId = tenant.getTenantId();
 
-        seedRoles(new java.util.ArrayList<>(ROLE_FEATURES.keySet()), tenantId);
-        seedRoleFeatureMappings(ROLE_FEATURES);
+        Map<String, List<String>> shopRoleFeatures =
+                applyShopTypeFilters(ROLE_FEATURES, tenant.getShopType());
+        seedRoles(new ArrayList<>(shopRoleFeatures.keySet()), tenantId);
+        seedRoleFeatureMappings(shopRoleFeatures);
 
         try { seedShopInfo(tenant, shopAddress, tenantId); }
         catch (Exception e) { log.warn("seedShopInfo failed for {}: {}", tenantId, e.getMessage()); }
@@ -260,6 +396,35 @@ public class TenantProvisioningService {
         effective.computeIfAbsent(RoleEnum.SHOP_OWNER.getCode(),
                 k -> ROLE_FEATURES.getOrDefault(k, List.of()));
         return effective;
+    }
+
+    /**
+     * Applies two shop-type-specific filters to the base role→feature map:
+     * 1. Role whitelist  — keeps only roles valid for this shop type (e.g. PAWN_SHOP → SHOP_OWNER + PAWN_OFFICER only).
+     * 2. Feature whitelist — strips features irrelevant to the shop type from every remaining role.
+     * Shop types with no whitelist entry (e.g. OTHER) pass through unmodified.
+     */
+    private Map<String, List<String>> applyShopTypeFilters(Map<String, List<String>> base, ShopType shopType) {
+        List<String> roleWhitelist    = SHOP_TYPE_ROLE_WHITELIST.get(shopType);    // null = allow all roles
+        Set<String>  featureWhitelist = getProfileFeatureSet(shopType);             // null = allow all features
+
+        Map<String, List<String>> result = new LinkedHashMap<>();
+        base.forEach((role, features) -> {
+            if (roleWhitelist != null && !roleWhitelist.contains(role)) return;
+            List<String> filtered = featureWhitelist != null
+                    ? features.stream().filter(featureWhitelist::contains).collect(Collectors.toList())
+                    : new ArrayList<>(features);
+            result.put(role, filtered);
+        });
+        return result;
+    }
+
+    /** Returns the feature set for the shop type's profile, or {@code null} if no filter applies (OTHER). */
+    private Set<String> getProfileFeatureSet(ShopType shopType) {
+        String profileName = SHOP_TYPE_FEATURE_PROFILE.get(shopType);
+        if (profileName == null) return null;
+        List<String> features = FEATURE_PROFILES.get(profileName);
+        return features != null ? new HashSet<>(features) : null;
     }
 
     private void seedRoles(List<String> roleNames, String tenantId) {

@@ -1,6 +1,7 @@
 package com.tappy.pos.service.finance;
 
 import com.tappy.pos.model.dto.revenue.*;
+import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.finance.ShopExpenseRepository;
 import com.tappy.pos.repository.order.OrderItemRepository;
 import com.tappy.pos.repository.order.OrderRepository;
@@ -19,6 +20,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -28,9 +30,12 @@ class RevenueServiceImplTest {
     @Mock private OrderRepository orderRepository;
     @Mock private OrderItemRepository orderItemRepository;
     @Mock private ShopExpenseRepository expenseRepository;
+    @Mock private TenantContext tenantContext;
 
     @InjectMocks
     private RevenueServiceImpl revenueService;
+
+    private static final String TENANT = "test-tenant";
 
     private static final BigDecimal ZERO = BigDecimal.ZERO;
 
@@ -47,9 +52,10 @@ class RevenueServiceImplTest {
         lenient().when(orderRepository.sumRevenueByYear(anyInt())).thenReturn(new BigDecimal("1200000"));
         lenient().when(orderItemRepository.sumCostByYear(anyInt())).thenReturn(new BigDecimal("720000"));
         lenient().when(orderRepository.countCompletedByYear(anyInt())).thenReturn(120L);
-        lenient().when(expenseRepository.sumAll()).thenReturn(new BigDecimal("50000"));
-        lenient().when(expenseRepository.sumByMonth(anyInt(), anyInt())).thenReturn(new BigDecimal("5000"));
-        lenient().when(expenseRepository.sumByYear(anyInt())).thenReturn(new BigDecimal("60000"));
+        lenient().when(tenantContext.getCurrentTenantId()).thenReturn(TENANT);
+        lenient().when(expenseRepository.sumAll(TENANT)).thenReturn(new BigDecimal("50000"));
+        lenient().when(expenseRepository.sumByMonth(anyString(), anyInt(), anyInt())).thenReturn(new BigDecimal("5000"));
+        lenient().when(expenseRepository.sumByYear(anyString(), anyInt())).thenReturn(new BigDecimal("60000"));
     }
 
     // ── getOverview ───────────────────────────────────────────────────────────
@@ -119,7 +125,7 @@ class RevenueServiceImplTest {
     void getMonthlyBreakdown_returns12Months() {
         when(orderRepository.sumRevenueGroupedByMonth(2024)).thenReturn(Collections.emptyList());
         when(orderItemRepository.sumCostGroupedByMonth(2024)).thenReturn(Collections.emptyList());
-        when(expenseRepository.sumGroupedByMonth(2024)).thenReturn(Collections.emptyList());
+        when(expenseRepository.sumGroupedByMonth(TENANT, 2024)).thenReturn(Collections.emptyList());
 
         List<RevenuePeriodDTO> result = revenueService.getMonthlyBreakdown(2024);
 
@@ -133,7 +139,7 @@ class RevenueServiceImplTest {
     void getMonthlyBreakdown_zeroForMissingMonths() {
         when(orderRepository.sumRevenueGroupedByMonth(2024)).thenReturn(Collections.emptyList());
         when(orderItemRepository.sumCostGroupedByMonth(2024)).thenReturn(Collections.emptyList());
-        when(expenseRepository.sumGroupedByMonth(2024)).thenReturn(Collections.emptyList());
+        when(expenseRepository.sumGroupedByMonth(TENANT, 2024)).thenReturn(Collections.emptyList());
 
         List<RevenuePeriodDTO> result = revenueService.getMonthlyBreakdown(2024);
 
@@ -148,7 +154,7 @@ class RevenueServiceImplTest {
         revenueRows.add(new Object[]{ 3, new BigDecimal("500000"), 50L });
         when(orderRepository.sumRevenueGroupedByMonth(2024)).thenReturn(revenueRows);
         when(orderItemRepository.sumCostGroupedByMonth(2024)).thenReturn(Collections.emptyList());
-        when(expenseRepository.sumGroupedByMonth(2024)).thenReturn(Collections.emptyList());
+        when(expenseRepository.sumGroupedByMonth(TENANT, 2024)).thenReturn(Collections.emptyList());
 
         List<RevenuePeriodDTO> result = revenueService.getMonthlyBreakdown(2024);
 
@@ -165,7 +171,7 @@ class RevenueServiceImplTest {
     void getDailyBreakdown_februaryNonLeap() {
         when(orderRepository.sumRevenueGroupedByDay(2023, 2)).thenReturn(Collections.emptyList());
         when(orderItemRepository.sumCostGroupedByDay(2023, 2)).thenReturn(Collections.emptyList());
-        when(expenseRepository.sumGroupedByDay(2023, 2)).thenReturn(Collections.emptyList());
+        when(expenseRepository.sumGroupedByDay(TENANT, 2023, 2)).thenReturn(Collections.emptyList());
 
         List<RevenuePeriodDTO> result = revenueService.getDailyBreakdown(2023, 2);
 
@@ -178,7 +184,7 @@ class RevenueServiceImplTest {
     void getDailyBreakdown_january() {
         when(orderRepository.sumRevenueGroupedByDay(2024, 1)).thenReturn(Collections.emptyList());
         when(orderItemRepository.sumCostGroupedByDay(2024, 1)).thenReturn(Collections.emptyList());
-        when(expenseRepository.sumGroupedByDay(2024, 1)).thenReturn(Collections.emptyList());
+        when(expenseRepository.sumGroupedByDay(TENANT, 2024, 1)).thenReturn(Collections.emptyList());
 
         List<RevenuePeriodDTO> result = revenueService.getDailyBreakdown(2024, 1);
 
@@ -192,7 +198,7 @@ class RevenueServiceImplTest {
         revenueRows.add(new Object[]{ 15, new BigDecimal("200000"), 20L });
         when(orderRepository.sumRevenueGroupedByDay(2024, 5)).thenReturn(revenueRows);
         when(orderItemRepository.sumCostGroupedByDay(2024, 5)).thenReturn(Collections.emptyList());
-        when(expenseRepository.sumGroupedByDay(2024, 5)).thenReturn(Collections.emptyList());
+        when(expenseRepository.sumGroupedByDay(TENANT, 2024, 5)).thenReturn(Collections.emptyList());
 
         List<RevenuePeriodDTO> result = revenueService.getDailyBreakdown(2024, 5);
 
@@ -430,7 +436,7 @@ class RevenueServiceImplTest {
 
         when(orderRepository.sumRevenueGroupedByMonth(2024)).thenReturn(revenueRows);
         when(orderItemRepository.sumCostGroupedByMonth(2024)).thenReturn(costRows);
-        when(expenseRepository.sumGroupedByMonth(2024)).thenReturn(expenseRows);
+        when(expenseRepository.sumGroupedByMonth(TENANT, 2024)).thenReturn(expenseRows);
 
         List<RevenuePeriodDTO> result = revenueService.getMonthlyBreakdown(2024);
 
@@ -458,7 +464,7 @@ class RevenueServiceImplTest {
 
         when(orderRepository.sumRevenueGroupedByDay(2024, 6)).thenReturn(revenueRows);
         when(orderItemRepository.sumCostGroupedByDay(2024, 6)).thenReturn(costRows);
-        when(expenseRepository.sumGroupedByDay(2024, 6)).thenReturn(expenseRows);
+        when(expenseRepository.sumGroupedByDay(TENANT, 2024, 6)).thenReturn(expenseRows);
 
         List<RevenuePeriodDTO> result = revenueService.getDailyBreakdown(2024, 6);
 

@@ -30,6 +30,7 @@ public interface SalaryAdvanceRepository extends JpaRepository<SalaryAdvance, Lo
               AND a.salary_id IS NULL
               AND EXTRACT(YEAR  FROM a.advance_date) = :year
               AND EXTRACT(MONTH FROM a.advance_date) = :month
+              AND a.tenant_id = current_setting('app.current_tenant', true)
             """, nativeQuery = true)
     BigDecimal sumPendingByEmployeeAndMonth(
             @Param("employeeId") Long employeeId,
@@ -45,6 +46,7 @@ public interface SalaryAdvanceRepository extends JpaRepository<SalaryAdvance, Lo
               AND salary_id IS NULL
               AND EXTRACT(YEAR  FROM advance_date) = :year
               AND EXTRACT(MONTH FROM advance_date) = :month
+              AND tenant_id = current_setting('app.current_tenant', true)
             """, nativeQuery = true)
     int linkAdvancesToSalary(
             @Param("salaryId") Long salaryId,
@@ -53,7 +55,9 @@ public interface SalaryAdvanceRepository extends JpaRepository<SalaryAdvance, Lo
             @Param("year") int year);
 
     @Modifying
-    @Query(value = "UPDATE salary_advance SET salary_id = NULL, is_deducted = false WHERE salary_id = :salaryId",
+    @Query(value = "UPDATE salary_advance SET salary_id = NULL, is_deducted = false " +
+            "WHERE salary_id = :salaryId " +
+            "AND tenant_id = current_setting('app.current_tenant', true)",
            nativeQuery = true)
     int unlinkFromSalary(@Param("salaryId") Long salaryId);
 }

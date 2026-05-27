@@ -61,6 +61,7 @@ class ShopExpenseServiceImplTest {
         request.setExpenseDate(LocalDate.now());
 
         lenient().when(authContext.getCurrentUsername()).thenReturn("user1");
+        lenient().when(tenantContext.getCurrentTenantId()).thenReturn("test-tenant");
     }
 
     // ── create ────────────────────────────────────────────────────────────────
@@ -126,7 +127,7 @@ class ShopExpenseServiceImplTest {
         Object[] row1 = {ExpenseCategory.RENT, new BigDecimal("600000")};
         Object[] row2 = {ExpenseCategory.ELECTRICITY, new BigDecimal("400000")};
         List<Object[]> rows = Arrays.asList(row1, row2);
-        when(expenseRepository.sumGroupedByCategory(2024, 1)).thenReturn(rows);
+        when(expenseRepository.sumGroupedByCategory("test-tenant", 2024, 1)).thenReturn(rows);
 
         List<ExpenseCategoryBreakdownDTO> result = service.getCategoryBreakdown(2024, 1);
 
@@ -142,7 +143,7 @@ class ShopExpenseServiceImplTest {
     @DisplayName("getCategoryBreakdown: returns 0% for all when total is zero")
     void getCategoryBreakdown_zeroTotal() {
         Object[] row = {ExpenseCategory.RENT, BigDecimal.ZERO};
-        when(expenseRepository.sumGroupedByCategory(2024, 1)).thenReturn(Collections.singletonList(row));
+        when(expenseRepository.sumGroupedByCategory("test-tenant", 2024, 1)).thenReturn(Collections.singletonList(row));
 
         List<ExpenseCategoryBreakdownDTO> result = service.getCategoryBreakdown(2024, 1);
 
@@ -152,7 +153,7 @@ class ShopExpenseServiceImplTest {
     @Test
     @DisplayName("getCategoryBreakdown: returns empty list when no data")
     void getCategoryBreakdown_empty() {
-        when(expenseRepository.sumGroupedByCategory(2024, 1)).thenReturn(List.of());
+        when(expenseRepository.sumGroupedByCategory("test-tenant", 2024, 1)).thenReturn(List.of());
 
         assertThat(service.getCategoryBreakdown(2024, 1)).isEmpty();
     }

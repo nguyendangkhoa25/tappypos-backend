@@ -110,6 +110,20 @@ public class FeedbackServiceImpl implements FeedbackService {
         return toDTO(saved);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public long countAllActive() {
+        tenantContext.clear(); // force master DB
+        return feedbackRepository.countAllActive();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countByStatus(FeedbackStatus status) {
+        tenantContext.clear(); // force master DB
+        return feedbackRepository.countByStatus(status);
+    }
+
     // After tenantContext.clear() — we are in master context; notifications are saved with tenant_id=null
     // (UnifiedTenantEntity master records) so master/agent users see them regardless of context.
     private void notifySubscriptionRequest(String shopName, Long feedbackId, Long agentId) {

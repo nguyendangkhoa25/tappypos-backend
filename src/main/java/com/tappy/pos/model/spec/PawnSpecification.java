@@ -302,6 +302,16 @@ public class PawnSpecification {
         };
     }
 
+    /**
+     * Scope results to contracts created by a specific user.
+     * Used by PawnServiceImpl when the caller lacks PAWN_VIEW_ALL — mirrors the
+     * ORDER_VIEW_ALL pattern (see CLAUDE.md → "Granular Sub-Feature Pattern").
+     */
+    public static Specification<PawnQuery> filterByCreatedBy(String createdBy) {
+        return (root, query, criteriaBuilder) ->
+                criteriaBuilder.equal(root.get("createdBy"), createdBy);
+    }
+
     public static Specification<PawnQuery> excludeOldRedeemedItems(LocalDateTime cutoffDate) {
         return (root, query, criteriaBuilder) -> {
             Predicate redeemedStatusPredicate = criteriaBuilder.equal(root.get("pawnStatus"), PawnStatus.REDEEMED);
