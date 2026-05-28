@@ -214,6 +214,14 @@ public class PawnController {
         );
     }
 
+    @GetMapping("/lookup")
+    public ResponseEntity<ApiResponse<PawnResponse>> lookupPawn(@RequestParam String q) {
+        log.info("Request: Lookup pawn by code: {}", q);
+        PawnResponse response = pawnService.lookupByCode(q);
+        log.info("Pawn lookup found: {}", response.getPawnId());
+        return ResponseEntity.ok(ApiResponse.success(response, "Pawn found"));
+    }
+
     @GetMapping("/top-customers")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getTopPawnCustomers(
             @RequestParam(defaultValue = "5") int limit,

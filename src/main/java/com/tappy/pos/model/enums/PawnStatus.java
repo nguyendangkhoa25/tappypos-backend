@@ -5,6 +5,7 @@ import java.util.stream.Stream;
 public enum PawnStatus {
     PAWNED("Đang cầm", "PAWNED"),
     REDEEMED("Đã trả", "REDEEMED"),
+    EXTENDED("Đã gia hạn", "EXTENDED"),
     FORFEITED("Đã thanh lý", "FORFEITED"),
     CANCELLED("Đã hủy", "CANCELLED");
 

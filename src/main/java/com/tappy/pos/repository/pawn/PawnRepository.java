@@ -11,9 +11,12 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface PawnRepository extends JpaRepository<PawnEntity, Long> {
+    Optional<PawnEntity> findByLegacyId(String legacyId);
+
     @Query("SELECT COALESCE(SUM(p.pawnAmount), 0) as totalAmount, COUNT(p.pawnId) as totalCount FROM PawnEntity p where p.pawnStatus = :pawnStatus AND (:excludeVisibleItem = false OR p.visible IS NULL OR p.visible = true) ")
     List<Object[]> getPawnAmountByPawnStatus(PawnStatus pawnStatus, @Param("excludeVisibleItem") boolean excludeVisibleItem);
 

@@ -224,6 +224,24 @@ public class PawnServiceImpl implements PawnService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public PawnResponse lookupByCode(String code) {
+        log.info("Lookup pawn by code: {}", code);
+        PawnEntity entity;
+        try {
+            long numericId = Long.parseLong(code.trim());
+            entity = pawnRepository.findById(numericId).orElse(null);
+        } catch (NumberFormatException e) {
+            entity = null;
+        }
+        if (entity == null) {
+            entity = pawnRepository.findByLegacyId(code.trim()).orElseThrow(ResourceNotFoundException::new);
+        }
+        // Re-use the existing detail fetch (applies PAWN_VIEW_ALL ownership guard)
+        return getPawnDetails(entity.getPawnId());
+    }
+
+    @Override
     public void deletePawnByPawnIds(List<Long> pawnIds) {
         log.info("Process deleting pawns by given PawnIds {}", pawnIds);
         List<PawnEntity> pawnEntities = pawnRepository.findAllById(pawnIds);
@@ -523,7 +541,7 @@ public class PawnServiceImpl implements PawnService {
         extendingPawn.setUpdatedBy(authContext.getCurrentUsername());
         extendingPawn.setPawnStatus(PawnStatus.PAWNED);
         appendUpdateInfo(pawnEntity, pawnRequest);
-        pawnEntity.setPawnStatus(PawnStatus.REDEEMED);
+        pawnEntity.setPawnStatus(PawnStatus.EXTENDED);
         PawnEntity redeemedPawn = pawnRepository.save(pawnEntity);
         PawnEntity savedExtendEntity = pawnRepository.save(extendingPawn);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
@@ -575,7 +593,13 @@ public class PawnServiceImpl implements PawnService {
         LocalDateTime fromDate = Instant.ofEpochMilli(dateFilter.getFromDate()).atZone(ZoneId.systemDefault()).toLocalDateTime();
         LocalDateTime toDate = Instant.ofEpochMilli(dateFilter.getToDate()).atZone(ZoneId.systemDefault()).toLocalDateTime();
         boolean visibleFlag = shopInfoService.getExcludeVisibleItemFlag();
-        PawnKPIs upComing = getUpComingDueAmount(fromDate, toDate, visibleFlag);
+        // Real-time stats always use current date — independent of the request date range
+        LocalDateTime todayStart = LocalDate.now().atStartOfDay();
+        LocalDateTime todayEnd = LocalDate.now().atTime(LocalTime.MAX);
+        LocalDateTime tomorrowStart = LocalDate.now().plusDays(1).atStartOfDay();
+        LocalDateTime upcomingEnd = LocalDate.now().plusDays(3).atTime(LocalTime.MAX);
+        PawnKPIs dueTodayData = getUpComingDueAmount(todayStart, todayEnd, visibleFlag);
+        PawnKPIs upcomingData = getUpcomingPawns(tomorrowStart, upcomingEnd, visibleFlag);
         PawnKPIs overDue = getOverdueAmount(LocalDate.now().atTime(LocalTime.MAX), visibleFlag);
         PawnKPIs newPawn = getNewPawnsAmount(fromDate, toDate, visibleFlag);
         PawnKPIs newMoneyRequest = getNewRequestMoneyAmount(fromDate, toDate, visibleFlag);
@@ -585,8 +609,10 @@ public class PawnServiceImpl implements PawnService {
         return PawnKPIs.builder()
                 .totalPawnedCount(activePawn.getTotalPawnedCount())
                 .totalPawnedAmount(activePawn.getTotalPawnedAmount())
-                .dueTodayCount(upComing.getDueTodayCount())
-                .dueTodayAmount(upComing.getDueTodayAmount())
+                .dueTodayCount(dueTodayData.getDueTodayCount())
+                .dueTodayAmount(dueTodayData.getDueTodayAmount())
+                .upcomingCount(upcomingData.getUpcomingCount())
+                .upcomingAmount(upcomingData.getUpcomingAmount())
                 .overdueCount(overDue.getOverdueCount())
                 .overdueAmount(overDue.getOverdueAmount())
                 .newPawnsCount(newPawn.getNewPawnsCount())
@@ -623,6 +649,19 @@ public class PawnServiceImpl implements PawnService {
             long totalCount = result != null ? (Long) result[1] : 0;
             pawnKPIs.setDueTodayAmount(totalAmount.longValue() + requestAmount);
             pawnKPIs.setDueTodayCount((int) totalCount);
+        }
+        return pawnKPIs;
+    }
+
+    private PawnKPIs getUpcomingPawns(LocalDateTime fromDate, LocalDateTime toDate, boolean visibleFlag) {
+        PawnKPIs pawnKPIs = PawnKPIs.builder().build();
+        List<Object[]> resultList = pawnRepository.sumByPawnStatusAndPawnDueDateBetween(PawnStatus.PAWNED, fromDate, toDate, visibleFlag);
+        Long requestAmount = pawnRepository.sumRequestAmountByPawnStatusAndPawnDueDateBetween(PawnStatus.PAWNED, fromDate, toDate, visibleFlag);
+        for (Object[] result : resultList) {
+            BigDecimal totalAmount = result != null ? (BigDecimal) result[0] : BigDecimal.ZERO;
+            long totalCount = result != null ? (Long) result[1] : 0;
+            pawnKPIs.setUpcomingAmount(totalAmount.longValue() + requestAmount);
+            pawnKPIs.setUpcomingCount((int) totalCount);
         }
         return pawnKPIs;
     }

@@ -45,4 +45,6 @@ public interface PawnService {
     PawnSetting getPawnSetting();
 
     List<Map<String, Object>> getTopPawnCustomers(int limit, LocalDate from, LocalDate to);
+
+    PawnResponse lookupByCode(String code);
 }

@@ -115,6 +115,9 @@ public class PawnEntity {
     @Column(name = "original_id")
     private Long originalId;
 
+    @Column(name = "legacy_id")
+    private String legacyId;
+
     @Column(name = "interest_calc_mode")
     private String interestCalcMode;
 

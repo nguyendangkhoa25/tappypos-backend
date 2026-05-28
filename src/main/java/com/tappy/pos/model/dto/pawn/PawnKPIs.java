@@ -21,4 +21,6 @@ public class PawnKPIs {
     private int newRequestMoneyCount;
     private long newRequestMoneyAmount;
     private long interestPawnAmount;
+    private int upcomingCount;
+    private long upcomingAmount;
 }
