@@ -54,6 +54,13 @@ public class AppointmentServiceImpl implements AppointmentService {
     }
 
     @Override
+    public Page<AppointmentDTO> getByCustomer(Long customerId, Pageable pageable) {
+        String tenantId = tenantContext.getCurrentTenantId();
+        return appointmentRepository.findByCustomerId(tenantId, customerId, pageable)
+                .map(this::mapToDTO);
+    }
+
+    @Override
     public AppointmentDTO getById(Long id) {
         return mapToDTO(findOrThrow(id));
     }

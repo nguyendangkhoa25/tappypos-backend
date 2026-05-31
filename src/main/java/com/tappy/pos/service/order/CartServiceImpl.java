@@ -203,8 +203,9 @@ public class CartServiceImpl implements CartService {
             );
         }
 
-        // Step 2b: Unique-item validation (JEWELRY, WATCH, etc.)
-        if (UniqueItemProductTypes.isUniqueItem(product.getProductTypeCode())) {
+        // Step 2b: Unique-item validation — covers type-level UNIQUE (JEWELRY, WATCH, BIKE…)
+        // AND pawn-origin items (any type with sourcePawnId set → inventoryMode = UNIQUE).
+        if ("UNIQUE".equals(product.getInventoryMode())) {
             if (!"ACTIVE".equals(product.getStatus())) {
                 throw new BadRequestException(messageService.getMessage("product.already.sold"));
             }
@@ -223,9 +224,11 @@ public class CartServiceImpl implements CartService {
             resolvedUnitPrice = product.getPrice();
         }
 
-        // Step 3: Check stock availability via InventoryService (skipped for no-inventory types e.g. SERVICE)
+        // Step 3: Check stock availability via InventoryService.
+        // Read the stored inventoryMode field — not re-derived from type code — so pawn-origin
+        // items (e.g. a pawned phone: type=ELECTRONICS, mode=UNIQUE) are handled correctly.
         BigDecimal resolvedUnitCost = product.getCostPrice() != null ? product.getCostPrice() : BigDecimal.ZERO;
-        if (!NoInventoryProductTypes.isNoInventory(product.getProductTypeCode())) {
+        if (!"NO_INVENTORY".equals(product.getInventoryMode())) {
             try {
                 var pageable = org.springframework.data.domain.PageRequest.of(0, 1);
                 var inventoryPage = (request.getVariantId() != null)
@@ -1012,34 +1015,34 @@ public class CartServiceImpl implements CartService {
             oi.setComboId(cartItem.getComboId());
             orderItems.add(oi);
 
-            // Deduct stock only for catalog items that track inventory; gold and service items skip this
-            if (cartItem.getItemType() == CartItemEntity.ItemType.STANDARD
-                    && !NoInventoryProductTypes.isNoInventory(cartItem.getProductTypeCode())) {
-                try {
-                    var pageable = org.springframework.data.domain.PageRequest.of(0, 1);
-                    var inventoryPage = (cartItem.getVariantId() != null)
-                            ? inventoryService.getInventoryByProductIdAndVariantId(cartItem.getProductId(), cartItem.getVariantId(), pageable)
-                            : inventoryService.getInventoryByProductId(cartItem.getProductId(), pageable);
-                    if (!inventoryPage.isEmpty()) {
-                        Long inventoryId = inventoryPage.getContent().get(0).getId();
-                        inventoryService.removeStock(inventoryId, (long) cartItem.getQuantity().intValue());
-                    } else {
-                        log.warn("No inventory found for product {} variant {} — stock not deducted",
-                                cartItem.getProductId(), cartItem.getVariantId());
-                    }
-                } catch (Exception e) {
-                    log.warn("Inventory deduction failed for product {}: {}", cartItem.getProductId(), e.getMessage());
-                }
-
-                // Unique-item types (JEWELRY, WATCH): flip product status to INACTIVE ("Đã bán")
+            // Post-sale inventory update for standard catalog items.
+            // Read stored inventoryMode — not re-derived from type code — so pawn-origin items
+            // (e.g. type=ELECTRONICS, mode=UNIQUE) are handled correctly.
+            //   TRACKED  → decrement qty
+            //   UNIQUE   → flip status to INACTIVE ("Đã bán"); never decrement qty
+            //   NO_INVENTORY → skip entirely
+            if (cartItem.getItemType() == CartItemEntity.ItemType.STANDARD) {
                 try {
                     ProductDTO soldProduct = productService.getProductById(cartItem.getProductId());
-                    if (UniqueItemProductTypes.isUniqueItem(soldProduct.getProductTypeCode())) {
+                    String mode = soldProduct.getInventoryMode();
+
+                    if ("TRACKED".equals(mode)) {
+                        var pageable = org.springframework.data.domain.PageRequest.of(0, 1);
+                        var inventoryPage = (cartItem.getVariantId() != null)
+                                ? inventoryService.getInventoryByProductIdAndVariantId(cartItem.getProductId(), cartItem.getVariantId(), pageable)
+                                : inventoryService.getInventoryByProductId(cartItem.getProductId(), pageable);
+                        if (!inventoryPage.isEmpty()) {
+                            inventoryService.removeStock(inventoryPage.getContent().get(0).getId(), (long) cartItem.getQuantity().intValue());
+                        } else {
+                            log.warn("No inventory found for product {} variant {} — stock not deducted",
+                                    cartItem.getProductId(), cartItem.getVariantId());
+                        }
+                    } else if ("UNIQUE".equals(mode)) {
                         productService.markAsSold(cartItem.getProductId());
                         log.info("Unique item {} ({}) marked as sold", cartItem.getProductId(), soldProduct.getProductTypeCode());
                     }
                 } catch (Exception e) {
-                    log.warn("Failed to mark unique item {} as sold: {}", cartItem.getProductId(), e.getMessage());
+                    log.warn("Post-order inventory update failed for product {}: {}", cartItem.getProductId(), e.getMessage());
                 }
             }
 

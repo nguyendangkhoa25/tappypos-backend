@@ -1,7 +1,9 @@
 package com.tappy.pos.controller.pawn;
 
 import com.tappy.pos.model.dto.ApiResponse;
+import com.tappy.pos.model.dto.goldprice.GoldPriceDTO;
 import com.tappy.pos.model.dto.pawn.*;
+import com.tappy.pos.service.goldprice.GoldPriceService;
 import com.tappy.pos.service.pawn.PawnService;
 import com.tappy.pos.exception.ForbiddenException;
 import jakarta.validation.Valid;
@@ -34,6 +36,7 @@ import com.tappy.pos.annotation.RequiresFeature;
 @RequiresFeature("PAWN")
 public class PawnController {
     private final PawnService pawnService;
+    private final GoldPriceService goldPriceService;
 
     /**
      * Guards an endpoint so only SHOP_OWNER may proceed.
@@ -61,7 +64,7 @@ public class PawnController {
     }
 
     @PostMapping("/find")
-    public ResponseEntity<ApiResponse<PawnSearchResponse>> getPawns(Pageable pageable, @RequestBody SearchPawnRequest searchRequest) {
+    public ResponseEntity<ApiResponse<PawnSearchResponse>> getPawns(Pageable pageable, @Valid @RequestBody SearchPawnRequest searchRequest) {
         log.info("Request: Search pawns with criteria");
         PawnSearchResponse response = pawnService.getPawns(pageable, searchRequest);
         log.info("Found {} pawns", response.getTotalElements());
@@ -113,7 +116,7 @@ public class PawnController {
     }
 
     @PostMapping("/{pawnId}/forfeit")
-    public ResponseEntity<ApiResponse<PawnResponse>> forfeitPawnByPawnId(@PathVariable Long pawnId, @RequestBody ForfeitRequest forfeitRequest) {
+    public ResponseEntity<ApiResponse<PawnResponse>> forfeitPawnByPawnId(@PathVariable Long pawnId, @Valid @RequestBody ForfeitRequest forfeitRequest) {
         log.info("Request: Forfeit pawn: {}", pawnId);
         PawnResponse response = pawnService.forfeitPawnByPawnId(pawnId, forfeitRequest);
         log.info("Pawn forfeited: {}", pawnId);
@@ -123,7 +126,7 @@ public class PawnController {
     }
 
     @PostMapping("/{pawnId}/redeem")
-    public ResponseEntity<ApiResponse<PawnResponse>> calculatePawnRedeem(@PathVariable Long pawnId, @RequestBody RedeemRequest redeemRequest) {
+    public ResponseEntity<ApiResponse<PawnResponse>> calculatePawnRedeem(@PathVariable Long pawnId, @Valid @RequestBody RedeemRequest redeemRequest) {
         log.info("Request: Redeem pawn: {}", pawnId);
         PawnResponse response = pawnService.calculatePawnRedeem(pawnId, redeemRequest);
         log.info("Pawn redeemed: {}", pawnId);
@@ -133,7 +136,7 @@ public class PawnController {
     }
 
     @PostMapping("/{pawnId}/request-money")
-    public ResponseEntity<ApiResponse<ReqMoneyResponse>> requestMoreMoney(@PathVariable Long pawnId, @RequestBody ReqMoneyRequest reqMoneyRequest) {
+    public ResponseEntity<ApiResponse<ReqMoneyResponse>> requestMoreMoney(@PathVariable Long pawnId, @Valid @RequestBody ReqMoneyRequest reqMoneyRequest) {
         log.info("Request: Request more money for pawn: {}", pawnId);
         ReqMoneyResponse response = pawnService.requestMoreMoney(pawnId, reqMoneyRequest);
         log.info("Request created: {}", pawnId);
@@ -153,7 +156,7 @@ public class PawnController {
     }
 
     @PostMapping("/kpi-section")
-    public ResponseEntity<ApiResponse<PawnKPIs>> getPawnKPIs(@RequestBody DateFilterRequest dateFilter) {
+    public ResponseEntity<ApiResponse<PawnKPIs>> getPawnKPIs(@Valid @RequestBody DateFilterRequest dateFilter) {
         log.info("Request: Get pawn KPIs");
         PawnKPIs response = pawnService.getPawnKPIs(dateFilter);
         log.info("Pawn KPIs retrieved");
@@ -163,7 +166,7 @@ public class PawnController {
     }
 
     @PostMapping("/export")
-    public ResponseEntity<FileSystemResource> exportPawns(@RequestBody SearchPawnRequest searchRequest) throws IOException {
+    public ResponseEntity<FileSystemResource> exportPawns(@Valid @RequestBody SearchPawnRequest searchRequest) throws IOException {
         log.info("Request: Export pawns");
         FileSystemResource fileSystemResource = pawnService.exportPawns(searchRequest);
         HttpHeaders headers = new HttpHeaders();
@@ -173,7 +176,7 @@ public class PawnController {
     }
 
     @PostMapping("/charts")
-    public ResponseEntity<ApiResponse<PawnBarsResponse>> getPawnBars(@RequestBody DateFilterRequest dateFilter) {
+    public ResponseEntity<ApiResponse<PawnBarsResponse>> getPawnBars(@Valid @RequestBody DateFilterRequest dateFilter) {
         log.info("Request: Get pawn charts");
         PawnBarsResponse response = pawnService.getPawnCharts(dateFilter);
         log.info("Pawn charts retrieved");
@@ -183,7 +186,7 @@ public class PawnController {
     }
 
     @PatchMapping("/{pawnId}/visible")
-    public ResponseEntity<ApiResponse<Integer>> updateVisibleStatus(@PathVariable Long pawnId, @RequestBody PawnRequest pawnRequest) {
+    public ResponseEntity<ApiResponse<Integer>> updateVisibleStatus(@PathVariable Long pawnId, @Valid @RequestBody PawnRequest pawnRequest) {
         requireShopOwner();
         log.info("Request: Update visible status for pawn: {}", pawnId);
         int result = pawnService.updateVisibleStatus(pawnId, pawnRequest.isVisible());
@@ -194,7 +197,7 @@ public class PawnController {
     }
 
     @PostMapping("/settings")
-    public ResponseEntity<ApiResponse<PawnSetting>> updatePawnSetting(@RequestBody PawnSetting settingReq) {
+    public ResponseEntity<ApiResponse<PawnSetting>> updatePawnSetting(@Valid @RequestBody PawnSetting settingReq) {
         requireShopOwner();
         log.info("Request: Update pawn settings");
         PawnSetting response = pawnService.updatePawnSetting(settingReq);
@@ -222,6 +225,13 @@ public class PawnController {
         return ResponseEntity.ok(ApiResponse.success(response, "Pawn found"));
     }
 
+    @GetMapping("/customer-summary")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getCustomerPawnSummary(
+            @RequestParam Long customerId) {
+        log.info("GET /pawns/customer-summary?customerId={}", customerId);
+        return ResponseEntity.ok(ApiResponse.success(pawnService.getCustomerPawnSummary(customerId), "OK"));
+    }
+
     @GetMapping("/top-customers")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getTopPawnCustomers(
             @RequestParam(defaultValue = "5") int limit,
@@ -231,5 +241,20 @@ public class PawnController {
         List<Map<String, Object>> response = pawnService.getTopPawnCustomers(limit, from, to);
         log.info("Top pawn customers retrieved: {} records", response.size());
         return ResponseEntity.ok(ApiResponse.success(response, "Top pawn customers retrieved successfully"));
+    }
+
+    @GetMapping("/customer-insights")
+    public ResponseEntity<ApiResponse<PawnCustomerInsights>> getPawnCustomerInsights(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        log.info("Request: GET /pawns/customer-insights from={} to={}", from, to);
+        return ResponseEntity.ok(ApiResponse.success(pawnService.getPawnCustomerInsights(from, to), "OK"));
+    }
+
+    /** Returns shop gold prices so the JEWELRY pawn form can compute item value without requiring the GOLD_PRICE feature. */
+    @GetMapping("/gold-prices")
+    public ResponseEntity<ApiResponse<List<GoldPriceDTO>>> getGoldPricesForPawn() {
+        log.info("Request: GET /pawns/gold-prices");
+        return ResponseEntity.ok(ApiResponse.success(goldPriceService.getAllPrices(), "OK"));
     }
 }

@@ -30,6 +30,13 @@ public class ProductType extends TenantAwareEntity {
     @Column(length = 500)
     private String description;
 
+    @Column(name = "default_inventory_mode", nullable = false, length = 20)
+    @Enumerated(EnumType.STRING)
+    private com.tappy.pos.model.enums.InventoryMode defaultInventoryMode = com.tappy.pos.model.enums.InventoryMode.TRACKED;
+
+    @Column(name = "default_unit", nullable = false, length = 50)
+    private String defaultUnit = "piece";
+
     @Builder.Default
     @OneToMany(mappedBy = "productType", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<AttributeDefinition> attributeDefinitions = new HashSet<>();

@@ -2,7 +2,9 @@ package com.tappy.pos.model.enums;
 
 public enum PawnCategory {
     GOLD("Vàng / Trang sức"),
+    JEWELRY("Trang sức / Kim loại quý"),
     ELECTRONICS("Điện tử"),
+    VEHICLE("Phương tiện"),
     MOTORBIKE("Xe máy"),
     CAR("Ô tô"),
     WATCH("Đồng hồ"),

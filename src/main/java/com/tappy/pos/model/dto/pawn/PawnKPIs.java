@@ -18,9 +18,13 @@ public class PawnKPIs {
     private long completedPawnAmount;
     private int forfeitedPawnCount;
     private long forfeitedPawnAmount;
+    private int extendedPawnCount;
+    private long extendedPawnAmount;
     private int newRequestMoneyCount;
     private long newRequestMoneyAmount;
     private long interestPawnAmount;
     private int upcomingCount;
     private long upcomingAmount;
+    /** SUM(pawnAmount) only for REDEEMED+FORFEITED contracts closed in the period — excludes additional draws. Used for avgLoan on closed cohort. */
+    private long closedPawnPureAmount;
 }

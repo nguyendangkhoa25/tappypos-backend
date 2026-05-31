@@ -104,9 +104,11 @@ public class ProductController {
     public ResponseEntity<ApiResponse<Page<ProductDTO>>> getAllProducts(
             @RequestParam(defaultValue = "ACTIVE") String status,
             @RequestParam(required = false) Long categoryId,
+            @RequestParam(required = false) Long productTypeId,
+            @RequestParam(defaultValue = "false") boolean pawnOriginOnly,
             Pageable pageable) {
-        log.info("GET /api/products - Get all products, status: {}, categoryId: {}, page: {}", status, categoryId, pageable.getPageNumber());
-        Page<ProductDTO> products = productService.getAllProducts(status, categoryId, pageable);
+        log.info("GET /api/products - status: {}, categoryId: {}, productTypeId: {}, pawnOriginOnly: {}, page: {}", status, categoryId, productTypeId, pawnOriginOnly, pageable.getPageNumber());
+        Page<ProductDTO> products = productService.getAllProducts(status, categoryId, productTypeId, pawnOriginOnly, pageable);
         return ResponseEntity.ok(ApiResponse.success(products, "Products retrieved successfully"));
     }
 
@@ -226,5 +228,15 @@ public class ProductController {
         BarcodeLookupResult result = productService.lookupByBarcode(barcode);
         return ResponseEntity.ok(ApiResponse.success(result, "Barcode lookup completed"));
     }
+
+    /** Returns the product created from a forfeited pawn, or 404 if the user hasn't created one yet. */
+    @GetMapping("/by-pawn/{pawnId}")
+    public ResponseEntity<ApiResponse<ProductDTO>> getBySourcePawn(@PathVariable Long pawnId) {
+        log.info("GET /api/products/by-pawn/{}", pawnId);
+        return productService.getBySourcePawnId(pawnId)
+                .<ResponseEntity<ApiResponse<ProductDTO>>>map(p -> ResponseEntity.ok(ApiResponse.success(p, "OK")))
+                .orElse(ResponseEntity.status(404).body(ApiResponse.error("NOT_FOUND", "No product linked to pawn " + pawnId)));
+    }
+
 }
 

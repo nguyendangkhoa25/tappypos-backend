@@ -31,5 +31,24 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     @Query("SELECT COUNT(p) FROM Product p WHERE p.deleted = false AND p.status = 'ACTIVE'")
     long countActive();
+
+    Optional<Product> findBySourcePawnIdAndDeletedFalse(Long sourcePawnId);
+
+    Page<Product> findByDeletedFalseAndStatusAndSourcePawnIdIsNotNullOrderByCreatedAtDesc(
+            Product.ProductStatus status, Pageable pageable);
+
+    Page<Product> findByDeletedFalseAndStatusAndProductTypeIdOrderByCreatedAtDesc(
+            Product.ProductStatus status, Long productTypeId, Pageable pageable);
+
+    Page<Product> findByDeletedFalseAndStatusAndProductTypeIdAndSourcePawnIdIsNotNullOrderByCreatedAtDesc(
+            Product.ProductStatus status, Long productTypeId, Pageable pageable);
+
+    @Query("SELECT p FROM Product p JOIN p.categories c " +
+           "WHERE p.deleted = false AND p.status = :status AND c.id = :categoryId " +
+           "AND p.sourcePawnId IS NOT NULL ORDER BY p.createdAt DESC")
+    Page<Product> findByStatusAndCategoryIdAndSourcePawnIdIsNotNull(
+            @Param("status") Product.ProductStatus status,
+            @Param("categoryId") Long categoryId,
+            Pageable pageable);
 }
 

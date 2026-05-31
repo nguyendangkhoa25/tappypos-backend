@@ -46,5 +46,9 @@ public interface PawnService {
 
     List<Map<String, Object>> getTopPawnCustomers(int limit, LocalDate from, LocalDate to);
 
+    PawnCustomerInsights getPawnCustomerInsights(LocalDate from, LocalDate to);
+
     PawnResponse lookupByCode(String code);
+
+    Map<String, Object> getCustomerPawnSummary(Long customerId);
 }

@@ -16,8 +16,6 @@ public class PawnAudit {
     private Long customerId;
     private String itemName;
     private String itemDescription;
-    private BigDecimal itemWeight;
-    private BigDecimal gemWeight;
     private BigDecimal itemValue;
     private String itemType;
     private String itemBrand;

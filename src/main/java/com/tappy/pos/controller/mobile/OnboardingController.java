@@ -115,7 +115,7 @@ public class OnboardingController {
                 "PRINT_TEMPLATE", "BANK_ACCOUNT", "INVOICE", "ACCOUNTING"
         ));
         List<String> pawnBase = List.of(
-                "DASHBOARD", "PAWN", "ORDER", "ORDER_VIEW_ALL", "CUSTOMER",
+                "DASHBOARD", "PAWN", "ORDER", "ORDER_VIEW_ALL", "PRODUCT", "CUSTOMER",
                 "EMPLOYEE", "EXPENSE", "REVENUE", "USER",
                 "NOTIFICATION", "FEEDBACK", "ACTIVITY_LOG", "SHOP_INFO",
                 "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACCOUNTING"
@@ -324,7 +324,9 @@ public class OnboardingController {
                 log.warn("DML seed non-fatal failure for {}: {}", tenantId, e.getMessage());
             }
 
-            seedOnboardingProducts(body, tenantId);
+            if (!PAWN_SHOP_TYPES.contains(shopType)) {
+                seedOnboardingProducts(body, tenantId);
+            }
             seedOnboardingExpenses(body);
             seedOnboardingTables(body, tenantId);
             seedOnboardingPawnTypes(body, tenantId, shopType);

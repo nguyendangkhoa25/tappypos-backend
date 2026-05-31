@@ -327,6 +327,15 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
            nativeQuery = true)
     List<Object[]> getTopCustomersAllTime(org.springframework.data.domain.Pageable pageable);
 
+    @Query(value = "SELECT c.name, COUNT(o.id) as orderCount, COALESCE(SUM(o.total_amount),0) as totalSpend, " +
+           "CAST(c.id AS VARCHAR) as customerId " +
+           "FROM orders o JOIN customers c ON o.customer_id = c.id " +
+           "WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' " +
+           "AND c.deleted = false AND c.phone != '0000000000' " +
+           "GROUP BY c.id, c.name ORDER BY orderCount DESC",
+           nativeQuery = true)
+    List<Object[]> getTopCustomersAllTimeByFrequency(org.springframework.data.domain.Pageable pageable);
+
     // ── Customer-scoped analytics ──────────────────────────────────────────────
 
     @Query(value = "SELECT COALESCE(SUM(total_amount), 0) FROM orders " +

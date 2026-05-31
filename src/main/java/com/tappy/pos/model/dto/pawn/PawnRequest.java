@@ -17,8 +17,6 @@ public class PawnRequest {
     private String itemName;
 
     private String itemDescription;
-    private BigDecimal itemWeight;
-    private BigDecimal gemWeight;
     private BigDecimal itemValue;
     private String itemType;
     private String itemBrand;
@@ -56,4 +54,5 @@ public class PawnRequest {
     private PawnWatchDetail watchDetail;
     private PawnRealEstateDetail realEstateDetail;
     private PawnGeneralDetail generalDetail;
+    private PawnJewelryDetail jewelryDetail;
 }

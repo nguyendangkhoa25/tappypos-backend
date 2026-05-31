@@ -224,4 +224,16 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
             @Param("from") LocalDate from,
             @Param("to") LocalDate to,
             @Param("limit") int limit);
+
+    @Query("""
+        SELECT a FROM Appointment a
+        WHERE a.tenantId = :tenantId
+          AND a.customerId = :customerId
+          AND a.deleted = false
+        ORDER BY a.scheduledDate DESC, a.scheduledStartTime DESC
+        """)
+    Page<Appointment> findByCustomerId(
+            @Param("tenantId") String tenantId,
+            @Param("customerId") Long customerId,
+            Pageable pageable);
 }

@@ -135,7 +135,7 @@ public class TenantProvisioningService {
         m.put(RoleEnum.PAWN_OFFICER.getCode(), Arrays.asList(
             // PAWN_VIEW_ALL intentionally absent: PAWN_OFFICER sees only their own contracts.
             "DASHBOARD", "MY_WORK", "PAWN", "GOLD_PRICE", "GOLD_PRICE_CHART",
-            "CUSTOMER", "LOYALTY", "ORDER", "PRODUCT",
+            "CUSTOMER", "LOYALTY", "ORDER", "POS", "PRODUCT",
             "NOTIFICATION", "FEEDBACK"
         ));
         m.put(RoleEnum.SERVICE_STAFF.getCode(), Arrays.asList(
@@ -180,7 +180,7 @@ public class TenantProvisioningService {
             "DASHBOARD", "MY_WORK",
             "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
             "CUSTOMER", "LOYALTY", "APPOINTMENT",
-            "ORDER", "ORDER_VIEW_ALL", "PRODUCT",
+            "ORDER", "ORDER_VIEW_ALL", "POS", "PRODUCT",
             "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",

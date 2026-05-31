@@ -66,6 +66,7 @@ public class PawnServiceImpl implements PawnService {
     private final PawnWatchRepository watchRepository;
     private final PawnRealEstateRepository realEstateRepository;
     private final PawnGeneralRepository generalRepository;
+    private final PawnJewelryRepository jewelryRepository;
 
     @Value("${schedule.cleanup.pawn.cutoffMonths:3}")
     private int cutoffMonths;
@@ -159,7 +160,6 @@ public class PawnServiceImpl implements PawnService {
         pawnEntity.setItemDescription(pawnRequest.getItemDescription());
         pawnEntity.setItemValue(pawnRequest.getItemValue());
         pawnEntity.setItemName(pawnRequest.getItemName());
-        pawnEntity.setItemWeight(pawnRequest.getItemWeight());
         pawnEntity.setItemBrand(pawnRequest.getItemBrand());
         pawnEntity.setUpdatedAt(LocalDateTime.now());
         pawnEntity.setUpdatedBy(authContext.getCurrentUsername());
@@ -175,7 +175,6 @@ public class PawnServiceImpl implements PawnService {
         if (pawnRequest.getPawnStatus() != null) {
             pawnEntity.setPawnStatus(pawnRequest.getPawnStatus());
         }
-        pawnEntity.setGemWeight(pawnRequest.getGemWeight());
         pawnEntity.setInterestCalcMode(pawnRequest.getInterestCalcMode());
         // Only overwrite heldDays when explicitly provided (redeem/extend flows send it;
         // a plain edit never does and the primitive zero would corrupt the stored value).
@@ -253,6 +252,7 @@ public class PawnServiceImpl implements PawnService {
         watchRepository.deleteByPawnIdIn(pawnIds);
         realEstateRepository.deleteByPawnIdIn(pawnIds);
         generalRepository.deleteByPawnIdIn(pawnIds);
+        jewelryRepository.deleteByPawnIdIn(pawnIds);
         pawnRepository.deleteAllByIdInBatch(pawnIds);
         if (CollectionUtils.isNotEmpty(pawnEntities)) {
             pawnEntities.forEach(pawnEntity -> activityLogService.logAsync(
@@ -292,6 +292,12 @@ public class PawnServiceImpl implements PawnService {
         if (forfeitRequest.getInterestAmount() == null || forfeitRequest.getInterestAmount().compareTo(BigDecimal.ZERO) < 0
                 || forfeitRequest.getTotalAmount() == null || forfeitRequest.getTotalAmount().compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException(messageService.getMessage("error.pawn.invalidForfeitAmount"));
+        }
+        if (forfeitRequest.getForfeitedDate() == null) {
+            throw new IllegalArgumentException(messageService.getMessage("error.pawn.forfeitDateRequired"));
+        }
+        if (forfeitRequest.getForfeitedAmount() == null || forfeitRequest.getForfeitedAmount().compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException(messageService.getMessage("error.pawn.forfeitAmountRequired"));
         }
         pawnEntity.setPawnStatus(PawnStatus.FORFEITED);
         pawnEntity.setForfeitedReason(forfeitRequest.getForfeitedReason());
@@ -347,7 +353,11 @@ public class PawnServiceImpl implements PawnService {
         BigDecimal requestedAmount = pawnResponse.getPawnAmount();
         Set<ReqMoneyResponse> reqMoneys = new HashSet<>();
         for (ReqMoneyEntity reqMoneyEntity : pawnEntity.getReqMoneys()) {
-            long heldDays = calculateHeldDays(redeemDate, reqMoneyEntity.getRequestDate(), isExtending);
+            // Fall back to pawnDate when requestDate is missing (guards against legacy null rows)
+            LocalDateTime reqDate = reqMoneyEntity.getRequestDate() != null
+                    ? reqMoneyEntity.getRequestDate()
+                    : pawnEntity.getPawnDate();
+            long heldDays = calculateHeldDays(redeemDate, reqDate, isExtending);
             BigDecimal subInterestAmount = calculateInterestAmount(heldDays, calcMode, pawnResponse.getInterestRate(), reqMoneyEntity.getRequestAmount());
             BigDecimal subRequestedAmount = reqMoneyEntity.getRequestAmount();
             requestedAmount = subRequestedAmount.add(requestedAmount);
@@ -510,7 +520,7 @@ public class PawnServiceImpl implements PawnService {
                 .tenantId(tenantContext.getCurrentTenantId())
                 .requestAmount(reqMoneyRequest.getRequestAmount())
                 .pawnId(pawnId)
-                .requestDate(reqMoneyRequest.getRequestDate() != null ? reqMoneyRequest.getRequestDate().atTime(LocalTime.now()) : null)
+                .requestDate(reqMoneyRequest.getRequestDate() != null ? reqMoneyRequest.getRequestDate().atStartOfDay() : null)
                 .createdBy(authContext.getCurrentUsername())
                 .build();
         reqMoneyRepository.save(reqMoneyEntity);
@@ -544,6 +554,29 @@ public class PawnServiceImpl implements PawnService {
         pawnEntity.setPawnStatus(PawnStatus.EXTENDED);
         PawnEntity redeemedPawn = pawnRepository.save(pawnEntity);
         PawnEntity savedExtendEntity = pawnRepository.save(extendingPawn);
+        // Copy category-specific detail to the new contract so item metadata is not lost on extend.
+        String tid = tenantContext.getCurrentTenantId();
+        Long newId = savedExtendEntity.getPawnId();
+        String cat = pawnEntity.getPawnCategory();
+        if ("JEWELRY".equals(cat)) {
+            jewelryRepository.findByPawnId(pawnId).ifPresent(o ->
+                    jewelryRepository.save(pawnMapper.toJewelryEntity(tid, newId, pawnMapper.fromJewelryEntity(o))));
+        } else if ("ELECTRONICS".equals(cat)) {
+            electronicsRepository.findByPawnId(pawnId).ifPresent(o ->
+                    electronicsRepository.save(pawnMapper.toElectronicsEntity(tid, newId, pawnMapper.fromElectronicsEntity(o))));
+        } else if ("VEHICLE".equals(cat) || "MOTORBIKE".equals(cat) || "CAR".equals(cat) || "BIKE".equals(cat)) {
+            vehicleRepository.findByPawnId(pawnId).ifPresent(o ->
+                    vehicleRepository.save(pawnMapper.toVehicleEntity(tid, newId, pawnMapper.fromVehicleEntity(o))));
+        } else if ("WATCH".equals(cat)) {
+            watchRepository.findByPawnId(pawnId).ifPresent(o ->
+                    watchRepository.save(pawnMapper.toWatchEntity(tid, newId, pawnMapper.fromWatchEntity(o))));
+        } else if ("REAL_ESTATE".equals(cat)) {
+            realEstateRepository.findByPawnId(pawnId).ifPresent(o ->
+                    realEstateRepository.save(pawnMapper.toRealEstateEntity(tid, newId, pawnMapper.fromRealEstateEntity(o))));
+        } else if ("GENERAL".equals(cat) || "OTHER".equals(cat)) {
+            generalRepository.findByPawnId(pawnId).ifPresent(o ->
+                    generalRepository.save(pawnMapper.toGeneralEntity(tid, newId, pawnMapper.fromGeneralEntity(o))));
+        }
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.PAWN_EXTEND, "PAWN", String.valueOf(redeemedPawn.getPawnId()),
                 messageService.getMessage("activity.pawn.extended", redeemedPawn.getItemName()), null);
@@ -567,8 +600,6 @@ public class PawnServiceImpl implements PawnService {
                 .itemValue(pawnEntity.getItemValue())
                 .itemBrand(pawnEntity.getItemBrand())
                 .itemName(pawnEntity.getItemName())
-                .gemWeight(pawnEntity.getGemWeight())
-                .itemWeight(pawnEntity.getItemWeight())
                 // Copy raw string directly — enum round-trip via fromCode() would silently
                 // replace any unrecognised value with DAILY_30, changing the new contract's mode.
                 .interestCalcMode(pawnEntity.getInterestCalcMode())
@@ -582,6 +613,7 @@ public class PawnServiceImpl implements PawnService {
                 .pawnDate(DateTimeUtil.fromLocalDateTime(extendRequest.getExtendDate()))
                 .pawnDueDate(DateTimeUtil.fromLocalDateTime(extendRequest.getExtendDueDate()))
                 .pawnCategory(pawnEntity.getPawnCategory())
+                .visible(true)
                 .build();
         extendingPawn.setOriginalId(pawnEntity.getOriginalId() != null ? pawnEntity.getOriginalId() : pawnEntity.getPawnId());
         return extendingPawn;
@@ -605,6 +637,7 @@ public class PawnServiceImpl implements PawnService {
         PawnKPIs newMoneyRequest = getNewRequestMoneyAmount(fromDate, toDate, visibleFlag);
         PawnKPIs redeemPawn = getRedeemedPawnAmount(fromDate, toDate, visibleFlag);
         PawnKPIs forfeited = getForfeitedPawnAmount(fromDate, toDate, visibleFlag);
+        PawnKPIs extended = getExtendedPawnAmount(fromDate, toDate, visibleFlag);
         PawnKPIs activePawn = getTotalActivePawns(visibleFlag);
         return PawnKPIs.builder()
                 .totalPawnedCount(activePawn.getTotalPawnedCount())
@@ -623,7 +656,10 @@ public class PawnServiceImpl implements PawnService {
                 .completedPawnCount(redeemPawn.getCompletedPawnCount())
                 .forfeitedPawnAmount(forfeited.getForfeitedPawnAmount())
                 .forfeitedPawnCount(forfeited.getForfeitedPawnCount())
+                .extendedPawnCount(extended.getExtendedPawnCount())
+                .extendedPawnAmount(extended.getExtendedPawnAmount())
                 .interestPawnAmount(getInterestPawnAmount(fromDate, toDate, visibleFlag))
+                .closedPawnPureAmount(redeemPawn.getClosedPawnPureAmount() + forfeited.getClosedPawnPureAmount())
                 .build();
     }
 
@@ -681,12 +717,15 @@ public class PawnServiceImpl implements PawnService {
 
     private PawnKPIs getNewPawnsAmount(LocalDateTime fromDate, LocalDateTime toDate, boolean visibleFlag) {
         PawnKPIs pawnKPIs = PawnKPIs.builder().build();
-        List<Object[]> resultList = pawnRepository.sumByPawnStatusAndPawnDateBetween(PawnStatus.PAWNED, fromDate, toDate, visibleFlag);
-        Long requestAmount = pawnRepository.sumRequestAmountByPawnStatusAndPawnDateBetween(PawnStatus.PAWNED, fromDate, toDate, visibleFlag);
+        // Count all original contracts created in the period regardless of current status.
+        // originalId IS NULL excludes extension contracts (which also receive a new pawnDate).
+        // newPawnsAmount stores pure SUM(pawnAmount) only — additional draws are tracked separately
+        // via newRequestMoneyAmount so they don't inflate the funnel "Created" figure.
+        List<Object[]> resultList = pawnRepository.sumNewOriginalPawnsByPawnDate(fromDate, toDate, visibleFlag);
         for (Object[] result : resultList) {
             BigDecimal totalAmount = result != null ? (BigDecimal) result[0] : BigDecimal.ZERO;
             long totalCount = result != null ? (Long) result[1] : 0;
-            pawnKPIs.setNewPawnsAmount(totalAmount.longValue() + requestAmount);
+            pawnKPIs.setNewPawnsAmount(totalAmount.longValue());
             pawnKPIs.setNewPawnsCount((int) totalCount);
         }
         return pawnKPIs;
@@ -713,6 +752,8 @@ public class PawnServiceImpl implements PawnService {
             long totalCount = result != null ? (Long) result[1] : 0;
             pawnKPIs.setCompletedPawnAmount(totalAmount.longValue() + requestAmount);
             pawnKPIs.setCompletedPawnCount((int) totalCount);
+            // Pure pawnAmount without additional draws — used for avgLoan on closed cohort
+            pawnKPIs.setClosedPawnPureAmount(totalAmount.longValue());
         }
         return pawnKPIs;
     }
@@ -726,14 +767,46 @@ public class PawnServiceImpl implements PawnService {
             long totalCount = result != null ? (Long) result[1] : 0;
             pawnKPIs.setForfeitedPawnAmount(totalAmount.longValue() + requestAmount);
             pawnKPIs.setForfeitedPawnCount((int) totalCount);
+            // Pure pawnAmount without additional draws
+            pawnKPIs.setClosedPawnPureAmount(totalAmount.longValue());
+        }
+        return pawnKPIs;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PawnCustomerInsights getPawnCustomerInsights(LocalDate from, LocalDate to) {
+        boolean visibleFlag = shopInfoService.getExcludeVisibleItemFlag();
+        LocalDateTime fromDate = from.atStartOfDay();
+        LocalDateTime toDate = to.atTime(LocalTime.MAX);
+        long total = pawnRepository.countDistinctPawnCustomers(fromDate, toDate, visibleFlag);
+        long newCount = pawnRepository.countNewPawnCustomers(fromDate, toDate, visibleFlag);
+        long walkIn = pawnRepository.countWalkInPawns(fromDate, toDate, visibleFlag);
+        return PawnCustomerInsights.builder()
+                .totalCustomers(total)
+                .newCustomers(newCount)
+                .returningCustomers(Math.max(0, total - newCount))
+                .walkInCount(walkIn)
+                .build();
+    }
+
+    private PawnKPIs getExtendedPawnAmount(LocalDateTime fromDate, LocalDateTime toDate, boolean visibleFlag) {
+        PawnKPIs pawnKPIs = PawnKPIs.builder().build();
+        List<Object[]> resultList = pawnRepository.sumByPawnStatusAndUpdatedAtBetween(PawnStatus.EXTENDED, fromDate, toDate, visibleFlag);
+        for (Object[] result : resultList) {
+            BigDecimal totalAmount = result != null ? (BigDecimal) result[0] : BigDecimal.ZERO;
+            long totalCount = result != null ? (Long) result[1] : 0;
+            pawnKPIs.setExtendedPawnAmount(totalAmount.longValue());
+            pawnKPIs.setExtendedPawnCount((int) totalCount);
         }
         return pawnKPIs;
     }
 
     private long getInterestPawnAmount(LocalDateTime fromDate, LocalDateTime toDate, boolean visibleFlag) {
-        Long amount = pawnRepository.sumInterestAmountByPawnStatusInAndRedeemDateBetweenOrForfeitedDateBetween(
+        Long closedInterest = pawnRepository.sumInterestAmountByPawnStatusInAndRedeemDateBetweenOrForfeitedDateBetween(
                 Arrays.asList(PawnStatus.REDEEMED, PawnStatus.FORFEITED), fromDate, toDate, visibleFlag);
-        return amount == null ? 0 : amount;
+        Long extendedInterest = pawnRepository.sumInterestAmountByExtendedAndUpdatedAtBetween(fromDate, toDate, visibleFlag);
+        return (closedInterest == null ? 0 : closedInterest) + (extendedInterest == null ? 0 : extendedInterest);
     }
 
     @Override
@@ -769,17 +842,18 @@ public class PawnServiceImpl implements PawnService {
             List<BarsData> forfeitedDay = convertDayBarsData(pawnRepository.getAmountByDayForfeitedDate(Collections.singletonList(PawnStatus.FORFEITED), fromDate, toDate, visibleItemFlag));
             List<BarsData> redeemedIntDay = convertDayBarsData(pawnRepository.getRedeemedInterestByDay(PawnStatus.REDEEMED, fromDate, toDate, visibleItemFlag));
             List<BarsData> forfeitedIntDay = convertDayBarsData(pawnRepository.getForfeitedInterestByDay(PawnStatus.FORFEITED, fromDate, toDate, visibleItemFlag));
+            List<BarsData> extendedIntDay = convertDayBarsData(pawnRepository.getExtendedInterestByDay(fromDate, toDate, visibleItemFlag));
 
             if ("week".equals(granularity)) {
                 pawnedBars    = aggregateToWeek(pawnedDay);
                 redeemBars    = aggregateToWeek(redeemDay);
                 forfeitedBars = aggregateToWeek(forfeitedDay);
-                interestBars  = mergeInterestBarsData(aggregateToWeek(redeemedIntDay), aggregateToWeek(forfeitedIntDay));
+                interestBars  = mergeInterestBarsData(mergeInterestBarsData(aggregateToWeek(redeemedIntDay), aggregateToWeek(forfeitedIntDay)), aggregateToWeek(extendedIntDay));
             } else {
                 pawnedBars    = pawnedDay;
                 redeemBars    = redeemDay;
                 forfeitedBars = forfeitedDay;
-                interestBars  = mergeInterestBarsData(redeemedIntDay, forfeitedIntDay);
+                interestBars  = mergeInterestBarsData(mergeInterestBarsData(redeemedIntDay, forfeitedIntDay), extendedIntDay);
             }
         } else if ("year".equals(granularity)) {
             // Fetch month-level data, aggregate to year in Java
@@ -788,10 +862,11 @@ public class PawnServiceImpl implements PawnService {
             List<BarsData> forfeitedMonth = convertBarsData(pawnRepository.getAmountAndTotalCountByMonthForfeitedDateDateAndStatus(Collections.singletonList(PawnStatus.FORFEITED), fromDate, toDate, visibleItemFlag));
             List<BarsData> redeemedInt    = convertBarsData(pawnRepository.getRedeemedInterestAmount(PawnStatus.REDEEMED, fromDate, toDate, visibleItemFlag));
             List<BarsData> forfeitedInt   = convertBarsData(pawnRepository.getForfeitedInterestAmount(PawnStatus.FORFEITED, fromDate, toDate, visibleItemFlag));
+            List<BarsData> extendedInt    = convertBarsData(pawnRepository.getExtendedInterestByMonth(fromDate, toDate, visibleItemFlag));
             pawnedBars    = aggregateToYear(pawnedMonth);
             redeemBars    = aggregateToYear(redeemMonth);
             forfeitedBars = aggregateToYear(forfeitedMonth);
-            interestBars  = mergeInterestBarsData(aggregateToYear(redeemedInt), aggregateToYear(forfeitedInt));
+            interestBars  = mergeInterestBarsData(mergeInterestBarsData(aggregateToYear(redeemedInt), aggregateToYear(forfeitedInt)), aggregateToYear(extendedInt));
         } else {
             // Default: month-level (existing behavior)
             List<Object[]> pawnedObjs        = pawnRepository.getAmountAndTotalCountByMonthPawnDateAndStatus(fromDate, toDate, visibleItemFlag);
@@ -799,10 +874,11 @@ public class PawnServiceImpl implements PawnService {
             List<Object[]> forfeitedObjs     = pawnRepository.getAmountAndTotalCountByMonthForfeitedDateDateAndStatus(Collections.singletonList(PawnStatus.FORFEITED), fromDate, toDate, visibleItemFlag);
             List<Object[]> redeemedInterest  = pawnRepository.getRedeemedInterestAmount(PawnStatus.REDEEMED, fromDate, toDate, visibleItemFlag);
             List<Object[]> forfeitedInterest = pawnRepository.getForfeitedInterestAmount(PawnStatus.FORFEITED, fromDate, toDate, visibleItemFlag);
+            List<Object[]> extendedInterest  = pawnRepository.getExtendedInterestByMonth(fromDate, toDate, visibleItemFlag);
             pawnedBars    = convertBarsData(pawnedObjs);
             redeemBars    = convertBarsData(redeemObjs);
             forfeitedBars = convertBarsData(forfeitedObjs);
-            interestBars  = mergeInterestBarsData(convertBarsData(redeemedInterest), convertBarsData(forfeitedInterest));
+            interestBars  = mergeInterestBarsData(mergeInterestBarsData(convertBarsData(redeemedInterest), convertBarsData(forfeitedInterest)), convertBarsData(extendedInterest));
         }
 
         return PawnBarsResponse.builder()
@@ -916,6 +992,28 @@ public class PawnServiceImpl implements PawnService {
         return result;
     }
 
+    @Transactional(readOnly = true)
+    public Map<String, Object> getCustomerPawnSummary(Long customerId) {
+        boolean visibleItemFlag = shopInfoService.getExcludeVisibleItemFlag();
+        List<PawnStatus> allStatuses = List.of(PawnStatus.PAWNED, PawnStatus.REDEEMED, PawnStatus.EXTENDED, PawnStatus.FORFEITED);
+        List<PawnStatus> activeStatuses = List.of(PawnStatus.PAWNED);
+
+        List<Object[]> allRows    = pawnRepository.sumByPawnStatusInAndCustomerIdEquals(customerId, allStatuses, visibleItemFlag);
+        List<Object[]> activeRows = pawnRepository.sumByPawnStatusInAndCustomerIdEquals(customerId, activeStatuses, visibleItemFlag);
+
+        long totalCount    = allRows.isEmpty()    || allRows.get(0)[0] == null    ? 0L : ((Number) allRows.get(0)[0]).longValue();
+        long totalPrincipal = allRows.isEmpty()   || allRows.get(0)[1] == null   ? 0L : ((Number) allRows.get(0)[1]).longValue();
+        long totalInterest  = allRows.isEmpty()   || allRows.get(0)[2] == null   ? 0L : ((Number) allRows.get(0)[2]).longValue();
+        long activeCount   = activeRows.isEmpty() || activeRows.get(0)[0] == null ? 0L : ((Number) activeRows.get(0)[0]).longValue();
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("totalCount", totalCount);
+        result.put("activeCount", activeCount);
+        result.put("totalPrincipal", totalPrincipal);
+        result.put("totalInterest", totalInterest);
+        return result;
+    }
+
     @Override
     @Transactional
     public int updateVisibleStatus(Long pawnId, boolean visibleStatus) {
@@ -944,16 +1042,18 @@ public class PawnServiceImpl implements PawnService {
     private void batchEnrichWithItemDetail(List<PawnResponse> responses) {
         if (responses.isEmpty()) return;
         List<Long> electronicIds  = responses.stream().filter(r -> "ELECTRONICS".equals(r.getPawnCategory())).map(PawnResponse::getPawnId).toList();
-        List<Long> vehicleIds     = responses.stream().filter(r -> "MOTORBIKE".equals(r.getPawnCategory()) || "CAR".equals(r.getPawnCategory())).map(PawnResponse::getPawnId).toList();
+        List<Long> vehicleIds     = responses.stream().filter(r -> "MOTORBIKE".equals(r.getPawnCategory()) || "CAR".equals(r.getPawnCategory()) || "VEHICLE".equals(r.getPawnCategory())).map(PawnResponse::getPawnId).toList();
         List<Long> watchIds       = responses.stream().filter(r -> "WATCH".equals(r.getPawnCategory())).map(PawnResponse::getPawnId).toList();
         List<Long> realEstateIds  = responses.stream().filter(r -> "REAL_ESTATE".equals(r.getPawnCategory())).map(PawnResponse::getPawnId).toList();
         List<Long> generalIds     = responses.stream().filter(r -> "GENERAL".equals(r.getPawnCategory())).map(PawnResponse::getPawnId).toList();
+        List<Long> jewelryIds     = responses.stream().filter(r -> "JEWELRY".equals(r.getPawnCategory())).map(PawnResponse::getPawnId).toList();
 
-        Map<Long, PawnElectronicsDetail> electronicsMap = electronicsRepository.findByPawnIdIn(electronicIds).stream().collect(Collectors.toMap(PawnElectronicsEntity::getPawnId, pawnMapper::fromElectronicsEntity));
-        Map<Long, PawnVehicleDetail>     vehicleMap     = vehicleRepository.findByPawnIdIn(vehicleIds).stream().collect(Collectors.toMap(PawnVehicleEntity::getPawnId, pawnMapper::fromVehicleEntity));
-        Map<Long, PawnWatchDetail>       watchMap       = watchRepository.findByPawnIdIn(watchIds).stream().collect(Collectors.toMap(PawnWatchEntity::getPawnId, pawnMapper::fromWatchEntity));
-        Map<Long, PawnRealEstateDetail>  realEstateMap  = realEstateRepository.findByPawnIdIn(realEstateIds).stream().collect(Collectors.toMap(PawnRealEstateEntity::getPawnId, pawnMapper::fromRealEstateEntity));
-        Map<Long, PawnGeneralDetail>     generalMap     = generalRepository.findByPawnIdIn(generalIds).stream().collect(Collectors.toMap(PawnGeneralEntity::getPawnId, pawnMapper::fromGeneralEntity));
+        Map<Long, PawnElectronicsDetail> electronicsMap = electronicIds.isEmpty() ? Map.of() : electronicsRepository.findByPawnIdIn(electronicIds).stream().collect(Collectors.toMap(PawnElectronicsEntity::getPawnId, pawnMapper::fromElectronicsEntity));
+        Map<Long, PawnVehicleDetail>     vehicleMap     = vehicleIds.isEmpty()    ? Map.of() : vehicleRepository.findByPawnIdIn(vehicleIds).stream().collect(Collectors.toMap(PawnVehicleEntity::getPawnId, pawnMapper::fromVehicleEntity));
+        Map<Long, PawnWatchDetail>       watchMap       = watchIds.isEmpty()      ? Map.of() : watchRepository.findByPawnIdIn(watchIds).stream().collect(Collectors.toMap(PawnWatchEntity::getPawnId, pawnMapper::fromWatchEntity));
+        Map<Long, PawnRealEstateDetail>  realEstateMap  = realEstateIds.isEmpty() ? Map.of() : realEstateRepository.findByPawnIdIn(realEstateIds).stream().collect(Collectors.toMap(PawnRealEstateEntity::getPawnId, pawnMapper::fromRealEstateEntity));
+        Map<Long, PawnGeneralDetail>     generalMap     = generalIds.isEmpty()    ? Map.of() : generalRepository.findByPawnIdIn(generalIds).stream().collect(Collectors.toMap(PawnGeneralEntity::getPawnId, pawnMapper::fromGeneralEntity));
+        Map<Long, PawnJewelryDetail>     jewelryMap     = jewelryIds.isEmpty()    ? Map.of() : jewelryRepository.findByPawnIdIn(jewelryIds).stream().collect(Collectors.toMap(PawnJewelryEntity::getPawnId, pawnMapper::fromJewelryEntity));
 
         for (PawnResponse r : responses) {
             if (electronicsMap.containsKey(r.getPawnId()))  r.setElectronicsDetail(electronicsMap.get(r.getPawnId()));
@@ -961,6 +1061,7 @@ public class PawnServiceImpl implements PawnService {
             if (watchMap.containsKey(r.getPawnId()))        r.setWatchDetail(watchMap.get(r.getPawnId()));
             if (realEstateMap.containsKey(r.getPawnId()))   r.setRealEstateDetail(realEstateMap.get(r.getPawnId()));
             if (generalMap.containsKey(r.getPawnId()))      r.setGeneralDetail(generalMap.get(r.getPawnId()));
+            if (jewelryMap.containsKey(r.getPawnId()))      r.setJewelryDetail(jewelryMap.get(r.getPawnId()));
         }
     }
 
@@ -974,7 +1075,7 @@ public class PawnServiceImpl implements PawnService {
                     electronicsRepository.save(pawnMapper.toElectronicsEntity(tenantId, pawnId, req.getElectronicsDetail()));
                 }
             }
-            case "MOTORBIKE", "CAR" -> {
+            case "MOTORBIKE", "CAR", "VEHICLE" -> {
                 vehicleRepository.deleteByPawnId(pawnId);
                 if (req.getVehicleDetail() != null) {
                     vehicleRepository.save(pawnMapper.toVehicleEntity(tenantId, pawnId, req.getVehicleDetail()));
@@ -998,6 +1099,12 @@ public class PawnServiceImpl implements PawnService {
                     generalRepository.save(pawnMapper.toGeneralEntity(tenantId, pawnId, req.getGeneralDetail()));
                 }
             }
+            case "JEWELRY" -> {
+                jewelryRepository.deleteByPawnId(pawnId);
+                if (req.getJewelryDetail() != null) {
+                    jewelryRepository.save(pawnMapper.toJewelryEntity(tenantId, pawnId, req.getJewelryDetail()));
+                }
+            }
         }
     }
 
@@ -1006,7 +1113,7 @@ public class PawnServiceImpl implements PawnService {
         switch (category) {
             case "ELECTRONICS" -> electronicsRepository.findByPawnId(pawnId)
                     .ifPresent(e -> response.setElectronicsDetail(pawnMapper.fromElectronicsEntity(e)));
-            case "MOTORBIKE", "CAR" -> vehicleRepository.findByPawnId(pawnId)
+            case "MOTORBIKE", "CAR", "VEHICLE" -> vehicleRepository.findByPawnId(pawnId)
                     .ifPresent(e -> response.setVehicleDetail(pawnMapper.fromVehicleEntity(e)));
             case "WATCH" -> watchRepository.findByPawnId(pawnId)
                     .ifPresent(e -> response.setWatchDetail(pawnMapper.fromWatchEntity(e)));
@@ -1014,6 +1121,8 @@ public class PawnServiceImpl implements PawnService {
                     .ifPresent(e -> response.setRealEstateDetail(pawnMapper.fromRealEstateEntity(e)));
             case "GENERAL" -> generalRepository.findByPawnId(pawnId)
                     .ifPresent(e -> response.setGeneralDetail(pawnMapper.fromGeneralEntity(e)));
+            case "JEWELRY" -> jewelryRepository.findByPawnId(pawnId)
+                    .ifPresent(e -> response.setJewelryDetail(pawnMapper.fromJewelryEntity(e)));
         }
     }
 }

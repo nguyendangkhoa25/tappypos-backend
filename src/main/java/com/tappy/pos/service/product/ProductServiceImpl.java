@@ -96,6 +96,8 @@ public class ProductServiceImpl implements ProductService {
                 .durationMinutes(request.getDurationMinutes() != null ? request.getDurationMinutes() : 0)
                 .unit(request.getUnit())
                 .shelfLocation(request.getShelfLocation())
+                .sourcePawnId(request.getSourcePawnId())
+                .inventoryMode(com.tappy.pos.model.enums.InventoryMode.derive(productType.getCode(), request.getSourcePawnId()))
                 .vendor(vendor)
                 .status(Product.ProductStatus.valueOf(request.getStatus()))
                 .deleted(false)
@@ -129,11 +131,11 @@ public class ProductServiceImpl implements ProductService {
                 
                 AttributeDefinition attrDef = attributeDefinitionRepository
                         .findByCodeAndProductTypeId(entry.getKey(), request.getProductTypeId())
-                        .orElseThrow(() -> {
-                            String errorMsg = messageService.getMessage("error.attribute.not.found", entry.getKey());
-                            log.error("Attribute not found: {}", entry.getKey());
-                            return new ResourceNotFoundException(errorMsg);
-                        });
+                        .orElse(null);
+                if (attrDef == null) {
+                    log.warn("No attribute definition for code '{}' on type {}, skipping", entry.getKey(), request.getProductTypeId());
+                    continue;
+                }
 
                 log.debug("Found attribute definition: {}, data type: {}", entry.getKey(), attrDef.getDataType());
 
@@ -165,8 +167,9 @@ public class ProductServiceImpl implements ProductService {
             log.info("Product attributes saved for product id: {}", savedProduct.getId());
         }
 
-        // Jewelry items are unique pieces — auto-create 1-unit inventory on product creation.
-        if ("JEWELRY".equals(productType.getCode())) {
+        // UNIQUE products are single physical items — auto-create inventory = 1 at creation.
+        // TRACKED products require manual stock entry; NO_INVENTORY skips inventory entirely.
+        if (savedProduct.getInventoryMode() == com.tappy.pos.model.enums.InventoryMode.UNIQUE) {
             String location = "Quầy";
             if (request.getAttributes() != null) {
                 Object counterCode = request.getAttributes().get("counter_code");
@@ -185,7 +188,21 @@ public class ProductServiceImpl implements ProductService {
                     .deleted(false)
                     .build();
             inventoryRepository.save(inventory);
-            log.info("Auto-created 1-unit inventory for jewelry product {}", savedProduct.getId());
+            log.info("Auto-created 1-unit inventory for UNIQUE product {}", savedProduct.getId());
+        } else if (savedProduct.getInventoryMode() == com.tappy.pos.model.enums.InventoryMode.TRACKED
+                && request.getInitialQuantity() != null && request.getInitialQuantity() > 0) {
+            Inventory inventory = Inventory.builder()
+                    .tenantId(tenantContext.getCurrentTenantId())
+                    .product(savedProduct)
+                    .quantityInStock((long) request.getInitialQuantity())
+                    .reorderLevel(0L)
+                    .reorderQuantity(1L)
+                    .unitCost(savedProduct.getCostPrice())
+                    .warehouseLocation("Quầy")
+                    .deleted(false)
+                    .build();
+            inventoryRepository.save(inventory);
+            log.info("Created inventory qty={} for TRACKED product {}", request.getInitialQuantity(), savedProduct.getId());
         }
 
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
@@ -223,9 +240,7 @@ public class ProductServiceImpl implements ProductService {
         product.setDescription(request.getDescription());
         product.setBarcode(request.getBarcode());
         product.setPrice(request.getPrice());
-        if (request.getCostPrice() != null) {
-            product.setCostPrice(request.getCostPrice());
-        }
+        product.setCostPrice(request.getCostPrice() != null ? request.getCostPrice() : java.math.BigDecimal.ZERO);
         // commissionRate: null = inherit employee default; explicit value (incl. 0) = override
         product.setCommissionRate(request.getCommissionRate());
         if (request.getDurationMinutes() != null) {
@@ -269,11 +284,11 @@ public class ProductServiceImpl implements ProductService {
                 
                 AttributeDefinition attrDef = attributeDefinitionRepository
                         .findByCodeAndProductTypeId(entry.getKey(), product.getProductType().getId())
-                        .orElseThrow(() -> {
-                            String errorMsg = messageService.getMessage("error.attribute.not.found", entry.getKey());
-                            log.error("Attribute not found: {}", entry.getKey());
-                            return new ResourceNotFoundException(errorMsg);
-                        });
+                        .orElse(null);
+                if (attrDef == null) {
+                    log.warn("No attribute definition for code '{}' on type {}, skipping", entry.getKey(), product.getProductType().getId());
+                    continue;
+                }
 
                 log.debug("Found attribute definition: {}, data type: {}", entry.getKey(), attrDef.getDataType());
 
@@ -417,12 +432,24 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<ProductDTO> getAllProducts(String status, Long categoryId, Pageable pageable) {
-        log.info("Getting all products with status: {}, categoryId: {}", status, categoryId);
+    public Page<ProductDTO> getAllProducts(String status, Long categoryId, Long productTypeId, boolean pawnOriginOnly, Pageable pageable) {
+        log.info("Getting all products with status: {}, categoryId: {}, productTypeId: {}, pawnOriginOnly: {}", status, categoryId, productTypeId, pawnOriginOnly);
         Product.ProductStatus productStatus = Product.ProductStatus.valueOf(status.toUpperCase());
-        Page<Product> products = categoryId != null
-                ? productRepository.findByStatusAndCategoryId(productStatus, categoryId, pageable)
-                : productRepository.findByDeletedFalseAndStatusOrderByCreatedAtDesc(productStatus, pageable);
+        Page<Product> products;
+        if (productTypeId != null) {
+            // Type filter: ignores categoryId (pawn sell screen uses type chips, not tenant categories)
+            products = pawnOriginOnly
+                    ? productRepository.findByDeletedFalseAndStatusAndProductTypeIdAndSourcePawnIdIsNotNullOrderByCreatedAtDesc(productStatus, productTypeId, pageable)
+                    : productRepository.findByDeletedFalseAndStatusAndProductTypeIdOrderByCreatedAtDesc(productStatus, productTypeId, pageable);
+        } else if (pawnOriginOnly) {
+            products = categoryId != null
+                    ? productRepository.findByStatusAndCategoryIdAndSourcePawnIdIsNotNull(productStatus, categoryId, pageable)
+                    : productRepository.findByDeletedFalseAndStatusAndSourcePawnIdIsNotNullOrderByCreatedAtDesc(productStatus, pageable);
+        } else {
+            products = categoryId != null
+                    ? productRepository.findByStatusAndCategoryId(productStatus, categoryId, pageable)
+                    : productRepository.findByDeletedFalseAndStatusOrderByCreatedAtDesc(productStatus, pageable);
+        }
 
         List<Long> productIds = products.getContent().stream()
                 .map(Product::getId)
@@ -468,6 +495,8 @@ public class ProductServiceImpl implements ProductService {
                         .code(pt.getCode())
                         .name(pt.getName())
                         .description(pt.getDescription())
+                        .defaultInventoryMode(pt.getDefaultInventoryMode().name())
+                        .defaultUnit(pt.getDefaultUnit() != null ? pt.getDefaultUnit() : "piece")
                         .build())
                 .collect(Collectors.toList());
     }
@@ -573,10 +602,10 @@ public class ProductServiceImpl implements ProductService {
                 .map(Category::getName)
                 .collect(Collectors.toSet());
 
-        boolean isService = "SERVICE".equals(product.getProductType().getCode());
+        boolean tracksStock = product.getInventoryMode() != com.tappy.pos.model.enums.InventoryMode.NO_INVENTORY;
         Long stockQuantity = null;
         Boolean inStock = null;
-        if (!isService) {
+        if (tracksStock) {
             Optional<Inventory> inv = inventoryRepository.findByProductId(product.getId());
             if (inv.isPresent()) {
                 stockQuantity = inv.get().getQuantityInStock();
@@ -611,6 +640,8 @@ public class ProductServiceImpl implements ProductService {
                 .stockQuantity(stockQuantity)
                 .inStock(inStock)
                 .imageUrl(product.getImageUrl())
+                .sourcePawnId(product.getSourcePawnId())
+                .inventoryMode(product.getInventoryMode().name())
                 .createdAt(product.getCreatedAt())
                 .updatedAt(product.getUpdatedAt())
                 .build();
@@ -632,10 +663,10 @@ public class ProductServiceImpl implements ProductService {
 
         boolean hasVariants = productVariantRepository.existsByProductIdAndDeletedAtIsNull(product.getId());
 
-        boolean isService = "SERVICE".equals(product.getProductType().getCode());
+        boolean tracksStock = product.getInventoryMode() != com.tappy.pos.model.enums.InventoryMode.NO_INVENTORY;
         Long stockQuantity = null;
         Boolean inStock = null;
-        if (!isService) {
+        if (tracksStock) {
             Optional<Inventory> inv = inventoryRepository.findByProductId(product.getId());
             if (inv.isPresent()) {
                 stockQuantity = inv.get().getQuantityInStock();
@@ -670,6 +701,8 @@ public class ProductServiceImpl implements ProductService {
                 .stockQuantity(stockQuantity)
                 .inStock(inStock)
                 .imageUrl(product.getImageUrl())
+                .sourcePawnId(product.getSourcePawnId())
+                .inventoryMode(product.getInventoryMode().name())
                 .createdAt(product.getCreatedAt())
                 .updatedAt(product.getUpdatedAt())
                 .build();
@@ -829,5 +862,13 @@ public class ProductServiceImpl implements ProductService {
                 .topEmployees(topEmployees)
                 .build();
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<ProductDTO> getBySourcePawnId(Long pawnId) {
+        log.info("Request: Get product by sourcePawnId={}", pawnId);
+        return productRepository.findBySourcePawnIdAndDeletedFalse(pawnId).map(this::mapToDTO);
+    }
+
 }
 

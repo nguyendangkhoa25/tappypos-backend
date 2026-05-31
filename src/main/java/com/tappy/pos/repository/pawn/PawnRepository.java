@@ -41,6 +41,13 @@ public interface PawnRepository extends JpaRepository<PawnEntity, Long> {
     @Query("SELECT COALESCE(sum(r.requestAmount), 0) as amount FROM ReqMoneyEntity r where r.pawnId in (select p.pawnId FROM PawnEntity p where p.pawnStatus = :pawnStatus AND (:excludeVisibleItem = false OR p.visible IS NULL OR p.visible = true) and p.pawnDate between :fromDate and :toDate) ")
     Long sumRequestAmountByPawnStatusAndPawnDateBetween(PawnStatus pawnStatus, LocalDateTime fromDate, LocalDateTime toDate, @Param("excludeVisibleItem") boolean excludeVisibleItem);
 
+    /** Counts all original pawn contracts created in the period regardless of current status (excludes extensions via originalId IS NULL). */
+    @Query("SELECT COALESCE(SUM(p.pawnAmount), 0) as amount, COUNT(DISTINCT p.pawnId) as totalCount FROM PawnEntity p WHERE p.originalId IS NULL AND (:excludeVisibleItem = false OR p.visible IS NULL OR p.visible = true) AND p.pawnDate BETWEEN :fromDate AND :toDate")
+    List<Object[]> sumNewOriginalPawnsByPawnDate(LocalDateTime fromDate, LocalDateTime toDate, @Param("excludeVisibleItem") boolean excludeVisibleItem);
+
+    @Query("SELECT COALESCE(SUM(r.requestAmount), 0) FROM ReqMoneyEntity r WHERE r.pawnId IN (SELECT p.pawnId FROM PawnEntity p WHERE p.originalId IS NULL AND (:excludeVisibleItem = false OR p.visible IS NULL OR p.visible = true) AND p.pawnDate BETWEEN :fromDate AND :toDate)")
+    Long sumRequestAmountForNewOriginalPawnsByPawnDate(LocalDateTime fromDate, LocalDateTime toDate, @Param("excludeVisibleItem") boolean excludeVisibleItem);
+
     @Query("SELECT COALESCE(SUM(r.requestAmount), 0), COUNT(r.pawnId) as totalCount  FROM ReqMoneyEntity r join PawnEntity p on p.pawnId = r.pawnId where p.pawnStatus = :pawnStatus AND (:excludeVisibleItem = false OR p.visible IS NULL OR p.visible = true) and r.requestDate between :fromDate and :toDate ")
     List<Object[]> sumRequestMoneyByPawnStatusAndRequestDateBetween(PawnStatus pawnStatus, LocalDateTime fromDate, LocalDateTime toDate, @Param("excludeVisibleItem") boolean excludeVisibleItem);
 
@@ -209,7 +216,8 @@ public interface PawnRepository extends JpaRepository<PawnEntity, Long> {
             "COALESCE(SUM(p.pawnAmount), 0), " +
             "COALESCE(SUM(p.interestAmount), 0) " +
             "FROM PawnEntity p " +
-            "WHERE (:excludeVisible = false OR p.visible IS NULL OR p.visible = true) " +
+            "WHERE p.pawnStatus = 'PAWNED' " +
+            "AND (:excludeVisible = false OR p.visible IS NULL OR p.visible = true) " +
             "AND p.pawnDate BETWEEN :fromDate AND :toDate " +
             "GROUP BY p.customerId, p.customerName " +
             "ORDER BY COALESCE(SUM(p.pawnAmount), 0) DESC")
@@ -218,4 +226,45 @@ public interface PawnRepository extends JpaRepository<PawnEntity, Long> {
             @Param("toDate") LocalDateTime toDate,
             @Param("excludeVisible") boolean excludeVisible,
             Pageable pageable);
+
+    @Query("SELECT COALESCE(SUM(p.pawnAmount), 0) as amount, COUNT(DISTINCT p.pawnId) as totalCount FROM PawnEntity p WHERE p.pawnStatus = :pawnStatus AND (:excludeVisibleItem = false OR p.visible IS NULL OR p.visible = true) AND p.updatedAt BETWEEN :fromDate AND :toDate")
+    List<Object[]> sumByPawnStatusAndUpdatedAtBetween(@Param("pawnStatus") PawnStatus pawnStatus, @Param("fromDate") LocalDateTime fromDate, @Param("toDate") LocalDateTime toDate, @Param("excludeVisibleItem") boolean excludeVisibleItem);
+
+    /** Sum interest collected from EXTENDED contracts whose updatedAt falls in the period. */
+    @Query("SELECT COALESCE(SUM(p.interestAmount), 0) FROM PawnEntity p WHERE p.pawnStatus = 'EXTENDED' AND (:excludeVisibleItem = false OR p.visible IS NULL OR p.visible = true) AND p.updatedAt BETWEEN :fromDate AND :toDate")
+    Long sumInterestAmountByExtendedAndUpdatedAtBetween(@Param("fromDate") LocalDateTime fromDate, @Param("toDate") LocalDateTime toDate, @Param("excludeVisibleItem") boolean excludeVisibleItem);
+
+    @Query("SELECT IFNULL(SUM(p.interestAmount), 0), COUNT(DISTINCT p.pawnId), " +
+            "YEAR(p.updatedAt), MONTH(p.updatedAt), DAY(p.updatedAt) " +
+            "FROM PawnEntity p " +
+            "WHERE p.pawnStatus = 'EXTENDED' " +
+            "AND (:excludeVisible = false OR p.visible IS NULL OR p.visible = true) " +
+            "AND p.updatedAt BETWEEN :fromDate AND :toDate " +
+            "GROUP BY YEAR(p.updatedAt), MONTH(p.updatedAt), DAY(p.updatedAt) " +
+            "ORDER BY YEAR(p.updatedAt), MONTH(p.updatedAt), DAY(p.updatedAt)")
+    List<Object[]> getExtendedInterestByDay(
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            @Param("excludeVisible") boolean excludeVisible);
+
+    @Query("SELECT IFNULL(SUM(p.interestAmount), 0), " +
+            "COUNT(DISTINCT p.pawnId) AS totalCount, YEAR(p.updatedAt) AS year, MONTH(p.updatedAt) AS month " +
+            "FROM PawnEntity p " +
+            "WHERE p.pawnStatus = 'EXTENDED' " +
+            "AND p.updatedAt BETWEEN :fromDate AND :toDate " +
+            "AND (:excludeVisible = false OR p.visible IS NULL OR p.visible = true) " +
+            "GROUP BY YEAR(p.updatedAt), MONTH(p.updatedAt)")
+    List<Object[]> getExtendedInterestByMonth(
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            @Param("excludeVisible") boolean excludeVisible);
+
+    @Query("SELECT COUNT(DISTINCT p.customerId) FROM PawnEntity p WHERE p.customerId IS NOT NULL AND p.pawnDate BETWEEN :fromDate AND :toDate AND (:excludeVisibleItem = false OR p.visible IS NULL OR p.visible = true)")
+    long countDistinctPawnCustomers(@Param("fromDate") LocalDateTime fromDate, @Param("toDate") LocalDateTime toDate, @Param("excludeVisibleItem") boolean excludeVisibleItem);
+
+    @Query("SELECT COUNT(DISTINCT p.customerId) FROM PawnEntity p WHERE p.customerId IS NOT NULL AND p.pawnDate BETWEEN :fromDate AND :toDate AND (:excludeVisibleItem = false OR p.visible IS NULL OR p.visible = true) AND NOT EXISTS (SELECT 1 FROM PawnEntity p2 WHERE p2.customerId = p.customerId AND p2.pawnDate < :fromDate)")
+    long countNewPawnCustomers(@Param("fromDate") LocalDateTime fromDate, @Param("toDate") LocalDateTime toDate, @Param("excludeVisibleItem") boolean excludeVisibleItem);
+
+    @Query("SELECT COUNT(p) FROM PawnEntity p WHERE p.customerId IS NULL AND p.pawnDate BETWEEN :fromDate AND :toDate AND (:excludeVisibleItem = false OR p.visible IS NULL OR p.visible = true)")
+    long countWalkInPawns(@Param("fromDate") LocalDateTime fromDate, @Param("toDate") LocalDateTime toDate, @Param("excludeVisibleItem") boolean excludeVisibleItem);
 }

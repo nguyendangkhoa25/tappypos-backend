@@ -35,6 +35,17 @@ public class AppointmentController {
         return ResponseEntity.ok(ApiResponse.success(result, "Appointments retrieved"));
     }
 
+    @GetMapping("/by-customer")
+    public ResponseEntity<ApiResponse<Page<AppointmentDTO>>> getByCustomer(
+            @RequestParam Long customerId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        log.info("GET /appointments/by-customer?customerId={}", customerId);
+        return ResponseEntity.ok(ApiResponse.success(
+                appointmentService.getByCustomer(customerId, PageRequest.of(page, size)),
+                "Customer appointments retrieved"));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<AppointmentDTO>> getById(@PathVariable Long id) {
         log.info("GET /appointments/{}", id);

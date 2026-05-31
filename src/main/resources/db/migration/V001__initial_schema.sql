@@ -167,8 +167,8 @@ CREATE TABLE IF NOT EXISTS users (
     deleted                 BOOLEAN      NOT NULL DEFAULT FALSE,
     deleted_at              TIMESTAMP    DEFAULT NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS uq_users_username_master ON users (username) WHERE tenant_id IS NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS uq_users_username_tenant ON users (username, tenant_id) WHERE tenant_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_users_username_master ON users (username) WHERE tenant_id IS NULL AND deleted <> true;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_users_username_tenant ON users (username, tenant_id) WHERE tenant_id IS NOT NULL AND deleted <> true;
 
 -- 3.4 user_roles
 CREATE TABLE IF NOT EXISTS user_roles (
@@ -269,15 +269,17 @@ CREATE TABLE IF NOT EXISTS activity_log (
 
 -- 4.1 product_type
 CREATE TABLE IF NOT EXISTS product_type (
-    id          BIGSERIAL    PRIMARY KEY,
-    tenant_id   VARCHAR(100) NOT NULL,
-    code        VARCHAR(100) NOT NULL,
-    name        VARCHAR(255) NOT NULL,
-    description VARCHAR(500) DEFAULT NULL,
-    created_at  TIMESTAMP    NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMP    NOT NULL DEFAULT NOW(),
-    deleted     BOOLEAN      NOT NULL DEFAULT FALSE,
-    deleted_at  TIMESTAMP    DEFAULT NULL,
+    id                     BIGSERIAL    PRIMARY KEY,
+    tenant_id              VARCHAR(100) NOT NULL,
+    code                   VARCHAR(100) NOT NULL,
+    name                   VARCHAR(255) NOT NULL,
+    description            VARCHAR(500) DEFAULT NULL,
+    default_inventory_mode VARCHAR(20)  NOT NULL DEFAULT 'TRACKED',
+    default_unit           VARCHAR(50)  NOT NULL DEFAULT 'piece',
+    created_at             TIMESTAMP    NOT NULL DEFAULT NOW(),
+    updated_at             TIMESTAMP    NOT NULL DEFAULT NOW(),
+    deleted                BOOLEAN      NOT NULL DEFAULT FALSE,
+    deleted_at             TIMESTAMP    DEFAULT NULL,
     CONSTRAINT uq_product_type_code_tenant UNIQUE (code, tenant_id)
 );
 
@@ -375,7 +377,9 @@ CREATE TABLE IF NOT EXISTS product (
     shelf_location   VARCHAR(100)   DEFAULT NULL,
     legacy_id        VARCHAR(50)    DEFAULT NULL,
     commission_rate  DECIMAL(5,2)   DEFAULT NULL,
-    image_url        VARCHAR(500) DEFAULT NULL,
+    image_url        VARCHAR(500)   DEFAULT NULL,
+    source_pawn_id   BIGINT         DEFAULT NULL,
+    inventory_mode   VARCHAR(20)    NOT NULL DEFAULT 'TRACKED',
     CONSTRAINT uq_product_sku_tenant     UNIQUE (sku, tenant_id),
     CONSTRAINT fk_product_type           FOREIGN KEY (product_type_id) REFERENCES product_type (id),
     CONSTRAINT fk_product_vendor         FOREIGN KEY (vendor_id)       REFERENCES vendors       (id)
@@ -1110,8 +1114,6 @@ CREATE TABLE IF NOT EXISTS pawn (
     customer_id              BIGINT         DEFAULT NULL,
     item_name                VARCHAR(255)   DEFAULT NULL,
     item_description         TEXT           DEFAULT NULL,
-    item_weight              DECIMAL(10,3)  DEFAULT NULL,
-    gem_weight               DECIMAL(10,3)  DEFAULT NULL,
     item_value               DECIMAL(15,2)  DEFAULT NULL,
     item_type                VARCHAR(100)   DEFAULT NULL,
     item_brand               VARCHAR(100)   DEFAULT NULL,
@@ -1150,8 +1152,6 @@ CREATE TABLE IF NOT EXISTS pawn_audit (
     customer_id              BIGINT         DEFAULT NULL,
     item_name                VARCHAR(255)   DEFAULT NULL,
     item_description         TEXT           DEFAULT NULL,
-    item_weight              DECIMAL(10,3)  DEFAULT NULL,
-    gem_weight               DECIMAL(10,3)  DEFAULT NULL,
     item_value               DECIMAL(15,2)  DEFAULT NULL,
     item_type                VARCHAR(100)   DEFAULT NULL,
     item_brand               VARCHAR(100)   DEFAULT NULL,
@@ -1174,6 +1174,35 @@ CREATE TABLE IF NOT EXISTS pawn_audit (
     updated_by               VARCHAR(100)   DEFAULT NULL,
     updated_at               TIMESTAMP      DEFAULT NULL
 );
+
+-- 4.32-bis pawn_item_jewelry — jewelry-specific pawn attributes
+CREATE TABLE IF NOT EXISTS pawn_item_jewelry (
+    id          BIGSERIAL    PRIMARY KEY,
+    tenant_id   VARCHAR(100) NOT NULL,
+    pawn_id     BIGINT       NOT NULL UNIQUE REFERENCES pawn(pawn_id) ON DELETE CASCADE,
+    purity      VARCHAR(20),
+    metal_type  VARCHAR(50),
+    hallmark    VARCHAR(100),
+    total_weight DECIMAL(10, 3) DEFAULT NULL,
+    gem_weight   DECIMAL(10, 3) DEFAULT NULL,
+    gold_weight  DECIMAL(10, 3) DEFAULT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pij_tenant_pawn ON pawn_item_jewelry (tenant_id, pawn_id);
+
+ALTER TABLE pawn_item_jewelry ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pawn_item_jewelry FORCE  ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON pawn_item_jewelry
+    USING (tenant_id = current_setting('app.current_tenant', true));
+
+-- product.source_pawn_id FK (deferred because product is defined before pawn)
+ALTER TABLE product
+    ADD CONSTRAINT fk_product_source_pawn
+    FOREIGN KEY (source_pawn_id) REFERENCES pawn(pawn_id) ON DELETE SET NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_product_source_pawn_unique
+    ON product (tenant_id, source_pawn_id)
+    WHERE source_pawn_id IS NOT NULL;
 
 -- 4.33 pawn_req_money
 CREATE TABLE IF NOT EXISTS pawn_req_money (
@@ -1683,6 +1712,9 @@ CREATE INDEX IF NOT EXISTS idx_gp_tenant_id ON gold_price (tenant_id);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_gold_price_category_tenant
     ON gold_price (category_id, tenant_id)
     WHERE category_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_gold_price_code_tenant
+    ON gold_price (code, tenant_id)
+    WHERE deleted = FALSE;
 
 -- contact_leads
 CREATE INDEX IF NOT EXISTS idx_contact_leads_created_at ON contact_leads (created_at DESC);
@@ -2204,6 +2236,11 @@ CREATE TABLE IF NOT EXISTS combo_items (
 );
 CREATE INDEX IF NOT EXISTS idx_combos_tenant ON combos(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_combo_items_combo ON combo_items(combo_id);
+
+ALTER TABLE combos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE combos FORCE  ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON combos
+    USING (tenant_id = current_tenant_id());
 
 -- ════════════════════════════════════════════════════════════
 -- Merged from: V005__exchange_rates.sql
@@ -4448,3 +4485,105 @@ CREATE TABLE IF NOT EXISTS shop_deletion_log (
 CREATE INDEX IF NOT EXISTS idx_sdl_tenant ON shop_deletion_log(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_sdl_deleted_at ON shop_deletion_log(deleted_at DESC);
 
+-- PAWN_VIEW_ALL sub-feature (same pattern as ORDER_VIEW_ALL)
+-- When absent from a user's JWT, PawnServiceImpl.getPawns() scopes results to created_by = current username.
+INSERT INTO features (name, display_name, description)
+VALUES (
+    'PAWN_VIEW_ALL',
+    'Xem Tất Cả Cầm Đồ',
+    'Xem hợp đồng cầm đồ của tất cả nhân viên; nếu không có quyền này, chỉ xem được hợp đồng tự tạo'
+) ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO role_features (role_id, feature_id)
+SELECT r.id, f.id
+FROM roles r, features f
+WHERE r.name IN ('SHOP_OWNER', 'MANAGER')
+  AND f.name = 'PAWN_VIEW_ALL'
+ON CONFLICT DO NOTHING;
+
+-- ── Pawn shops: grant POS feature to SHOP_OWNER and PAWN_OFFICER roles ────────
+-- Without POS, pawn shops cannot call POST /carts or the checkout endpoint even
+-- though they have ORDER — the backend gates the cart/POS flow behind POS.
+-- TenantProvisioningService was updated to include POS for newly provisioned
+-- pawn shops; this backfills all existing PAWN_SHOP tenants.
+INSERT INTO role_features (role_id, feature_id)
+SELECT r.id, f.id
+FROM   roles    r
+JOIN   tenants  t ON t.tenant_id  = r.tenant_id
+CROSS JOIN features f
+WHERE  r.name  IN ('SHOP_OWNER', 'PAWN_OFFICER')
+  AND  t.shop_type = 'PAWN_SHOP'
+  AND  f.name  = 'POS'
+  AND  r.tenant_id IS NOT NULL
+ON CONFLICT (role_id, feature_id) DO NOTHING;
+
+-- ── Pawn-origin products: backfill inventory stock = 1 ────────────────────────
+-- PawnProductFormScreen calls POST /inventory/adjust after creating a product,
+-- but that endpoint requires the INVENTORY feature which pawn shops don't have.
+-- This left existing pawn-origin products with quantity_in_stock = 0, causing
+-- "out of stock" errors at checkout.
+
+-- 1. Insert missing inventory rows
+INSERT INTO inventory (tenant_id, product_id, quantity_in_stock, reorder_level, reorder_quantity, status)
+SELECT p.tenant_id, p.id, 1, 0, 0, 'ACTIVE'
+FROM   product p
+JOIN   tenants t ON t.tenant_id = p.tenant_id
+WHERE  p.source_pawn_id IS NOT NULL
+  AND  p.deleted = FALSE
+  AND  t.shop_type = 'PAWN_SHOP'
+  AND  NOT EXISTS (
+           SELECT 1 FROM inventory i WHERE i.product_id = p.id
+       );
+
+-- 2. Fix existing inventory rows stuck at 0
+UPDATE inventory i
+SET    quantity_in_stock = 1,
+       updated_at        = NOW()
+FROM   product p
+JOIN   tenants t ON t.tenant_id = p.tenant_id
+WHERE  i.product_id      = p.id
+  AND  p.source_pawn_id IS NOT NULL
+  AND  p.deleted         = FALSE
+  AND  t.shop_type       = 'PAWN_SHOP'
+  AND  i.quantity_in_stock = 0
+  AND  i.deleted           = FALSE;
+
+-- ════════════════════════════════════════════════════════════
+-- Merged from: V002__add_inventory_mode.sql
+-- ════════════════════════════════════════════════════════════
+
+-- inventory_mode and default_inventory_mode columns are now in
+-- the product and product_type CREATE TABLE statements above.
+-- These UPDATEs back-fill any rows created before the column existed.
+
+UPDATE product_type SET default_inventory_mode = 'NO_INVENTORY' WHERE code = 'SERVICE';
+UPDATE product_type SET default_inventory_mode = 'UNIQUE'
+    WHERE code IN ('JEWELRY', 'WATCH', 'BIKE', 'CAR', 'MOTORBIKE');
+ALTER TABLE product_type
+    ADD COLUMN IF NOT EXISTS default_unit VARCHAR(50) NOT NULL DEFAULT 'piece';
+
+-- Priority 1: pawn-origin items are always UNIQUE
+UPDATE product SET inventory_mode = 'UNIQUE' WHERE source_pawn_id IS NOT NULL;
+
+-- Priority 2: SERVICE → NO_INVENTORY
+UPDATE product p
+    SET inventory_mode = 'NO_INVENTORY'
+    FROM product_type pt
+    WHERE p.product_type_id = pt.id
+      AND pt.code = 'SERVICE'
+      AND p.source_pawn_id IS NULL;
+
+-- Priority 3: inherently-unique physical types → UNIQUE
+UPDATE product p
+    SET inventory_mode = 'UNIQUE'
+    FROM product_type pt
+    WHERE p.product_type_id = pt.id
+      AND pt.code IN ('JEWELRY', 'WATCH', 'BIKE', 'CAR', 'MOTORBIKE')
+      AND p.source_pawn_id IS NULL;
+-- Everything else keeps the column DEFAULT 'TRACKED'
+
+-- Backfill known special cases
+UPDATE product_type SET default_unit = 'chi'     WHERE code = 'JEWELRY'  AND default_unit = 'piece';
+UPDATE product_type SET default_unit = 'session'  WHERE code = 'SERVICE'  AND default_unit = 'piece';
+UPDATE product_type SET default_unit = 'bottle'   WHERE code = 'BEVERAGE' AND default_unit = 'piece';
+UPDATE product_type SET default_unit = 'box'      WHERE code = 'DRUG'     AND default_unit = 'piece';

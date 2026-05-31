@@ -61,6 +61,11 @@ public class CreateProductRequest {
 
     private Set<Long> categoryIds;
 
+    private Long sourcePawnId;
+
+    @Min(value = 0, message = "Initial quantity must be >= 0")
+    private Integer initialQuantity;
+
     @NotNull(message = "Attributes are required")
     private Map<String, Object> attributes;
 }

@@ -9,6 +9,7 @@ import java.util.Map;
 
 public interface AppointmentService {
     Page<AppointmentDTO> getByDate(LocalDate date, Pageable pageable);
+    Page<AppointmentDTO> getByCustomer(Long customerId, Pageable pageable);
     AppointmentDTO getById(Long id);
     AppointmentDTO create(CreateAppointmentRequest request);
     AppointmentDTO update(Long id, UpdateAppointmentRequest request);

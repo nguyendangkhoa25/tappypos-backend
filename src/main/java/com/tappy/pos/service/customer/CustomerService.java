@@ -433,6 +433,7 @@ public class CustomerService {
                 "SELECT TO_CHAR(DATE_TRUNC('%s', o.completed_at), '%s') AS label, COUNT(o.id) AS value " +
                 "FROM orders o JOIN customers c ON o.customer_id = c.id " +
                 "WHERE o.deleted = false AND o.status = 'COMPLETED' " +
+                "AND o.tenant_id = current_setting('app.current_tenant', true) " +
                 "AND c.deleted = false AND c.phone != '0000000000' " +
                 "AND o.completed_at BETWEEN :from AND :to " +
                 "GROUP BY label ORDER BY label", trunc, fmt);
@@ -440,6 +441,7 @@ public class CustomerService {
                 "SELECT TO_CHAR(DATE_TRUNC('%s', c.created_at), '%s') AS label, COUNT(c.id) AS value " +
                 "FROM customers c " +
                 "WHERE c.deleted = false AND c.phone != '0000000000' " +
+                "AND c.tenant_id = current_setting('app.current_tenant', true) " +
                 "AND c.created_at BETWEEN :from AND :to " +
                 "GROUP BY label ORDER BY label", trunc, fmt);
             default -> String.format(
@@ -447,6 +449,7 @@ public class CustomerService {
                 "COALESCE(SUM(o.total_amount), 0) AS value " +
                 "FROM orders o JOIN customers c ON o.customer_id = c.id " +
                 "WHERE o.deleted = false AND o.status = 'COMPLETED' " +
+                "AND o.tenant_id = current_setting('app.current_tenant', true) " +
                 "AND c.deleted = false AND c.phone != '0000000000' " +
                 "AND o.completed_at BETWEEN :from AND :to " +
                 "GROUP BY label ORDER BY label", trunc, fmt);
@@ -467,14 +470,20 @@ public class CustomerService {
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getTopCustomersRanking(int limit, boolean allTime,
-                                                             LocalDate from, LocalDate to) {
+                                                             LocalDate from, LocalDate to,
+                                                             String sortBy) {
+        boolean byFrequency = "count".equalsIgnoreCase(sortBy);
         List<Object[]> rows;
         if (allTime) {
-            rows = orderRepository.getTopCustomersAllTime(PageRequest.of(0, limit));
+            rows = byFrequency
+                    ? orderRepository.getTopCustomersAllTimeByFrequency(PageRequest.of(0, limit))
+                    : orderRepository.getTopCustomersAllTime(PageRequest.of(0, limit));
         } else {
             LocalDateTime dtFrom = from.atStartOfDay();
             LocalDateTime dtTo   = to.atTime(LocalTime.MAX);
-            rows = orderRepository.getTopCustomersByRange(dtFrom, dtTo, PageRequest.of(0, limit));
+            rows = byFrequency
+                    ? orderRepository.getTopCustomersByFrequency(dtFrom, dtTo, PageRequest.of(0, limit))
+                    : orderRepository.getTopCustomersByRange(dtFrom, dtTo, PageRequest.of(0, limit));
         }
         List<Map<String, Object>> result = new ArrayList<>();
         for (Object[] row : rows) {

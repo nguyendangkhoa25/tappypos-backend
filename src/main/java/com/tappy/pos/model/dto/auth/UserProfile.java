@@ -18,6 +18,7 @@ public class UserProfile {
     private String username;
     private String email;
     private String fullName;
+    private String nickname;
     private String avatar;
     /** R2 public URL for the user's avatar (preferred over legacy base64 `avatar`). */
     private String avatarUrl;
