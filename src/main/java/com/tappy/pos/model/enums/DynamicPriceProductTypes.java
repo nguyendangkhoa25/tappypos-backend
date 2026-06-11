@@ -14,7 +14,7 @@ import java.util.Set;
  */
 public final class DynamicPriceProductTypes {
 
-    public static final Set<String> CODES = Set.of("JEWELRY");
+    public static final Set<String> CODES = Set.of("JEWELRY", "SILVER");
 
     public static boolean isDynamicPrice(String productTypeCode) {
         return productTypeCode != null && CODES.contains(productTypeCode);

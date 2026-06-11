@@ -13,6 +13,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,7 +35,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@Filter(name = "tenantFilter", condition = "tenant_id = :tenantId")
+@Filter(name = "tenantFilter", condition = "tenant_id = :tenantFilterId")
 public class CartEntity {
 
     @Id
@@ -178,9 +179,10 @@ public class CartEntity {
         // Calculate taxable amount
         BigDecimal taxableAmount = subtotal.subtract(totalDiscount);
 
-        // Calculate tax using the shop-configured rate
+        // Calculate tax using the shop-configured rate (stored as a fraction, e.g. 0.10).
+        // Round to 2 decimals so totalTax/total never carry unbounded scale into payments.
         BigDecimal rate = taxRate != null ? taxRate : BigDecimal.ZERO;
-        totalTax = taxableAmount.multiply(rate);
+        totalTax = taxableAmount.multiply(rate).setScale(2, RoundingMode.HALF_UP);
 
         // Calculate grand total
         total = taxableAmount.add(totalTax);

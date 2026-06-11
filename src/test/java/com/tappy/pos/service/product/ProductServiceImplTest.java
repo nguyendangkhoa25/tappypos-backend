@@ -276,7 +276,7 @@ class ProductServiceImplTest {
                 Product.ProductStatus.ACTIVE, Pageable.unpaged())).thenReturn(productPage);
 
         // When
-        Page<ProductDTO> result = productService.getAllProducts("ACTIVE", null, Pageable.unpaged());
+        Page<ProductDTO> result = productService.getAllProducts("ACTIVE", null, null, false, Pageable.unpaged());
 
         // Then
         assertThat(result).isNotNull();
@@ -419,7 +419,7 @@ class ProductServiceImplTest {
 
 
     @Test
-    @DisplayName("Should handle attribute not found in product creation")
+    @DisplayName("Unknown attribute codes are skipped, not fatal — creation still succeeds")
     void testCreateProduct_AttributeNotFound() {
         // Given
         Map<String, Object> attrs = new HashMap<>();
@@ -451,12 +451,13 @@ class ProductServiceImplTest {
         when(productRepository.save(any(Product.class))).thenReturn(savedProduct);
         when(attributeDefinitionRepository.findByCodeAndProductTypeId("unknownAttr", 1L))
                 .thenReturn(Optional.empty());
-        when(messageService.getMessage("error.attribute.not.found", "unknownAttr"))
-                .thenReturn("Attribute not found: unknownAttr");
 
-        // When & Then
-        assertThatThrownBy(() -> productService.createProduct(attrRequest))
-                .isInstanceOf(ResourceNotFoundException.class);
+        // When: an unknown attribute code is provided
+        ProductDTO result = productService.createProduct(attrRequest);
+
+        // Then: creation succeeds and the unknown attribute is silently skipped (never persisted)
+        assertThat(result).isNotNull();
+        verify(productAttributeValueRepository, never()).save(any());
     }
 
     @Test
@@ -592,7 +593,7 @@ class ProductServiceImplTest {
                 Product.ProductStatus.INACTIVE, Pageable.unpaged())).thenReturn(productPage);
 
         // When
-        Page<ProductDTO> result = productService.getAllProducts("INACTIVE", null, Pageable.unpaged());
+        Page<ProductDTO> result = productService.getAllProducts("INACTIVE", null, null, false, Pageable.unpaged());
 
         // Then
         assertThat(result).isNotNull();
@@ -608,7 +609,7 @@ class ProductServiceImplTest {
                 any(Product.ProductStatus.class), any(Pageable.class))).thenReturn(emptyPage);
 
         // When
-        Page<ProductDTO> result = productService.getAllProducts("ACTIVE", null, Pageable.unpaged());
+        Page<ProductDTO> result = productService.getAllProducts("ACTIVE", null, null, false, Pageable.unpaged());
 
         // Then
         assertThat(result.getContent()).isEmpty();
@@ -1721,6 +1722,8 @@ class ProductServiceImplTest {
                 .id(5L).productType(jewelryType).sku("JWL-001").name("Nhẫn Vàng 24K")
                 .price(BigDecimal.valueOf(5_000_000)).costPrice(BigDecimal.valueOf(4_000_000))
                 .status(Product.ProductStatus.ACTIVE)
+                // JEWELRY derives UNIQUE mode; the persisted entity carries it, so the mock must too.
+                .inventoryMode(com.tappy.pos.model.enums.InventoryMode.UNIQUE)
                 .attributeValues(new HashSet<>()).categories(new HashSet<>()).build();
 
         CreateProductRequest req = CreateProductRequest.builder()
@@ -1748,6 +1751,8 @@ class ProductServiceImplTest {
                 .id(6L).productType(jewelryType).sku("JWL-002").name("Dây Chuyền Vàng")
                 .price(BigDecimal.valueOf(3_000_000)).costPrice(BigDecimal.valueOf(2_500_000))
                 .status(Product.ProductStatus.ACTIVE)
+                // JEWELRY derives UNIQUE mode; the persisted entity carries it, so the mock must too.
+                .inventoryMode(com.tappy.pos.model.enums.InventoryMode.UNIQUE)
                 .attributeValues(new HashSet<>()).categories(new HashSet<>()).build();
 
         Map<String, Object> attrs = new HashMap<>();

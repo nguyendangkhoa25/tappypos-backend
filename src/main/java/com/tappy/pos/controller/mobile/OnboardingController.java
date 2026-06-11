@@ -115,7 +115,7 @@ public class OnboardingController {
                 "PRINT_TEMPLATE", "BANK_ACCOUNT", "INVOICE", "ACCOUNTING"
         ));
         List<String> pawnBase = List.of(
-                "DASHBOARD", "PAWN", "ORDER", "ORDER_VIEW_ALL", "PRODUCT", "CUSTOMER",
+                "DASHBOARD", "PAWN", "ORDER", "ORDER_VIEW_ALL", "POS", "PRODUCT", "CUSTOMER",
                 "EMPLOYEE", "EXPENSE", "REVENUE", "USER",
                 "NOTIFICATION", "FEEDBACK", "ACTIVITY_LOG", "SHOP_INFO",
                 "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACCOUNTING"

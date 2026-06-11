@@ -155,6 +155,9 @@ public class ShopInvitationService {
             user.getRoles().add(role);
             userRepository.save(user);
 
+            // Staff need an employee record to be assigned work items / earn commission.
+            tenantProvisioningService.seedJoinedStaffEmployee(user, tenantId, invitation.getRoleName());
+
             // Mark invitation as used
             invitation.setUsedAt(LocalDateTime.now());
             invitation.setUsedBy(username);

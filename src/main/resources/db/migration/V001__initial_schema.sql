@@ -605,6 +605,13 @@ CREATE TABLE IF NOT EXISTS orders (
     deleted                 BOOLEAN        NOT NULL DEFAULT FALSE,
     deleted_at              TIMESTAMP      DEFAULT NULL,
     pickup_time             TIMESTAMPTZ    DEFAULT NULL,
+    -- Gold order summary columns: pre-computed buy/sell breakdowns on BUY and
+    -- EXCHANGE orders so the receipt can display "Tiền vàng mới / Tiền vàng khách"
+    -- lines without re-scanning all order_items.
+    buy_amount              DECIMAL(15,2)  NOT NULL DEFAULT 0,  -- Sum of GOLD_IN item amounts (shop buys from customer)
+    sell_amount             DECIMAL(15,2)  NOT NULL DEFAULT 0,  -- Sum of GOLD_OUT + STANDARD item amounts (shop sells to customer)
+    gold_diff_weight        DECIMAL(10,3)  NOT NULL DEFAULT 0,  -- Surplus/deficit weight in chỉ for EXCHANGE orders
+    gold_diff_amount        DECIMAL(15,2)  NOT NULL DEFAULT 0,  -- Monetary value of surplus/deficit weight
     CONSTRAINT uq_orders_number_tenant  UNIQUE (order_number, tenant_id),
     CONSTRAINT chk_orders_status        CHECK  (status IN ('PENDING','IN_PROGRESS','COMPLETED','CANCELLED','VOIDED')),
     CONSTRAINT chk_orders_order_type    CHECK  (order_type IN ('SELL', 'BUY', 'EXCHANGE')),

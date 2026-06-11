@@ -58,6 +58,7 @@ public class Product extends TenantAwareEntity {
 
     @Column(name = "inventory_mode", nullable = false, length = 20)
     @Enumerated(EnumType.STRING)
+    @Builder.Default
     private com.tappy.pos.model.enums.InventoryMode inventoryMode = com.tappy.pos.model.enums.InventoryMode.TRACKED;
 
     @Column(name = "image_url", length = 500)

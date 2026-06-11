@@ -21,7 +21,7 @@ import org.hibernate.annotations.Filter;
 @Setter
 @NoArgsConstructor
 @SuperBuilder
-@Filter(name = "tenantFilter", condition = "tenant_id = :tenantId OR tenant_id IS NULL")
+@Filter(name = "tenantFilter", condition = "(tenant_id = :tenantFilterId OR tenant_id IS NULL)")
 public abstract class UnifiedTenantEntity extends BaseEntity {
 
     @Column(name = "tenant_id")

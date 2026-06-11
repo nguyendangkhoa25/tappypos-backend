@@ -199,6 +199,10 @@ public class OrderServiceImpl implements OrderService {
                 .loyaltyDiscount(order.getLoyaltyDiscount())
                 .tableLabel(order.getTableLabel())
                 .pickupTime(order.getPickupTime())
+                .buyAmount(order.getBuyAmount())
+                .sellAmount(order.getSellAmount())
+                .goldDiffWeight(order.getGoldDiffWeight())
+                .goldDiffAmount(order.getGoldDiffAmount())
                 .items(items)
                 .build();
     }

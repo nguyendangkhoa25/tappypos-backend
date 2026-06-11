@@ -82,7 +82,7 @@ public class TenantProvisioningService {
     static {
         Map<ShopType, String> m = new EnumMap<>(ShopType.class);
         m.put(ShopType.JEWELRY,            "home,pawn,pos,customers,orders,dashboard,users");
-        m.put(ShopType.PAWN_SHOP,          "home,pawn,customers,orders,dashboard,users");
+        m.put(ShopType.PAWN_SHOP,          "home,pawn,pos,customers,orders,dashboard,users");
         m.put(ShopType.CONVENIENCE_STORE,  "home,pos,orders,customers,dashboard,users");
         m.put(ShopType.PHARMACY,           "home,pos,orders,customers,dashboard,users");
         m.put(ShopType.ELECTRONICS,        "home,pos,orders,customers,dashboard,users");
@@ -144,11 +144,11 @@ public class TenantProvisioningService {
         ));
         m.put(RoleEnum.TECHNICIAN.getCode(), Arrays.asList(
             "DASHBOARD", "MY_WORK", "ORDER", "PRODUCT", "CUSTOMER", "INVENTORY", "POS",
-            "NOTIFICATION", "FEEDBACK"
+            "APPOINTMENT", "COMMISSION", "NOTIFICATION", "FEEDBACK"
         ));
         m.put(RoleEnum.RECEPTIONIST.getCode(), Arrays.asList(
             "DASHBOARD", "MY_WORK", "ORDER", "CUSTOMER", "POS", "TABLE_SERVICE",
-            "COMMISSION", "NOTIFICATION", "FEEDBACK"
+            "APPOINTMENT", "COMMISSION", "NOTIFICATION", "FEEDBACK"
         ));
         m.put(RoleEnum.CLEANER.getCode(), Arrays.asList(
             "DASHBOARD", "MY_WORK", "NOTIFICATION"
@@ -164,8 +164,11 @@ public class TenantProvisioningService {
         Map<ShopType, List<String>> m = new EnumMap<>(ShopType.class);
         List<String> pawnRoles = Arrays.asList(
                 RoleEnum.SHOP_OWNER.getCode(), RoleEnum.PAWN_OFFICER.getCode());
+        List<String> jewelryRoles = Arrays.asList(
+                RoleEnum.SHOP_OWNER.getCode(), RoleEnum.MANAGER.getCode(),
+                RoleEnum.CASHIER.getCode(), RoleEnum.PAWN_OFFICER.getCode());
         m.put(ShopType.PAWN_SHOP, pawnRoles);
-        m.put(ShopType.JEWELRY,   pawnRoles);
+        m.put(ShopType.JEWELRY,   jewelryRoles);
         SHOP_TYPE_ROLE_WHITELIST = Collections.unmodifiableMap(m);
     }
 
@@ -289,7 +292,10 @@ public class TenantProvisioningService {
 
         Map<String, List<String>> shopRoleFeatures =
                 applyShopTypeFilters(ROLE_FEATURES, tenant.getShopType());
-        seedRoles(new ArrayList<>(shopRoleFeatures.keySet()), tenantId);
+        // Seed roles through RoleFeatureService (its own @Transactional boundary) so the
+        // RLS tenant context is set before the inserts — a direct seedRoles() here only
+        // reliably creates SHOP_OWNER and silently drops the staff roles under FORCED RLS.
+        roleFeatureService.seedRolesForTenant(new ArrayList<>(shopRoleFeatures.keySet()), tenantId);
         seedRoleFeatureMappings(shopRoleFeatures);
 
         try { seedShopInfo(tenant, shopAddress, tenantId); }
@@ -324,7 +330,9 @@ public class TenantProvisioningService {
         User user = userRepository.findByUsernameAndNullTenant(adminUsername)
                 .orElseThrow(() -> new RuntimeException("Pre-provision user not found: " + adminUsername));
 
-        Role shopOwnerRole = roleRepository.findByNameAndTenantId(RoleEnum.SHOP_OWNER.getCode(), tenantId)
+        // Native lookup: the derived findByNameAndTenantId is corrupted by the tenantFilter
+        // @Filter during provisioning and returns every role (NonUniqueResultException).
+        Role shopOwnerRole = roleRepository.nativeFindByNameAndTenant(RoleEnum.SHOP_OWNER.getCode(), tenantId)
                 .orElseThrow(() -> new RuntimeException("SHOP_OWNER role not found after seeding"));
 
         user.setTenantId(tenantId);
@@ -517,7 +525,9 @@ public class TenantProvisioningService {
             return existingUser.get();
         }
 
-        Role shopOwnerRole = roleRepository.findByNameAndTenantId(RoleEnum.SHOP_OWNER.getCode(), tenantId)
+        // Native lookup: the derived findByNameAndTenantId is corrupted by the tenantFilter
+        // @Filter during provisioning and returns every role (NonUniqueResultException).
+        Role shopOwnerRole = roleRepository.nativeFindByNameAndTenant(RoleEnum.SHOP_OWNER.getCode(), tenantId)
                 .orElseThrow(() -> new RuntimeException("SHOP_OWNER role not found after seeding"));
 
         User admin = User.builder()
@@ -559,5 +569,38 @@ public class TenantProvisioningService {
         employeeRepository.save(employee);
         log.info("Seeded SHOP_OWNER employee '{}' linked to user '{}' for tenant: {}",
                 name, adminUser.getUsername(), tenantId);
+    }
+
+    /**
+     * Creates an Employee record for a user who just joined a shop via invitation code.
+     * Staff need an employee record to be assigned work items / earn commission
+     * (My Work, etc. resolve the current employee from the user). Runs on its own
+     * @Transactional boundary so TenantRlsAspect sets app.current_tenant for the insert.
+     */
+    @Transactional
+    public void seedJoinedStaffEmployee(User user, String tenantId, String roleName) {
+        if (employeeRepository.existsByUserId(user.getId())) {
+            log.debug("Employee already linked to user {} in tenant: {}", user.getId(), tenantId);
+            return;
+        }
+        EmployeePosition position = null;
+        try { position = EmployeePosition.valueOf(roleName); } catch (IllegalArgumentException ignored) { }
+        String name = user.getFullName() != null && !user.getFullName().isBlank()
+                ? user.getFullName()
+                : (user.getNickname() != null && !user.getNickname().isBlank()
+                        ? user.getNickname() : user.getUsername());
+        Employee employee = Employee.builder()
+                .fullName(name)
+                .phone(user.getPhone())
+                .email(user.getEmail())
+                .position(position)
+                .hireDate(LocalDate.now())
+                .active(true)
+                .userId(user.getId())
+                .build();
+        employee.setTenantId(tenantId);
+        employeeRepository.save(employee);
+        log.info("Seeded staff employee '{}' (role {}) linked to user '{}' for tenant: {}",
+                name, roleName, user.getUsername(), tenantId);
     }
 }

@@ -6,13 +6,15 @@
 -- ============================================================
 
 -- ── 1. Product types ─────────────────────────────────────────
--- Jewelry shops primarily deal in fine jewelry, watches, and pawned electronics.
 INSERT INTO product_type (tenant_id, code, name, description, default_inventory_mode, default_unit) VALUES
-    (current_setting('app.current_tenant', true), 'JEWELRY',     'Vàng bạc đá quý', 'Nữ trang, vàng, bạc, đá quý',            'UNIQUE', 'chi'),
-    (current_setting('app.current_tenant', true), 'WATCH',       'Đồng hồ',         'Đồng hồ đeo tay và đồng hồ bàn',         'UNIQUE', 'piece'),
-    (current_setting('app.current_tenant', true), 'ELECTRONICS', 'Điện tử',         'Điện thoại, máy tính, thiết bị điện tử', 'TRACKED', 'piece'),
-    (current_setting('app.current_tenant', true), 'GENERAL',     'Khác',            'Tài sản cầm đồ tổng quát',               'TRACKED', 'piece'),
-    (current_setting('app.current_tenant', true), 'OTHER',       'Khác',            'Các mặt hàng khác',                      'TRACKED', 'piece')
+    (current_setting('app.current_tenant', true), 'JEWELRY',     'Vàng trang sức',          'Nữ trang, vàng bán theo trọng lượng',       'UNIQUE',  'chi'),
+    (current_setting('app.current_tenant', true), 'SILVER',      'Bạc theo trọng lượng',    'Trang sức bạc, giá tính theo chỉ bạc',      'UNIQUE',  'chi'),
+    (current_setting('app.current_tenant', true), 'SILVER_FIXED','Bạc giá cố định',         'Trang sức bạc, giá bán cố định',            'UNIQUE',  'piece'),
+    (current_setting('app.current_tenant', true), 'GEM_DIAMOND', 'Đá quý / Kim cương',      'Kim cương, ruby, sapphire và đá quý khác',  'UNIQUE',  'piece'),
+    (current_setting('app.current_tenant', true), 'WATCH',       'Đồng hồ',                 'Đồng hồ đeo tay và đồng hồ bàn',            'UNIQUE',  'piece'),
+    (current_setting('app.current_tenant', true), 'ELECTRONICS', 'Điện tử',                 'Điện thoại, máy tính, thiết bị điện tử',    'TRACKED', 'piece'),
+    (current_setting('app.current_tenant', true), 'GENERAL',     'Khác',                    'Tài sản cầm đồ tổng quát',                  'TRACKED', 'piece'),
+    (current_setting('app.current_tenant', true), 'OTHER',       'Khác',                    'Các mặt hàng khác',                         'TRACKED', 'piece')
 ON CONFLICT (code, tenant_id) DO UPDATE SET
     name = EXCLUDED.name,
     description = EXCLUDED.description,
@@ -77,6 +79,7 @@ INSERT INTO shop_config (tenant_id, config_key, config_value, config_group, encr
     (current_setting('app.current_tenant', true), 'pawn_due_date',             '30',      'PAWN',    FALSE),
     (current_setting('app.current_tenant', true), 'pawn_exclude_visible_item', 'false',   'PAWN',    FALSE),
     (current_setting('app.current_tenant', true), 'pawn_denominations',        '500000,1000000,2000000,5000000,10000000', 'PAWN', FALSE),
+    (current_setting('app.current_tenant', true), 'pawn_accepted_types',       'JEWELRY,SILVER,SILVER_FIXED,GEM_DIAMOND,ELECTRONICS,WATCH,GENERAL,OTHER', 'PAWN', FALSE),
     (current_setting('app.current_tenant', true), 'POS_MODE',                  'GOLD_TRADING', 'POS', FALSE)
 ON CONFLICT (config_key, tenant_id) DO NOTHING;
 
@@ -312,6 +315,90 @@ JOIN attribute_group ag ON ag.product_type_id = pt.id AND ag.code = 'jewelry_inf
 WHERE pt.code = 'JEWELRY' AND pt.tenant_id = current_setting('app.current_tenant', true)
 ON CONFLICT (code, product_type_id) DO UPDATE SET name = EXCLUDED.name, attribute_group_id = EXCLUDED.attribute_group_id, display_order = EXCLUDED.display_order;
 
+-- SILVER attribute group
+INSERT INTO attribute_group (tenant_id, product_type_id, code, name, display_order)
+SELECT current_setting('app.current_tenant', true), id, 'silver_info', 'Thông tin bạc', 1
+FROM product_type WHERE code = 'SILVER' AND tenant_id = current_setting('app.current_tenant', true)
+ON CONFLICT (code, product_type_id) DO NOTHING;
+
+INSERT INTO attribute_definition (tenant_id, product_type_id, attribute_group_id, code, name, data_type, required, searchable, filterable, display_order)
+SELECT t, pt.id, ag.id, a.code, a.name, a.dt, a.req, a.srch, a.filt, a.ord
+FROM (VALUES
+    ('total_weight',   'Tổng trọng lượng (chỉ)',        'NUMBER',  TRUE,  FALSE, TRUE,  1),
+    ('gold_weight',    'Trọng lượng bạc ròng (chỉ)',    'NUMBER',  TRUE,  FALSE, TRUE,  2),
+    ('gem_weight',     'Trọng lượng đá (chỉ)',           'NUMBER',  FALSE, FALSE, FALSE, 3),
+    ('purity',         'Tuổi bạc',                       'STRING',  FALSE, TRUE,  TRUE,  4),
+    ('hallmark',       'Nhãn / Ký hiệu',                 'STRING',  FALSE, FALSE, FALSE, 5),
+    ('sell_proc_price','Phí gia công bán (VNĐ)',          'NUMBER',  FALSE, FALSE, FALSE, 6),
+    ('counter_code',   'Quầy trưng bày',                 'STRING',  FALSE, FALSE, TRUE,  7),
+    ('symbol',         'Mã hàng / Ký hiệu',              'STRING',  FALSE, TRUE,  FALSE, 8)
+) AS a(code, name, dt, req, srch, filt, ord)
+CROSS JOIN (SELECT current_setting('app.current_tenant', true) AS t) ctx
+JOIN product_type pt ON pt.code = 'SILVER' AND pt.tenant_id = ctx.t
+JOIN attribute_group ag ON ag.product_type_id = pt.id AND ag.code = 'silver_info' AND ag.tenant_id = ctx.t
+ON CONFLICT (code, product_type_id) DO UPDATE SET
+    name = EXCLUDED.name, attribute_group_id = EXCLUDED.attribute_group_id, display_order = EXCLUDED.display_order;
+
+-- SILVER_FIXED attribute group
+INSERT INTO attribute_group (tenant_id, product_type_id, code, name, display_order)
+SELECT current_setting('app.current_tenant', true), id, 'silver_fixed_info', 'Thông tin bạc', 1
+FROM product_type WHERE code = 'SILVER_FIXED' AND tenant_id = current_setting('app.current_tenant', true)
+ON CONFLICT (code, product_type_id) DO NOTHING;
+
+INSERT INTO attribute_definition (tenant_id, product_type_id, attribute_group_id, code, name, data_type, required, searchable, filterable, display_order)
+SELECT t, pt.id, ag.id, a.code, a.name, a.dt, a.req, a.srch, a.filt, a.ord
+FROM (VALUES
+    ('total_weight', 'Trọng lượng (chỉ)',   'NUMBER', FALSE, FALSE, TRUE,  1),
+    ('purity',       'Tuổi bạc',             'STRING', FALSE, TRUE,  TRUE,  2),
+    ('hallmark',     'Nhãn / Ký hiệu',       'STRING', FALSE, FALSE, FALSE, 3),
+    ('counter_code', 'Quầy trưng bày',       'STRING', FALSE, FALSE, TRUE,  4),
+    ('symbol',       'Mã hàng / Ký hiệu',   'STRING', FALSE, TRUE,  FALSE, 5)
+) AS a(code, name, dt, req, srch, filt, ord)
+CROSS JOIN (SELECT current_setting('app.current_tenant', true) AS t) ctx
+JOIN product_type pt ON pt.code = 'SILVER_FIXED' AND pt.tenant_id = ctx.t
+JOIN attribute_group ag ON ag.product_type_id = pt.id AND ag.code = 'silver_fixed_info' AND ag.tenant_id = ctx.t
+ON CONFLICT (code, product_type_id) DO UPDATE SET
+    name = EXCLUDED.name, attribute_group_id = EXCLUDED.attribute_group_id, display_order = EXCLUDED.display_order;
+
+-- GEM_DIAMOND attribute group
+INSERT INTO attribute_group (tenant_id, product_type_id, code, name, display_order)
+SELECT current_setting('app.current_tenant', true), id, 'gem_info', 'Thông tin đá quý', 1
+FROM product_type WHERE code = 'GEM_DIAMOND' AND tenant_id = current_setting('app.current_tenant', true)
+ON CONFLICT (code, product_type_id) DO NOTHING;
+
+INSERT INTO attribute_definition (tenant_id, product_type_id, attribute_group_id, code, name, data_type, required, searchable, filterable, display_order)
+SELECT t, pt.id, ag.id, a.code, a.name, a.dt, a.req, a.srch, a.filt, a.ord
+FROM (VALUES
+    ('gem_type',          'Loại đá quý',             'STRING', TRUE,  TRUE,  TRUE,  1),
+    ('gem_weight',        'Trọng lượng (carat)',      'NUMBER', FALSE, FALSE, TRUE,  2),
+    ('clarity',           'Độ trong (Clarity)',       'STRING', FALSE, FALSE, TRUE,  3),
+    ('cut',               'Hình dạng cắt (Cut)',      'STRING', FALSE, FALSE, TRUE,  4),
+    ('certificate_number','Số chứng chỉ GIA/AGS',    'STRING', FALSE, TRUE,  FALSE, 5),
+    ('origin',            'Xuất xứ',                  'STRING', FALSE, TRUE,  TRUE,  6),
+    ('counter_code',      'Quầy trưng bày',           'STRING', FALSE, FALSE, TRUE,  7),
+    ('symbol',            'Mã hàng / Ký hiệu',       'STRING', FALSE, TRUE,  FALSE, 8)
+) AS a(code, name, dt, req, srch, filt, ord)
+CROSS JOIN (SELECT current_setting('app.current_tenant', true) AS t) ctx
+JOIN product_type pt ON pt.code = 'GEM_DIAMOND' AND pt.tenant_id = ctx.t
+JOIN attribute_group ag ON ag.product_type_id = pt.id AND ag.code = 'gem_info' AND ag.tenant_id = ctx.t
+ON CONFLICT (code, product_type_id) DO UPDATE SET
+    name = EXCLUDED.name, attribute_group_id = EXCLUDED.attribute_group_id, display_order = EXCLUDED.display_order;
+
+-- GEM_STAMP print template
+INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_default) VALUES
+    (current_setting('app.current_tenant', true), 'GEM_STAMP', 'Tem đá quý 16x30mm', '{
+  "paperSize": "16x30mm",
+  "fontSize": 7,
+  "lineSpacing": 1.0,
+  "fields": ["name", "gemType", "gemWeight", "clarity", "price", "certificate", "counter"],
+  "showBarcode": true,
+  "showQrCode": false,
+  "barcodeFormat": "CODE128"
+}', TRUE)
+ON CONFLICT (template_type, name, tenant_id) DO NOTHING;
+
+-- ── Attribute groups & definitions — ELECTRONICS / WATCH / GENERAL ──
+
 -- ── 10. Attribute groups & definitions — ELECTRONICS ─────────
 
 INSERT INTO attribute_group (tenant_id, product_type_id, code, name, display_order)
@@ -536,7 +623,8 @@ SELECT
 FROM product p
 WHERE p.sku LIKE 'JEWELRY-DEMO-%'
   AND p.tenant_id = current_setting('app.current_tenant', true)
-ON CONFLICT (product_id) DO NOTHING;
+-- Match the partial unique index uq_inv_product_no_variant (V001 dropped the plain UNIQUE(product_id)).
+ON CONFLICT (product_id) WHERE variant_id IS NULL AND deleted = false DO NOTHING;
 
 -- ── 14. Gold brand vendors ────────────────────────────────────
 INSERT INTO vendors (tenant_id, code, name, address, notes, payment_terms) VALUES

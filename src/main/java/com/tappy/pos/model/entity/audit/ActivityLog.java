@@ -18,7 +18,7 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Filter(name = "tenantFilter", condition = "tenant_id = :tenantId OR tenant_id IS NULL")
+@Filter(name = "tenantFilter", condition = "(tenant_id = :tenantFilterId OR tenant_id IS NULL)")
 public class ActivityLog {
 
     @Id

@@ -32,9 +32,11 @@ public class ProductType extends TenantAwareEntity {
 
     @Column(name = "default_inventory_mode", nullable = false, length = 20)
     @Enumerated(EnumType.STRING)
+    @Builder.Default
     private com.tappy.pos.model.enums.InventoryMode defaultInventoryMode = com.tappy.pos.model.enums.InventoryMode.TRACKED;
 
     @Column(name = "default_unit", nullable = false, length = 50)
+    @Builder.Default
     private String defaultUnit = "piece";
 
     @Builder.Default

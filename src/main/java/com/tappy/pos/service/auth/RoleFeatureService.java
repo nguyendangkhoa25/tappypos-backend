@@ -150,6 +150,36 @@ public class RoleFeatureService {
     }
 
     /**
+     * Seeds the given roles for a tenant, skipping any that already exist.
+     *
+     * Must run on this service's own @Transactional boundary so TenantRlsAspect fires
+     * and sets app.current_tenant before the inserts — otherwise the FORCED row-level
+     * security policy on `roles` (tenant_id = current_tenant_id()) rejects every INSERT.
+     * Callers (e.g. self-provisioning) must have TenantContext set to the target tenant.
+     */
+    public void seedRolesForTenant(List<String> roleNames, String tenantId) {
+        int seeded = 0;
+        for (String roleName : roleNames) {
+            RoleEnum roleEnum;
+            try { roleEnum = RoleEnum.valueOf(roleName); }
+            catch (IllegalArgumentException e) { continue; }
+            try {
+                // Use the native existence check — the derived existsByNameAndTenantId is
+                // rewritten by the tenantFilter @Filter and falsely reports rows as existing
+                // while seeding a fresh tenant, which previously left only SHOP_OWNER seeded.
+                if (roleRepository.nativeExistsByNameAndTenant(roleEnum.getCode(), tenantId)) continue;
+                Role role = new Role(roleEnum.getCode(), roleEnum.getDescription());
+                role.setTenantId(tenantId);
+                roleRepository.save(role);
+                seeded++;
+            } catch (Exception e) {
+                log.error("seedRolesForTenant: failed to seed role {} for {}: {}", roleEnum.getCode(), tenantId, e.toString());
+            }
+        }
+        log.info("seedRolesForTenant: seeded {} of {} roles for tenant {}", seeded, roleNames.size(), tenantId);
+    }
+
+    /**
      * Replace all features for a role with the provided list
      */
     public void setRoleFeatures(String roleName, List<String> featureNames) {

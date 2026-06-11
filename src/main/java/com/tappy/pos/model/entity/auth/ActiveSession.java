@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@Filter(name = "tenantFilter", condition = "tenant_id = :tenantId OR tenant_id IS NULL")
+@Filter(name = "tenantFilter", condition = "(tenant_id = :tenantFilterId OR tenant_id IS NULL)")
 public class ActiveSession {
 
     @Id

@@ -12,6 +12,7 @@ import com.tappy.pos.repository.auth.RoleRepository;
 import com.tappy.pos.repository.auth.UserRepository;
 import com.tappy.pos.repository.tenant.ShopDeletionLogRepository;
 import com.tappy.pos.repository.tenant.TenantRepository;
+import com.tappy.pos.service.MessageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
@@ -51,18 +52,19 @@ public class ShopDeletionService {
     private final ShopDeletionLogRepository deletionLogRepository;
     private final TenantContext           tenantContext;
     private final AuthContext             authContext;
+    private final MessageService          messageService;
 
     @Transactional
     public void deleteShop(DeleteShopRequest request) {
         // 1. Validate confirmation token
         if (!CONFIRM_TOKEN.equalsIgnoreCase(request.getConfirmToken())) {
-            throw new BadRequestException("Mã xác nhận không hợp lệ. Vui lòng nhập 'DELETE' để xác nhận.");
+            throw new BadRequestException(messageService.getMessage("error.shop.delete.token.invalid"));
         }
 
         // 2. Get current tenant from context (set by TenantInterceptor)
         Tenant tenant = tenantContext.getCurrentTenant();
         if (tenant == null) {
-            throw new BadRequestException("Không tìm thấy thông tin cửa hàng.");
+            throw new BadRequestException(messageService.getMessage("error.shop.delete.tenant.notFound"));
         }
 
         // 3. Verify caller has SHOP_OWNER authority
@@ -71,7 +73,7 @@ public class ShopDeletionService {
                 .map(GrantedAuthority::getAuthority)
                 .anyMatch("SHOP_OWNER"::equals);
         if (!isShopOwner) {
-            throw new ForbiddenException("Chỉ chủ cửa hàng mới có thể xoá cửa hàng.");
+            throw new ForbiddenException(messageService.getMessage("error.shop.delete.owner.only"));
         }
 
         String tenantId   = tenant.getTenantId();

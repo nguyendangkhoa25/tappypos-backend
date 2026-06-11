@@ -74,4 +74,18 @@ public class CheckoutRequest {
      * When set, the order is treated as takeaway on the kitchen display.
      */
     private LocalDateTime pickupTime;
+
+    /**
+     * Surplus/deficit weight in chỉ after an EXCHANGE order
+     * (computed client-side from COMPENSATE/RESIDUAL items).
+     * Signed: positive = surplus (shop returns gold), negative = deficit (customer owes).
+     * Stored on the order for receipt display; does not affect total calculation.
+     */
+    private BigDecimal goldDiffWeight;
+
+    /**
+     * Monetary value (₫) of the surplus/deficit weight.
+     * Client supplies this so the receipt can show the "Vàng dư/bù" line.
+     */
+    private BigDecimal goldDiffAmount;
 }

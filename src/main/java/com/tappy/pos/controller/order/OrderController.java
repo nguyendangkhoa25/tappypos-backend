@@ -23,6 +23,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import com.tappy.pos.annotation.RequiresFeature;
+import jakarta.validation.Valid;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -505,7 +506,7 @@ public class OrderController {
     @PostMapping("/{id}/items")
     public ResponseEntity<ApiResponse<OrderItemDTO>> addItemToOrder(
             @PathVariable Long id,
-            @RequestBody AddOrderItemRequest request) {
+            @Valid @RequestBody AddOrderItemRequest request) {
         log.info("Endpoint: POST /orders/{}/items productId={}", id, request.getProductId());
         OrderItemDTO item = orderService.addItemToOrder(id, request);
         return ResponseEntity.ok(ApiResponse.success(item, "Item added to order"));

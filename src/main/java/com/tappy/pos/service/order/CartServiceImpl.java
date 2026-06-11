@@ -873,17 +873,20 @@ public class CartServiceImpl implements CartService {
         BigDecimal totalTax;
         BigDecimal total;
 
+        // Pre-compute gold sums for buy_amount / sell_amount columns on the order.
+        // Used by all order types so the receipt can show the breakdown.
+        BigDecimal buyGoldSum = cart.getItems().stream()
+                .filter(i -> i.getItemType() == CartItemEntity.ItemType.GOLD_IN)
+                .map(CartItemEntity::getLineGrandTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal sellGoldSum = cart.getItems().stream()
+                .filter(i -> i.getItemType() != CartItemEntity.ItemType.GOLD_IN)
+                .map(CartItemEntity::getLineGrandTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         if (orderType == Order.OrderType.EXCHANGE) {
-            // Net = SUM(GOLD_OUT lineGrandTotal) - SUM(GOLD_IN lineGrandTotal); tax already in line totals
-            BigDecimal sellSum = cart.getItems().stream()
-                    .filter(i -> i.getItemType() == CartItemEntity.ItemType.GOLD_OUT)
-                    .map(CartItemEntity::getLineGrandTotal)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-            BigDecimal buySum = cart.getItems().stream()
-                    .filter(i -> i.getItemType() == CartItemEntity.ItemType.GOLD_IN)
-                    .map(CartItemEntity::getLineGrandTotal)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-            total        = sellSum.subtract(buySum);
+            // Net = SUM(GOLD_OUT + STANDARD) - SUM(GOLD_IN); tax already included in line totals
+            total        = sellGoldSum.subtract(buyGoldSum);
             totalDiscount = BigDecimal.ZERO;
             totalTax     = BigDecimal.ZERO;
         } else if (orderType == Order.OrderType.BUY) {
@@ -971,6 +974,11 @@ public class CartServiceImpl implements CartService {
         order.setStatus(inProgress ? Order.OrderStatus.IN_PROGRESS : Order.OrderStatus.COMPLETED);
         order.setOrderType(orderType);
         order.setTotalAmount(total);
+        // sell/buy summary is meaningful only for gold BUY/EXCHANGE; SELL leaves them 0 (total holds the value).
+        order.setSellAmount(orderType == Order.OrderType.EXCHANGE ? sellGoldSum : BigDecimal.ZERO);
+        order.setBuyAmount(buyGoldSum);
+        if (request.getGoldDiffWeight() != null) order.setGoldDiffWeight(request.getGoldDiffWeight());
+        if (request.getGoldDiffAmount() != null) order.setGoldDiffAmount(request.getGoldDiffAmount());
         order.setDiscountAmount(totalDiscount);
         order.setTipAmount(tipAmount);
         order.setTaxPercentage(cart.getTaxRate().multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP));
@@ -1128,6 +1136,11 @@ public class CartServiceImpl implements CartService {
                 .promotionCode(appliedPromotionCode)
                 .loyaltyPointsRedeemed(loyaltyPointsRedeemed > 0 ? loyaltyPointsRedeemed : null)
                 .completedAt(savedOrder.getCompletedAt())
+                .orderType(orderType.name())
+                .buyAmount(savedOrder.getBuyAmount())
+                .sellAmount(savedOrder.getSellAmount())
+                .goldDiffWeight(savedOrder.getGoldDiffWeight())
+                .goldDiffAmount(savedOrder.getGoldDiffAmount())
                 .build();
     }
 
@@ -1141,12 +1154,28 @@ public class CartServiceImpl implements CartService {
      * gold price has been configured for that category.
      */
     private BigDecimal calculateDynamicUnitPrice(ProductDTO product) {
+        Map<String, Object> attrs = product.getAttributes() != null ? product.getAttributes() : Map.of();
+
+        // SILVER uses purity code attribute (e.g. "B925") to look up silver price directly.
+        if ("SILVER".equals(product.getProductTypeCode())) {
+            Object purityRaw = attrs.get("purity");
+            String purityCode = (purityRaw != null && !purityRaw.toString().isBlank()) ? purityRaw.toString() : "B925";
+            GoldPriceDTO silverPrice;
+            try {
+                silverPrice = goldPriceService.getPriceByCode(purityCode);
+            } catch (Exception e) {
+                throw new BadRequestException(
+                        messageService.getMessage("error.product.dynamic.price.no.gold.price"));
+            }
+            return extractWeightAndComputePrice(attrs, silverPrice);
+        }
+
+        // JEWELRY and others: look up price by linked category.
         if (product.getCategoryIds() == null || product.getCategoryIds().isEmpty()) {
             throw new BadRequestException(
                     messageService.getMessage("error.product.dynamic.price.no.category"));
         }
         Long categoryId = product.getCategoryIds().iterator().next();
-
         GoldPriceDTO goldPrice;
         try {
             goldPrice = goldPriceService.getPriceForCategory(categoryId);
@@ -1154,13 +1183,14 @@ public class CartServiceImpl implements CartService {
             throw new BadRequestException(
                     messageService.getMessage("error.product.dynamic.price.no.gold.price"));
         }
+        return extractWeightAndComputePrice(attrs, goldPrice);
+    }
 
-        Map<String, Object> attrs = product.getAttributes() != null ? product.getAttributes() : Map.of();
-
-        BigDecimal goldWeight = BigDecimal.ZERO;
-        Object goldWeightRaw = attrs.get("gold_weight");
-        if (goldWeightRaw != null && !goldWeightRaw.toString().isBlank()) {
-            try { goldWeight = new BigDecimal(goldWeightRaw.toString()); } catch (NumberFormatException ignored) {}
+    private BigDecimal extractWeightAndComputePrice(Map<String, Object> attrs, GoldPriceDTO price) {
+        BigDecimal weight = BigDecimal.ZERO;
+        Object weightRaw = attrs.get("gold_weight");
+        if (weightRaw != null && !weightRaw.toString().isBlank()) {
+            try { weight = new BigDecimal(weightRaw.toString()); } catch (NumberFormatException ignored) {}
         }
 
         BigDecimal procFee = BigDecimal.ZERO;
@@ -1169,7 +1199,7 @@ public class CartServiceImpl implements CartService {
             try { procFee = new BigDecimal(procFeeRaw.toString()); } catch (NumberFormatException ignored) {}
         }
 
-        return goldWeight.multiply(goldPrice.getSell()).add(procFee).setScale(0, RoundingMode.HALF_UP);
+        return weight.multiply(price.getSell()).add(procFee).setScale(0, RoundingMode.HALF_UP);
     }
 
     private String generateOrderNumber() {

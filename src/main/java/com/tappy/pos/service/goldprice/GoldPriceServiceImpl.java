@@ -136,6 +136,14 @@ public class GoldPriceServiceImpl implements GoldPriceService {
     }
 
     @Override
+    public GoldPriceDTO getPriceByCode(String code) {
+        log.info("Request: Get price by code={}", code);
+        GoldPrice price = goldPriceRepository.findByCodeAndDeletedFalse(code)
+                .orElseThrow(() -> new ResourceNotFoundException("No price configured for code: " + code));
+        return toDTO(price, buildCategoryMap());
+    }
+
+    @Override
     public PriceBoardResponse getPriceBoard(String code) {
         log.info("Request: Get price board code={}", code);
         ShopInfo shopInfo = shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc()

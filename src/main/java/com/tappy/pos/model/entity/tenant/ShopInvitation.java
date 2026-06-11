@@ -2,6 +2,8 @@ package com.tappy.pos.model.entity.tenant;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 
@@ -42,6 +44,7 @@ public class ShopInvitation {
      * Stored as a JSONB column.
      */
     @Column(name = "features", nullable = false, columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
     private String features;
 
     /** Username of the shop owner who generated the code. */

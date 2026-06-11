@@ -53,7 +53,7 @@ public class TenantRlsAspect {
         try {
             Session session = entityManager.unwrap(Session.class);
             if (session.getEnabledFilter("tenantFilter") == null) {
-                session.enableFilter("tenantFilter").setParameter("tenantId", tenantId);
+                session.enableFilter("tenantFilter").setParameter("tenantFilterId", tenantId);
             }
         } catch (Exception e) {
             log.warn("[TenantRls] Layer 2 (Hibernate filter) failed for tenant '{}': {}",

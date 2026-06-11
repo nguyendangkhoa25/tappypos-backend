@@ -17,6 +17,7 @@ import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.customer.CustomerRepository;
 import com.tappy.pos.repository.pawn.PawnAuditRepository;
 import com.tappy.pos.repository.pawn.PawnElectronicsRepository;
+import com.tappy.pos.repository.pawn.PawnJewelryRepository;
 import com.tappy.pos.repository.pawn.PawnGeneralRepository;
 import com.tappy.pos.repository.pawn.PawnQueryRepository;
 import com.tappy.pos.repository.pawn.PawnRealEstateRepository;
@@ -70,6 +71,7 @@ class PawnServiceImplTest {
     @Mock private ShopInfoService shopInfoService;
     @Mock private TenantContext tenantContext;
     @Mock private MessageService messageService;
+    @Mock private PawnJewelryRepository jewelryRepository;
     @Mock private PawnElectronicsRepository electronicsRepository;
     @Mock private PawnVehicleRepository vehicleRepository;
     @Mock private PawnWatchRepository watchRepository;
@@ -706,7 +708,7 @@ class PawnServiceImplTest {
     // ── extendPawn ────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("extendPawn: marks original as REDEEMED and saves new extended pawn")
+    @DisplayName("extendPawn: marks original as EXTENDED and saves new extended pawn")
     void testExtendPawn_Success() {
         PawnRequest req = new PawnRequest();
         req.setItemName("Dây chuyền vàng");
@@ -734,7 +736,9 @@ class PawnServiceImplTest {
         PawnResponse result = pawnService.extendPawn(1L, req);
 
         assertThat(result).isNotNull();
-        assertThat(pawnEntity.getPawnStatus()).isEqualTo(PawnStatus.REDEEMED);
+        // Extending renews the loan into a new PAWNED contract; the original is closed as
+        // EXTENDED ("Đã gia hạn"), NOT REDEEMED ("Đã trả" = paid back & item returned).
+        assertThat(pawnEntity.getPawnStatus()).isEqualTo(PawnStatus.EXTENDED);
         verify(pawnRepository, times(2)).save(any(PawnEntity.class));
     }
 
@@ -771,12 +775,6 @@ class PawnServiceImplTest {
                 .thenReturn(0L);
         when(pawnRepository.sumByPawnStatusAndPawnDueDateBefore(eq(PawnStatus.PAWNED), any(), eq(false)))
                 .thenReturn(rows);
-        when(pawnRepository.sumRequestAmountByPawnStatusAndPawnDueDateBefore(eq(PawnStatus.PAWNED), any(), eq(false)))
-                .thenReturn(0L);
-        when(pawnRepository.sumByPawnStatusAndPawnDateBetween(eq(PawnStatus.PAWNED), any(), any(), eq(false)))
-                .thenReturn(rows);
-        when(pawnRepository.sumRequestAmountByPawnStatusAndPawnDateBetween(eq(PawnStatus.PAWNED), any(), any(), eq(false)))
-                .thenReturn(0L);
         when(pawnRepository.sumRequestMoneyByPawnStatusAndRequestDateBetween(eq(PawnStatus.PAWNED), any(), any(), eq(false)))
                 .thenReturn(empty);
         when(pawnRepository.sumByPawnStatusInAndRedeemDateBetweenOrForfeitedDateBetween(anyList(), any(), any(), eq(false)))

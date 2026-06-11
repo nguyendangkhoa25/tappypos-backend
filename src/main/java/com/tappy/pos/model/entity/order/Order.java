@@ -116,6 +116,26 @@ public class Order extends TenantAwareEntity {
     @Column(name = "order_type", length = 20, nullable = false, columnDefinition = "VARCHAR(20) DEFAULT 'SELL'")
     private OrderType orderType = OrderType.SELL;
 
+    /** Total value of GOLD_OUT + STANDARD items (what shop sells to customer). */
+    @Builder.Default
+    @Column(name = "sell_amount", precision = 15, scale = 2, columnDefinition = "DECIMAL(15,2) DEFAULT 0")
+    private BigDecimal sellAmount = BigDecimal.ZERO;
+
+    /** Total value of GOLD_IN items (what shop buys from customer). */
+    @Builder.Default
+    @Column(name = "buy_amount", precision = 15, scale = 2, columnDefinition = "DECIMAL(15,2) DEFAULT 0")
+    private BigDecimal buyAmount = BigDecimal.ZERO;
+
+    /** Surplus/deficit weight in chỉ after exchange (positive = shop returns gold to customer). */
+    @Builder.Default
+    @Column(name = "gold_diff_weight", precision = 10, scale = 3, columnDefinition = "DECIMAL(10,3) DEFAULT 0")
+    private BigDecimal goldDiffWeight = BigDecimal.ZERO;
+
+    /** Monetary value of the surplus/deficit weight. */
+    @Builder.Default
+    @Column(name = "gold_diff_amount", precision = 15, scale = 2, columnDefinition = "DECIMAL(15,2) DEFAULT 0")
+    private BigDecimal goldDiffAmount = BigDecimal.ZERO;
+
     @Column(name = "promotion_code", length = 50)
     private String promotionCode;
 
