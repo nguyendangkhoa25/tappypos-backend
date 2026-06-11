@@ -78,7 +78,7 @@ public class OnboardingController {
         m.put(ShopType.BEAUTY_CLINIC,   serviceBase);
         m.put(ShopType.MAKEUP_STUDIO,   serviceBase);
         List<String> fnbBase = List.of(
-                "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "PRODUCT", "POS", "CUSTOMER",
+                "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "POS", "CUSTOMER",
                 "COMMISSION", "EMPLOYEE", "EXPENSE", "REVENUE", "USER", "TABLE_SERVICE",
                 "NOTIFICATION", "FEEDBACK", "ACTIVITY_LOG", "SHOP_INFO",
                 "PRINT_TEMPLATE", "BANK_ACCOUNT", "INVOICE", "ACCOUNTING"
