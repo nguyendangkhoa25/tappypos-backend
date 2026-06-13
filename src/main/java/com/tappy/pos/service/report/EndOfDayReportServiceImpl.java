@@ -31,21 +31,13 @@ public class EndOfDayReportServiceImpl implements EndOfDayReportService {
         LocalDateTime from = date.atStartOfDay();
         LocalDateTime to = date.atTime(LocalTime.MAX);
 
-        // ── Gold sold (cash in) ──
+        // ── Gold sold (cash in) — count/weight scoped to SELL to match the SELL ₫ ──
         BigDecimal soldAmount = nz(orderRepository.sumRevenueByDateRange(from, to));
-        EndOfDayReportDTO.GoldLine goldSold = EndOfDayReportDTO.GoldLine.builder()
-                .count(nz(orderRepository.countGoldOutByDateRange(from, to)))
-                .weightChi(nz(orderRepository.sumGoldOutWeightByDateRange(from, to)))
-                .amount(soldAmount)
-                .build();
+        EndOfDayReportDTO.GoldLine goldSold = goldLine(orderRepository.goldSoldSummary(from, to), soldAmount);
 
-        // ── Gold bought (cash out) ──
+        // ── Gold bought (cash out) — count/weight scoped to BUY/EXCHANGE to match buy_amount ──
         BigDecimal boughtAmount = nz(orderRepository.sumBuyAmountByDateRange(from, to));
-        EndOfDayReportDTO.GoldLine goldBought = EndOfDayReportDTO.GoldLine.builder()
-                .count(nz(orderRepository.countGoldInByDateRange(from, to)))
-                .weightChi(nz(orderRepository.sumGoldInWeightByDateRange(from, to)))
-                .amount(boughtAmount)
-                .build();
+        EndOfDayReportDTO.GoldLine goldBought = goldLine(orderRepository.goldBoughtSummary(from, to), boughtAmount);
 
         BigDecimal cashIn = soldAmount;
         BigDecimal cashOut = boughtAmount;
@@ -90,6 +82,14 @@ public class EndOfDayReportServiceImpl implements EndOfDayReportService {
                 .totals(EndOfDayReportDTO.Totals.builder()
                         .cashIn(cashIn).cashOut(cashOut).net(cashIn.subtract(cashOut)).build())
                 .build();
+    }
+
+    /** Build a gold line from a [count, weight] aggregate row plus the (separately-summed) ₫ amount. */
+    private static EndOfDayReportDTO.GoldLine goldLine(List<Object[]> rows, BigDecimal amount) {
+        Object[] r = rows.isEmpty() ? null : rows.get(0);
+        long count = (r == null || r[0] == null) ? 0L : ((Number) r[0]).longValue();
+        BigDecimal weight = (r == null || r[1] == null) ? BigDecimal.ZERO : new BigDecimal(r[1].toString());
+        return EndOfDayReportDTO.GoldLine.builder().count(count).weightChi(weight).amount(amount).build();
     }
 
     private static BigDecimal nz(BigDecimal v) { return v == null ? BigDecimal.ZERO : v; }

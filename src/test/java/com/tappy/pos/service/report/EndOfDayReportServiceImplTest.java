@@ -34,11 +34,11 @@ class EndOfDayReportServiceImplTest {
 
     private void stubGold() {
         when(orderRepository.sumRevenueByDateRange(any(), any())).thenReturn(new BigDecimal("45000000"));
-        when(orderRepository.countGoldOutByDateRange(any(), any())).thenReturn(3L);
-        when(orderRepository.sumGoldOutWeightByDateRange(any(), any())).thenReturn(new BigDecimal("12.5"));
+        when(orderRepository.goldSoldSummary(any(), any()))
+                .thenReturn(List.<Object[]>of(new Object[]{ 3L, new BigDecimal("12.5") }));
         when(orderRepository.sumBuyAmountByDateRange(any(), any())).thenReturn(new BigDecimal("28000000"));
-        when(orderRepository.countGoldInByDateRange(any(), any())).thenReturn(2L);
-        when(orderRepository.sumGoldInWeightByDateRange(any(), any())).thenReturn(new BigDecimal("8.0"));
+        when(orderRepository.goldBoughtSummary(any(), any()))
+                .thenReturn(List.<Object[]>of(new Object[]{ 2L, new BigDecimal("8.0") }));
     }
 
     @Test

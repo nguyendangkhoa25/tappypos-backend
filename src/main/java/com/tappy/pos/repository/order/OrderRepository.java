@@ -67,25 +67,22 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
            nativeQuery = true)
     BigDecimal sumBuyAmountByDateRange(@Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
 
-    /** Count of gold-OUT (sold) line items across completed orders in the range. */
-    @Query(value = "SELECT COUNT(*) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND o.completed_at >= :from AND o.completed_at <= :to AND oi.item_type = 'GOLD_OUT'",
+    /**
+     * [count, total weight (chỉ)] of gold-OUT items in completed SELL orders in the range.
+     * Scoped to SELL so it matches sumRevenueByDateRange (the gold-sold ₫); the weight is read
+     * from the item metadata JSONB. One scan returns both count and weight.
+     */
+    @Query(value = "SELECT COUNT(*), COALESCE(SUM((oi.metadata->>'goldWeight')::numeric), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND o.order_type = 'SELL' AND o.completed_at >= :from AND o.completed_at <= :to AND oi.item_type = 'GOLD_OUT'",
            nativeQuery = true)
-    Long countGoldOutByDateRange(@Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
+    List<Object[]> goldSoldSummary(@Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
 
-    /** Total weight (chỉ) of gold-OUT items, read from the item metadata JSONB. */
-    @Query(value = "SELECT COALESCE(SUM((oi.metadata->>'goldWeight')::numeric), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND o.completed_at >= :from AND o.completed_at <= :to AND oi.item_type = 'GOLD_OUT'",
+    /**
+     * [count, total weight (chỉ)] of gold-IN items in completed BUY/EXCHANGE orders in the range.
+     * Scoped to BUY/EXCHANGE so it matches sumBuyAmountByDateRange (the gold-bought ₫).
+     */
+    @Query(value = "SELECT COUNT(*), COALESCE(SUM((oi.metadata->>'goldWeight')::numeric), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND o.order_type IN ('BUY','EXCHANGE') AND o.completed_at >= :from AND o.completed_at <= :to AND oi.item_type = 'GOLD_IN'",
            nativeQuery = true)
-    BigDecimal sumGoldOutWeightByDateRange(@Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
-
-    /** Count of gold-IN (bought) line items across completed orders in the range. */
-    @Query(value = "SELECT COUNT(*) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND o.completed_at >= :from AND o.completed_at <= :to AND oi.item_type = 'GOLD_IN'",
-           nativeQuery = true)
-    Long countGoldInByDateRange(@Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
-
-    /** Total weight (chỉ) of gold-IN items, read from the item metadata JSONB. */
-    @Query(value = "SELECT COALESCE(SUM((oi.metadata->>'goldWeight')::numeric), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND o.completed_at >= :from AND o.completed_at <= :to AND oi.item_type = 'GOLD_IN'",
-           nativeQuery = true)
-    BigDecimal sumGoldInWeightByDateRange(@Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
+    List<Object[]> goldBoughtSummary(@Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
 
     @Query(value = "SELECT COALESCE(SUM(tax_amount), 0) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND order_type = 'SELL'",
            nativeQuery = true)
