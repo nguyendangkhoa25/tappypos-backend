@@ -62,7 +62,7 @@ public class AuthController {
 
         AuthResponse authResponse = authService.authenticateUser(loginRequest, clientIp, userAgent);
 
-        if (loginRequest.getRememberMe() && authResponse.getRefreshToken() != null) {
+        if (Boolean.TRUE.equals(loginRequest.getRememberMe()) && authResponse.getRefreshToken() != null) {
             ResponseCookie cookie = authService.getRefreshTokenResponseCookie(authResponse.getRefreshToken());
             response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
         }
@@ -93,7 +93,7 @@ public class AuthController {
 
         AuthResponse authResponse = authService.forceLogin(loginRequest, clientIp, userAgent);
 
-        if (loginRequest.getRememberMe() && authResponse.getRefreshToken() != null) {
+        if (Boolean.TRUE.equals(loginRequest.getRememberMe()) && authResponse.getRefreshToken() != null) {
             ResponseCookie cookie = authService.getRefreshTokenResponseCookie(authResponse.getRefreshToken());
             response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
         }
