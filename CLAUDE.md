@@ -90,7 +90,7 @@ Features are enforced at three levels:
 | `CUSTOMER` | `CustomerController` |
 | `LOYALTY` | `LoyaltyController` |
 | `INVOICE` | `InvoiceController` |
-| `REVENUE` | `RevenueController` (incl. `GET /revenue/end-of-day` — daily gold-trading + pawn cash summary via `EndOfDayReportService`; pawn rows gated by `PAWN`) |
+| `REVENUE` | `RevenueController` (incl. `GET /revenue/end-of-day` — daily gold-trading + pawn cash summary via `EndOfDayReportService`; and `GET /revenue/cash-drawer` + `POST /revenue/cash-drawer/close` — per-day cash-drawer reconciliation via `CashDrawerService` (`cash_drawer_close` table, opening carries over from the prior day's count); pawn rows gated by `PAWN`) |
 | `EXPENSE` | `ShopExpenseController` |
 | `USER` | `UserController` |
 | `SHOP_INFO` | `ShopInfoController` |

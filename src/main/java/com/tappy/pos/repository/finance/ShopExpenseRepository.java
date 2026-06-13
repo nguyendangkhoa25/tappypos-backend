@@ -67,6 +67,13 @@ public interface ShopExpenseRepository extends JpaRepository<ShopExpense, Long> 
            nativeQuery = true)
     BigDecimal sumAll(@Param("tenantId") String tenantId);
 
+    /** Cash expenses (payment_method = CASH) on a single business day — cash drawer reconciliation. */
+    @Query(value = "SELECT COALESCE(SUM(amount), 0) FROM shop_expense " +
+           "WHERE deleted = FALSE AND tenant_id = :tenantId " +
+           "AND payment_method = 'CASH' AND expense_date = :date",
+           nativeQuery = true)
+    BigDecimal sumCashByDate(@Param("tenantId") String tenantId, @Param("date") java.time.LocalDate date);
+
     @Query(value = "SELECT EXTRACT(MONTH FROM expense_date), COALESCE(SUM(amount), 0) " +
            "FROM shop_expense WHERE deleted = FALSE " +
            "AND tenant_id = :tenantId " +

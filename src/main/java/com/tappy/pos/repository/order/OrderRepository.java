@@ -84,6 +84,18 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
            nativeQuery = true)
     List<Object[]> goldBoughtSummary(@Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
 
+    // ── Cash-drawer reconciliation (physical cash only) ──
+
+    /** Cash takings from SELL orders (payment_method = CASH) in the range. */
+    @Query(value = "SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND order_type = 'SELL' AND payment_method = 'CASH' AND completed_at >= :from AND completed_at <= :to",
+           nativeQuery = true)
+    BigDecimal sumCashSalesByDateRange(@Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
+
+    /** Cash paid out buying gold (BUY orders, payment_method = CASH) in the range. */
+    @Query(value = "SELECT COALESCE(SUM(buy_amount), 0) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND order_type = 'BUY' AND payment_method = 'CASH' AND completed_at >= :from AND completed_at <= :to",
+           nativeQuery = true)
+    BigDecimal sumCashBuyByDateRange(@Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
+
     @Query(value = "SELECT COALESCE(SUM(tax_amount), 0) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND order_type = 'SELL'",
            nativeQuery = true)
     BigDecimal sumTotalTax();

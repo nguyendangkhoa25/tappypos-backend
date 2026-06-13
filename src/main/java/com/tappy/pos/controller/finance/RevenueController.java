@@ -10,8 +10,12 @@ import com.tappy.pos.model.dto.revenue.RevenuePeriodDTO;
 import com.tappy.pos.model.dto.revenue.TopEmployeeDTO;
 import com.tappy.pos.model.dto.revenue.TopProductDTO;
 import com.tappy.pos.model.dto.report.EndOfDayReportDTO;
+import com.tappy.pos.model.dto.report.CashDrawerDTO;
+import com.tappy.pos.model.dto.report.CloseDrawerRequest;
 import com.tappy.pos.service.finance.RevenueService;
 import com.tappy.pos.service.report.EndOfDayReportService;
+import com.tappy.pos.service.report.CashDrawerService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -31,6 +35,7 @@ public class RevenueController {
 
     private final RevenueService revenueService;
     private final EndOfDayReportService endOfDayReportService;
+    private final CashDrawerService cashDrawerService;
 
     /** Owner's end-of-day cash summary (gold sold/bought + pawn). Defaults to today. */
     @GetMapping("/end-of-day")
@@ -38,6 +43,21 @@ public class RevenueController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         log.info("Endpoint: GET /revenue/end-of-day - date: {}", date);
         return ResponseEntity.ok(ApiResponse.success(endOfDayReportService.getEndOfDay(date), "End-of-day report retrieved"));
+    }
+
+    /** Cash-drawer reconciliation preview for a day (opening carry-over, expected cash, saved close). */
+    @GetMapping("/cash-drawer")
+    public ResponseEntity<ApiResponse<CashDrawerDTO>> getCashDrawer(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        log.info("Endpoint: GET /revenue/cash-drawer - date: {}", date);
+        return ResponseEntity.ok(ApiResponse.success(cashDrawerService.getReconciliation(date), "Cash drawer retrieved"));
+    }
+
+    /** Close (reconcile) the cash drawer for a day. */
+    @PostMapping("/cash-drawer/close")
+    public ResponseEntity<ApiResponse<CashDrawerDTO>> closeCashDrawer(@Valid @RequestBody CloseDrawerRequest request) {
+        log.info("Endpoint: POST /revenue/cash-drawer/close - date: {}", request.getDate());
+        return ResponseEntity.ok(ApiResponse.success(cashDrawerService.close(request), "Cash drawer closed"));
     }
 
     @GetMapping("/overview")
