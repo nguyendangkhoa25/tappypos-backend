@@ -57,8 +57,10 @@ public class TenantInterceptor implements HandlerInterceptor {
             "/api/feedback",             // Feedback (stored in master DB, accessible from any tenant)
             "/api/product-catalog",      // Product catalog (master DB, accessible from master and tenant contexts)
             "/api/master-dashboard",     // Master dashboard stats (accessible to master admin and agents)
-            "/api/invitations"           // Join-by-code: preview/join are tenant-agnostic (the code
+            "/api/invitations",          // Join-by-code: preview/join are tenant-agnostic (the code
                                          // identifies the shop); a not-yet-joined user has no tenant.
+            "/api/public"                // QR customer ordering: customer page sends X-Tenant-ID from the
+                                         // URL, so context is set + RLS-scoped before the transaction.
     };
 
     @Override

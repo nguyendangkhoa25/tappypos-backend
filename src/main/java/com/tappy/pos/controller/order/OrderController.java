@@ -663,4 +663,33 @@ public class OrderController {
         log.info("Endpoint: PATCH /orders/kitchen/items/{}/bump", itemId);
         return ResponseEntity.ok(ApiResponse.success(orderService.bumpKitchenItem(itemId), "Item status updated"));
     }
+
+    // ── QR customer-order confirmation ───────────────────────────────────────────
+
+    /** GET /api/orders/pending-confirmation — customer-submitted orders awaiting the owner. */
+    @GetMapping("/pending-confirmation")
+    @RequiresFeature("TABLE_SERVICE")
+    public ResponseEntity<ApiResponse<java.util.List<OrderDTO>>> getPendingConfirmationOrders() {
+        log.info("Endpoint: GET /orders/pending-confirmation");
+        return ResponseEntity.ok(ApiResponse.success(orderService.getPendingConfirmationOrders(), "Pending customer orders retrieved"));
+    }
+
+    /** PATCH /api/orders/{id}/confirm — owner confirms a customer order (→ kitchen). */
+    @PatchMapping("/{orderId}/confirm")
+    @RequiresFeature("TABLE_SERVICE")
+    public ResponseEntity<ApiResponse<OrderDTO>> confirmOrder(@PathVariable Long orderId) {
+        log.info("Endpoint: PATCH /orders/{}/confirm", orderId);
+        return ResponseEntity.ok(ApiResponse.success(orderService.confirmOrder(orderId), "Order confirmed"));
+    }
+
+    /** PATCH /api/orders/{id}/reject — owner rejects a customer order (→ cancelled). */
+    @PatchMapping("/{orderId}/reject")
+    @RequiresFeature("TABLE_SERVICE")
+    public ResponseEntity<ApiResponse<OrderDTO>> rejectOrder(
+            @PathVariable Long orderId,
+            @RequestBody(required = false) com.tappy.pos.model.dto.order.CancelOrderRequest request) {
+        log.info("Endpoint: PATCH /orders/{}/reject", orderId);
+        String reason = request != null ? request.getReason() : null;
+        return ResponseEntity.ok(ApiResponse.success(orderService.rejectOrder(orderId, reason), "Order rejected"));
+    }
 }

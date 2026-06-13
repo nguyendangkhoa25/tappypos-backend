@@ -97,8 +97,18 @@ public class Order extends TenantAwareEntity {
     @Column(name = "voided_by", length = 100)
     private String voidedBy;
 
+    @Column(name = "confirmed_at")
+    private LocalDateTime confirmedAt;
+
+    @Column(name = "confirmed_by", length = 100)
+    private String confirmedBy;
+
     @Column(name = "table_label", length = 100)
     private String tableLabel;
+
+    // Set for QR customer orders so the owner's confirm step can occupy the right table.
+    @Column(name = "table_id")
+    private Long tableId;
 
     /**
      * Target pickup time for takeaway orders (null for dine-in / non-F&B orders).
@@ -156,6 +166,7 @@ public class Order extends TenantAwareEntity {
     private List<OrderItem> orderItems = new ArrayList<>();
 
     public enum OrderStatus {
+        SUBMITTED,   // Customer self-submitted via QR; awaiting owner confirmation (not yet in kitchen)
         PENDING,
         IN_PROGRESS,
         COMPLETED,
@@ -188,6 +199,13 @@ public class Order extends TenantAwareEntity {
 
     public void start() {
         this.status = OrderStatus.IN_PROGRESS;
+    }
+
+    /** Owner confirms a customer-submitted (SUBMITTED) order, moving it into the kitchen queue (PENDING). */
+    public void confirm(String confirmedBy) {
+        this.status = OrderStatus.PENDING;
+        this.confirmedAt = LocalDateTime.now();
+        this.confirmedBy = confirmedBy;
     }
 
     public void voidOrder(String reason, String voidedBy) {

@@ -80,6 +80,7 @@ public class OrderServiceImpl implements OrderService {
     private final TenantContext tenantContext;
     private final FeatureContext featureContext;
     private final TableRepository tableRepository;
+    private final com.tappy.pos.service.table.TableService tableService;
 
     @Override
     public Page<OrderDTO> getAllOrders(String status, String orderType, Pageable pageable) {
@@ -962,6 +963,60 @@ public class OrderServiceImpl implements OrderService {
             case COMPLETED   -> item.setStatus(OrderItem.ItemStatus.PENDING); // allow undo
         }
         return mapItemToDTO(orderItemRepository.save(item));
+    }
+
+    // ── QR customer-order confirmation ───────────────────────────────────────────
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderDTO> getPendingConfirmationOrders() {
+        return orderRepository.findAllSubmittedOrders()
+                .stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public OrderDTO confirmOrder(Long orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.order.not.found", orderId)));
+        if (order.getStatus() != Order.OrderStatus.SUBMITTED) {
+            throw new BadRequestException(messageService.getMessage("error.order.not.submitted"));
+        }
+        String actor = getCurrentUsername();
+        order.confirm(actor);
+        Order saved = orderRepository.save(order);
+        // Now that it's confirmed (PENDING) it belongs to the kitchen — occupy its table.
+        if (saved.getTableId() != null) {
+            try {
+                tableService.occupyTable(saved.getTableId(), saved.getId());
+            } catch (Exception e) {
+                log.warn("Could not occupy table {} for confirmed order {}: {}",
+                        saved.getTableId(), saved.getOrderNumber(), e.getMessage());
+            }
+        }
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.ORDER_CONFIRMED, "ORDER", saved.getOrderNumber(),
+                "Xác nhận đơn khách đặt #" + saved.getOrderNumber(), null);
+        return mapToDTO(saved);
+    }
+
+    @Override
+    @Transactional
+    public OrderDTO rejectOrder(Long orderId, String reason) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.order.not.found", orderId)));
+        if (order.getStatus() != Order.OrderStatus.SUBMITTED) {
+            throw new BadRequestException(messageService.getMessage("error.order.not.submitted"));
+        }
+        String actor = getCurrentUsername();
+        order.cancel(reason != null && !reason.isBlank() ? reason : "Từ chối đơn khách đặt", actor);
+        Order saved = orderRepository.save(order);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.ORDER_REJECTED, "ORDER", saved.getOrderNumber(),
+                "Từ chối đơn khách đặt #" + saved.getOrderNumber(), null);
+        return mapToDTO(saved);
     }
 
     @Override

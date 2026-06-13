@@ -522,6 +522,10 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.status IN ('PENDING', 'IN_PROGRESS') ORDER BY o.createdAt ASC")
     List<Order> findAllKitchenOrders();
 
+    /** Customer-submitted orders awaiting owner confirmation, oldest first. */
+    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.status = 'SUBMITTED' ORDER BY o.createdAt ASC")
+    List<Order> findAllSubmittedOrders();
+
     // Payment method breakdown by date range: [paymentMethod, count, totalAmount]
     @Query(value = "SELECT payment_method, COUNT(*), COALESCE(SUM(total_amount), 0) " +
            "FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND order_type = 'SELL' " +

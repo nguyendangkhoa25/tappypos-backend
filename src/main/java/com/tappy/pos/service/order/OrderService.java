@@ -130,4 +130,15 @@ public interface OrderService {
      * Returns the updated item's parent order.
      */
     OrderItemDTO bumpKitchenItem(Long itemId);
+
+    // ── QR customer-order confirmation ───────────────────────────────────────────
+
+    /** Customer-submitted (SUBMITTED) orders awaiting owner confirmation, oldest first. */
+    List<OrderDTO> getPendingConfirmationOrders();
+
+    /** Owner confirms a SUBMITTED order → PENDING (enters kitchen) and occupies its table. */
+    OrderDTO confirmOrder(Long orderId);
+
+    /** Owner rejects a SUBMITTED order → CANCELLED with an optional reason. */
+    OrderDTO rejectOrder(Long orderId, String reason);
 }

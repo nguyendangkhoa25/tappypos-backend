@@ -169,6 +169,7 @@ public class TableServiceImpl implements TableService {
                 .elapsedMinutes(elapsedMinutes)
                 .reservedFor(t.getReservedFor())
                 .reservedTime(t.getReservedTime())
+                .qrToken(t.getQrToken())
                 .build();
     }
 }

@@ -18,6 +18,10 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     Optional<Product> findByIdAndDeletedFalse(Long id);
     Page<Product> findByDeletedFalseAndStatusOrderByCreatedAtDesc(Product.ProductStatus status, Pageable pageable);
     Page<Product> findByProductTypeIdAndDeletedFalseOrderByCreatedAtDesc(Long productTypeId, Pageable pageable);
+
+    // Public QR menu: all active products for the tenant (RLS-scoped), eager-fetch categories.
+    @Query("SELECT DISTINCT p FROM Product p LEFT JOIN FETCH p.categories WHERE p.deleted = false AND p.status = :status")
+    List<Product> findActiveWithCategories(@Param("status") Product.ProductStatus status);
     
     @Query("SELECT p FROM Product p WHERE p.deleted = false AND " +
            "(LOWER(p.name) LIKE %:searchTerm% OR LOWER(p.sku) LIKE %:searchTerm%)")

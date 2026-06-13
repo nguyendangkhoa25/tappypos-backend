@@ -32,4 +32,8 @@ public interface TableRepository extends JpaRepository<ShopTable, Long> {
     Optional<ShopTable> findByTenantIdAndCurrentOrderId(
             @Param("tenantId") String tenantId,
             @Param("orderId") Long orderId);
+
+    // RLS scopes this to the current tenant; the token is the QR payload from the customer page.
+    @Query("SELECT t FROM ShopTable t WHERE t.qrToken = :qrToken AND t.deleted = false")
+    Optional<ShopTable> findByQrToken(@Param("qrToken") String qrToken);
 }
