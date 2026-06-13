@@ -6,6 +6,7 @@ import com.tappy.pos.model.entity.order.ComboItem;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.order.ComboRepository;
 import com.tappy.pos.repository.order.OrderItemRepository;
+import com.tappy.pos.service.MessageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,7 @@ public class ComboServiceImpl implements ComboService {
     private final ComboRepository     comboRepository;
     private final OrderItemRepository orderItemRepository;
     private final TenantContext       tenantContext;
+    private final MessageService      messageService;
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -97,7 +99,7 @@ public class ComboServiceImpl implements ComboService {
     @Transactional
     public Map<String, Object> update(Long id, Map<String, Object> body) {
         Combo combo = comboRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Combo not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.combo.not.found", id)));
         if (body.get("name")        != null) combo.setName((String) body.get("name"));
         if (body.get("description") != null) combo.setDescription((String) body.get("description"));
         if (body.get("price")       != null) combo.setPrice(new BigDecimal(body.get("price").toString()));
@@ -115,7 +117,7 @@ public class ComboServiceImpl implements ComboService {
     @Transactional
     public void delete(Long id) {
         Combo combo = comboRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Combo not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.combo.not.found", id)));
         combo.setDeleted(true);
         comboRepository.save(combo);
         log.info("Combo deleted — id: {}", id);

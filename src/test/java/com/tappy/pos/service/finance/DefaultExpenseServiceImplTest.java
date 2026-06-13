@@ -38,6 +38,7 @@ class DefaultExpenseServiceImplTest {
     @Mock private ShopExpenseRepository shopExpenseRepository;
     @Mock private ShopExpenseService shopExpenseService;
     @Mock private TenantContext tenantContext;
+    @Mock private com.tappy.pos.service.MessageService messageService;
 
     @InjectMocks
     private DefaultExpenseServiceImpl service;

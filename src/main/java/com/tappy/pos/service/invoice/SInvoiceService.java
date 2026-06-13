@@ -12,6 +12,7 @@ import com.tappy.pos.model.entity.finance.Invoice;
 import com.tappy.pos.model.entity.tenant.ShopInfo;
 import com.tappy.pos.model.enums.ShopConfigKey;
 import com.tappy.pos.repository.tenant.ShopInfoRepository;
+import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.tenant.ShopConfigService;
 import com.tappy.pos.service.audit.ApiAuditLogService;
 import com.tappy.pos.service.invoice.sinvoice.FileInvoiceRequest;
@@ -48,6 +49,7 @@ public class SInvoiceService implements ExternalInvoiceService {
     private final ShopConfigService shopConfigService;
     private final ApiAuditLogService auditLogService;
     private final ObjectMapper objectMapper;
+    private final MessageService messageService;
 
     @Value("${sinvoice.baseUrl}")
     private String sinvoiceApiUrl;
@@ -68,7 +70,7 @@ public class SInvoiceService implements ExternalInvoiceService {
         log.info("Creating S-Invoice for orderId={}", request.getOrderId());
 
         ShopInfo shopInfo = shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc()
-                .orElseThrow(() -> new ResourceNotFoundException("Shop info not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.shopInfo.not.found")));
 
         String templateCode    = shopConfigService.getString(ShopConfigKey.EINVOICE_TEMPLATE_CODE);
         String username        = shopConfigService.getString(ShopConfigKey.EINVOICE_USERNAME);
@@ -208,7 +210,7 @@ public class SInvoiceService implements ExternalInvoiceService {
     @Override
     public byte[] downloadInvoicePdf(Invoice invoice) throws IOException {
         ShopInfo shopInfo = shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc()
-                .orElseThrow(() -> new ResourceNotFoundException("Shop info not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.shopInfo.not.found")));
 
         String invoiceNo       = invoice.getExternalInvoiceId();
         String transactionUuid = invoice.getTransactionUuid();
@@ -256,7 +258,7 @@ public class SInvoiceService implements ExternalInvoiceService {
         log.info("S-Invoice send email for invoiceId={}", invoice.getId());
 
         ShopInfo shopInfo = shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc()
-                .orElseThrow(() -> new ResourceNotFoundException("Shop info not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.shopInfo.not.found")));
 
         String username        = shopConfigService.getString(ShopConfigKey.EINVOICE_USERNAME);
         String password        = shopConfigService.getString(ShopConfigKey.EINVOICE_PASSWORD);

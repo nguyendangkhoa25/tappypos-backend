@@ -13,6 +13,7 @@ import com.tappy.pos.model.entity.auth.User;
 import com.tappy.pos.repository.auth.UserRepository;
 import com.tappy.pos.repository.tenant.TenantRepository;
 import com.tappy.pos.repository.tenant.AgentRepository;
+import com.tappy.pos.service.MessageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
@@ -38,6 +39,7 @@ public class TenantService {
     private final AgentRepository agentRepository;
     private final UserRepository userRepository;
     private final AuthContext authContext;
+    private final MessageService messageService;
 
     private String deriveTenantDbName(String tenantId) {
         return tenantId;
@@ -280,7 +282,7 @@ public class TenantService {
 
     private Tenant findTenant(String tenantId) {
         return tenantRepository.findByTenantId(tenantId)
-                .orElseThrow(() -> new ResourceNotFoundException("Tenant not found: " + tenantId));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.tenant.not.found", tenantId)));
     }
 
     /**

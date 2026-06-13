@@ -11,6 +11,7 @@ import com.tappy.pos.model.entity.finance.ShopExpense;
 import com.tappy.pos.model.enums.ExpenseCategory;
 import com.tappy.pos.repository.finance.ShopExpenseRepository;
 import com.tappy.pos.multitenant.TenantContext;
+import com.tappy.pos.service.MessageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -35,6 +36,7 @@ public class ShopExpenseServiceImpl implements ShopExpenseService {
     private final AuthContext authContext;
     private final TenantContext tenantContext;
     private final ActivityLogService activityLogService;
+    private final MessageService messageService;
 
     @Override
     @Transactional
@@ -183,7 +185,7 @@ public class ShopExpenseServiceImpl implements ShopExpenseService {
     private ShopExpense findActive(Long id) {
         return expenseRepository.findById(id)
                 .filter(e -> !e.isDeleted())
-                .orElseThrow(() -> new ResourceNotFoundException("Expense not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.expense.not.found", id)));
     }
 
     private ShopExpenseDTO toDTO(ShopExpense e) {

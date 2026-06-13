@@ -9,6 +9,7 @@ import com.tappy.pos.model.entity.finance.DefaultExpense;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.finance.DefaultExpenseRepository;
 import com.tappy.pos.repository.finance.ShopExpenseRepository;
+import com.tappy.pos.service.MessageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -28,6 +29,7 @@ public class DefaultExpenseServiceImpl implements DefaultExpenseService {
     private final ShopExpenseRepository shopExpenseRepository;
     private final ShopExpenseService shopExpenseService;
     private final TenantContext tenantContext;
+    private final MessageService messageService;
 
     @Override
     @Transactional(readOnly = true)
@@ -113,7 +115,7 @@ public class DefaultExpenseServiceImpl implements DefaultExpenseService {
     private DefaultExpense findActive(Long id) {
         return defaultExpenseRepository.findById(id)
                 .filter(e -> !e.isDeleted())
-                .orElseThrow(() -> new ResourceNotFoundException("Default expense not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.defaultExpense.not.found", id)));
     }
 
     private DefaultExpenseDTO toDTO(DefaultExpense e) {

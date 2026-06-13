@@ -37,6 +37,7 @@ class ContactLeadServiceImplTest {
 
     @Mock private ContactLeadRepository contactLeadRepository;
     @Mock private NotificationService notificationService;
+    @Mock private com.tappy.pos.service.MessageService messageService;
 
     @InjectMocks
     private ContactLeadServiceImpl contactLeadService;

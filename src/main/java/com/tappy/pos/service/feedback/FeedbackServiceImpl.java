@@ -16,6 +16,7 @@ import com.tappy.pos.repository.auth.UserRepository;
 import com.tappy.pos.repository.feedback.FeedbackRepository;
 import com.tappy.pos.repository.tenant.AgentRepository;
 import com.tappy.pos.model.entity.notification.Notification;
+import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,6 +40,7 @@ public class FeedbackServiceImpl implements FeedbackService {
     private final AgentRepository agentRepository;
     private final UserRepository userRepository;
     private final ActivityLogService activityLogService;
+    private final MessageService messageService;
 
     @Override
     @Transactional
@@ -95,7 +97,7 @@ public class FeedbackServiceImpl implements FeedbackService {
     public FeedbackDTO updateStatus(Long id, UpdateFeedbackRequest request) {
         tenantContext.clear(); // force master DB
         UserFeedback feedback = feedbackRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Feedback not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("feedback.not.found", id)));
 
         feedback.setStatus(request.getStatus());
         feedback.setAdminNote(request.getAdminNote());

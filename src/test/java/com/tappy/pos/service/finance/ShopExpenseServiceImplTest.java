@@ -38,6 +38,7 @@ class ShopExpenseServiceImplTest {
     @Mock private ShopExpenseRepository expenseRepository;
     @Mock private AuthContext authContext;
     @Mock private com.tappy.pos.service.audit.ActivityLogService activityLogService;
+    @Mock private com.tappy.pos.service.MessageService messageService;
 
     @InjectMocks
     private ShopExpenseServiceImpl service;

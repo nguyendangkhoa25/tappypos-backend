@@ -3,8 +3,10 @@ package com.tappy.pos.service.order;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.entity.order.Combo;
 import com.tappy.pos.model.entity.order.ComboItem;
+import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.order.ComboRepository;
 import com.tappy.pos.repository.order.OrderItemRepository;
+import com.tappy.pos.service.MessageService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,6 +35,8 @@ class ComboServiceImplTest {
 
     @Mock private ComboRepository comboRepository;
     @Mock private OrderItemRepository orderItemRepository;
+    @Mock private TenantContext tenantContext;
+    @Mock private MessageService messageService;
 
     @InjectMocks
     private ComboServiceImpl service;

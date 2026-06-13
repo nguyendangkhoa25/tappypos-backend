@@ -16,6 +16,7 @@ import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.auth.RoleRepository;
 import com.tappy.pos.repository.auth.UserRepository;
 import com.tappy.pos.repository.tenant.ShopInvitationRepository;
+import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.auth.RoleFeatureService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -52,6 +53,7 @@ public class ShopInvitationService {
     private final JwtTokenProvider         jwtTokenProvider;
     private final ObjectMapper             objectMapper;
     private final TenantContext            tenantContext;
+    private final MessageService           messageService;
     private final SecureRandom             secureRandom = new SecureRandom();
 
     // ── generate ───────────────────────────────────────────────────────────────
@@ -71,7 +73,7 @@ public class ShopInvitationService {
         // Validate role exists for this tenant
         String roleName = request.getRoleName();
         if (!roleRepository.existsByNameAndTenantId(roleName, tenantId)) {
-            throw new BadRequestException("Role '" + roleName + "' does not exist for this shop");
+            throw new BadRequestException(messageService.getMessage("error.invitation.role.not.found", roleName));
         }
 
         // Determine feature list: use request override or fall back to role defaults
@@ -138,7 +140,7 @@ public class ShopInvitationService {
         // Load user — must be pre-provision (no tenant yet)
         User user = userRepository.findByUsernameAndNullTenant(username)
                 .orElseThrow(() -> new BadRequestException(
-                        "Bạn đang là thành viên của một cửa hàng khác. Vui lòng liên hệ hỗ trợ."));
+                        messageService.getMessage("error.invitation.user.already.member")));
 
         String tenantId = invitation.getTenantId();
         Tenant tenant   = tenantService.getTenantEntity(tenantId);
@@ -149,7 +151,7 @@ public class ShopInvitationService {
             // Assign role to user
             Role role = roleRepository.findByNameAndTenantId(invitation.getRoleName(), tenantId)
                     .orElseThrow(() -> new BadRequestException(
-                            "Role '" + invitation.getRoleName() + "' not found in shop"));
+                            messageService.getMessage("error.invitation.role.not.found", invitation.getRoleName())));
 
             user.setTenantId(tenantId);
             user.getRoles().add(role);
@@ -190,7 +192,7 @@ public class ShopInvitationService {
     private ShopInvitation findValidOrThrow(String code) {
         return invitationRepo.findValidByCode(code.toUpperCase().trim(), LocalDateTime.now())
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        "Mã mời không hợp lệ hoặc đã hết hạn."));
+                        messageService.getMessage("error.invitation.invalid")));
     }
 
     private String generateUniqueCode() {
@@ -204,7 +206,7 @@ public class ShopInvitationService {
                 return candidate;
             }
         }
-        throw new IllegalStateException("Could not generate a unique invitation code — please retry");
+        throw new IllegalStateException(messageService.getMessage("error.invitation.code.generation.failed"));
     }
 
     private String toJson(List<String> list) {

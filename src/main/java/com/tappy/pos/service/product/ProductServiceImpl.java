@@ -79,7 +79,7 @@ public class ProductServiceImpl implements ProductService {
         Vendor vendor = null;
         if (request.getVendorId() != null) {
             vendor = vendorRepository.findById(request.getVendorId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Vendor not found: " + request.getVendorId()));
+                    .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.vendor.not.found", request.getVendorId())));
         }
 
         // Create product
@@ -107,7 +107,7 @@ public class ProductServiceImpl implements ProductService {
         if (request.getCategoryIds() != null && !request.getCategoryIds().isEmpty()) {
             for (Long categoryId : request.getCategoryIds()) {
                 Category category = categoryRepository.findByIdAndDeletedFalse(categoryId)
-                        .orElseThrow(() -> new ResourceNotFoundException("Category not found: " + categoryId));
+                        .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.category.not.found", categoryId)));
                 product.getCategories().add(category);
             }
         }
@@ -252,7 +252,7 @@ public class ProductServiceImpl implements ProductService {
 
         if (request.getVendorId() != null) {
             Vendor vendor = vendorRepository.findById(request.getVendorId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Vendor not found: " + request.getVendorId()));
+                    .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.vendor.not.found", request.getVendorId())));
             product.setVendor(vendor);
         } else {
             product.setVendor(null);
@@ -263,7 +263,7 @@ public class ProductServiceImpl implements ProductService {
             product.getCategories().clear();
             for (Long categoryId : request.getCategoryIds()) {
                 Category category = categoryRepository.findByIdAndDeletedFalse(categoryId)
-                        .orElseThrow(() -> new ResourceNotFoundException("Category not found: " + categoryId));
+                        .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.category.not.found", categoryId)));
                 product.getCategories().add(category);
             }
         }

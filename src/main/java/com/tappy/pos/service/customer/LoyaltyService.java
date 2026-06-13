@@ -89,7 +89,7 @@ public class LoyaltyService {
     public LoyaltyTierDTO updateTier(Long id, CreateLoyaltyTierRequest req) {
         LoyaltyTier tier = tierRepository.findById(id)
                 .filter(t -> !t.isDeleted())
-                .orElseThrow(() -> new ResourceNotFoundException("Loyalty tier not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.loyalty.tier.not.found", id)));
         if (req.getName() != null) tier.setName(req.getName());
         if (req.getMinSpend() != null) tier.setMinSpend(req.getMinSpend());
         if (req.getPointsMultiplier() != null) tier.setPointsMultiplier(req.getPointsMultiplier());
@@ -102,7 +102,7 @@ public class LoyaltyService {
     public void deleteTier(Long id) {
         LoyaltyTier tier = tierRepository.findById(id)
                 .filter(t -> !t.isDeleted())
-                .orElseThrow(() -> new ResourceNotFoundException("Loyalty tier not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.loyalty.tier.not.found", id)));
         tier.softDelete();
         tierRepository.save(tier);
     }
@@ -112,7 +112,7 @@ public class LoyaltyService {
     @Transactional(readOnly = true)
     public CustomerLoyaltySummaryDTO getCustomerLoyalty(Long customerId) {
         Customer customer = customerRepository.findByIdActive(customerId)
-                .orElseThrow(() -> new ResourceNotFoundException("Customer not found: " + customerId));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.customer.not.found", customerId)));
 
         BigDecimal totalSpent = customer.getTotalSpent() != null ? customer.getTotalSpent() : BigDecimal.ZERO;
         LoyaltyTierDTO currentTier = tierRepository.findTierForSpend(totalSpent).map(this::mapTierToDTO).orElse(null);
@@ -193,7 +193,7 @@ public class LoyaltyService {
      */
     public LoyaltyTransactionDTO adjustPoints(Long customerId, int points, String description) {
         Customer customer = customerRepository.findByIdActive(customerId)
-                .orElseThrow(() -> new ResourceNotFoundException("Customer not found: " + customerId));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.customer.not.found", customerId)));
 
         int balanceBefore = customer.getLoyaltyPoints() != null ? customer.getLoyaltyPoints() : 0;
         int balanceAfter = Math.max(0, balanceBefore + points);
@@ -219,10 +219,10 @@ public class LoyaltyService {
      */
     public BigDecimal redeemPoints(Long customerId, int pointsToRedeem, Long orderId) {
         LoyaltyProgram program = programRepository.findActiveProgram()
-                .orElseThrow(() -> new BadRequestException("No active loyalty program"));
+                .orElseThrow(() -> new BadRequestException(messageService.getMessage("error.loyalty.noActiveProgram")));
 
         Customer customer = customerRepository.findByIdActive(customerId)
-                .orElseThrow(() -> new ResourceNotFoundException("Customer not found: " + customerId));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.customer.not.found", customerId)));
 
         int balance = customer.getLoyaltyPoints() != null ? customer.getLoyaltyPoints() : 0;
         if (pointsToRedeem < program.getMinRedemptionPoints()) {

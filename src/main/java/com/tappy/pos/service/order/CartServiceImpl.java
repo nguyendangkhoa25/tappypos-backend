@@ -373,7 +373,7 @@ public class CartServiceImpl implements CartService {
     public CartResponse addComboToCart(String cartId, Long comboId) throws JsonProcessingException {
         log.info("Adding combo {} to cart {}", comboId, cartId);
         Combo combo = comboRepository.findById(comboId)
-                .orElseThrow(() -> new ResourceNotFoundException("Combo not found: " + comboId));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.combo.not.found", comboId)));
         if (Boolean.FALSE.equals(combo.getActive())) {
             throw new BadRequestException(messageService.getMessage("combo.inactive"));
         }

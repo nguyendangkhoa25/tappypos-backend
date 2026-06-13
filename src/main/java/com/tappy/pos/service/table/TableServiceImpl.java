@@ -138,7 +138,7 @@ public class TableServiceImpl implements TableService {
     private ShopTable findActiveById(Long id) {
         return tableRepository.findById(id)
                 .filter(t -> !t.isDeleted())
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bàn"));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.table.not.found")));
     }
 
     private TableDTO toDTO(ShopTable t) {

@@ -160,7 +160,7 @@ public class PrintTemplateService {
     private PrintTemplate findActive(Long id) {
         return repo.findById(id)
                 .filter(t -> !t.isDeleted())
-                .orElseThrow(() -> new ResourceNotFoundException("Print template not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.printTemplate.not.found", id)));
     }
 
     private PrintTemplateDTO toDTO(PrintTemplate t) {

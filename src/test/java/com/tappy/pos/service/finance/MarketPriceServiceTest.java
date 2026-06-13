@@ -29,6 +29,7 @@ class MarketPriceServiceTest {
 
     @Mock private MarketPriceRepository repository;
     @Mock private TenantContext tenantContext;
+    @Mock private com.tappy.pos.service.MessageService messageService;
 
     @InjectMocks private MarketPriceService marketPriceService;
 

@@ -72,7 +72,7 @@ class TenantRlsAspectTest {
             when(entityManager.unwrap(Session.class)).thenReturn(session);
             when(session.getEnabledFilter("tenantFilter")).thenReturn(null);
             when(session.enableFilter("tenantFilter")).thenReturn(filter);
-            when(filter.setParameter("tenantId", "tenant1")).thenReturn(filter);
+            when(filter.setParameter("tenantFilterId", "tenant1")).thenReturn(filter);
 
             var nativeQuery = mock(jakarta.persistence.Query.class);
             when(entityManager.createNativeQuery(anyString())).thenReturn(nativeQuery);
@@ -82,7 +82,7 @@ class TenantRlsAspectTest {
             tenantRlsAspect.activateTenantContext();
 
             verify(session).enableFilter("tenantFilter");
-            verify(filter).setParameter("tenantId", "tenant1");
+            verify(filter).setParameter("tenantFilterId", "tenant1");
             verify(entityManager).createNativeQuery(anyString());
         }
     }

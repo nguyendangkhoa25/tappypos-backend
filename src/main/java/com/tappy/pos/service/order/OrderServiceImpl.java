@@ -774,7 +774,7 @@ public class OrderServiceImpl implements OrderService {
     private Employee resolveCurrentEmployee() {
         String username = getCurrentUsername();
         var user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + username));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.user.not.found", username)));
         return employeeRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException(
                         messageService.getMessage("error.employee.not.found", username)));
@@ -864,7 +864,7 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public void softDeleteOrder(Long id) {
         Order order = orderRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Order not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.order.not.found", id)));
         order.setDeleted(true);
         orderRepository.save(order);
     }

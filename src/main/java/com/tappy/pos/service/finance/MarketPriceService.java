@@ -6,6 +6,7 @@ import com.tappy.pos.model.dto.marketprice.SaveMarketPriceRequest;
 import com.tappy.pos.model.entity.finance.MarketPrice;
 import com.tappy.pos.repository.finance.MarketPriceRepository;
 import com.tappy.pos.multitenant.TenantContext;
+import com.tappy.pos.service.MessageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,7 @@ public class MarketPriceService {
 
     private final MarketPriceRepository repository;
     private final TenantContext tenantContext;
+    private final MessageService messageService;
 
     public List<MarketPriceDTO> getAll() {
         return repository.findAllActive().stream().map(this::mapToDTO).collect(Collectors.toList());
@@ -61,7 +63,7 @@ public class MarketPriceService {
     private MarketPrice findActive(Long id) {
         return repository.findById(id)
                 .filter(m -> !m.isDeleted())
-                .orElseThrow(() -> new ResourceNotFoundException("Market price not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.marketPrice.not.found", id)));
     }
 
     private MarketPriceDTO mapToDTO(MarketPrice m) {

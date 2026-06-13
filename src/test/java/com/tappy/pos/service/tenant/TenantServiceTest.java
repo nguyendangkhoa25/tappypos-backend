@@ -12,6 +12,7 @@ import com.tappy.pos.model.entity.tenant.Tenant;
 import com.tappy.pos.repository.auth.UserRepository;
 import com.tappy.pos.repository.tenant.TenantRepository;
 import com.tappy.pos.repository.tenant.AgentRepository;
+import com.tappy.pos.service.MessageService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -31,6 +32,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -49,12 +51,22 @@ class TenantServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private MessageService messageService;
+
     @InjectMocks
     private TenantService tenantService;
 
     private Tenant tenant;
     private CreateTenantRequest createRequest;
     private UpdateTenantRequest updateRequest;
+
+    @BeforeEach
+    void stubMessages() {
+        // MessageService is now used to resolve error text; echo the key so assertions can verify it.
+        lenient().when(messageService.getMessage(anyString(), any(Object[].class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+    }
 
     @AfterEach
     void tearDown() {
@@ -267,7 +279,7 @@ class TenantServiceTest {
 
         assertThatThrownBy(() -> tenantService.getTenantById("nonexistent"))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Tenant not found");
+                .hasMessageContaining("error.tenant.not.found");
     }
 
     // ==================== Create Tenant Tests ====================
@@ -406,7 +418,7 @@ class TenantServiceTest {
 
         assertThatThrownBy(() -> tenantService.updateTenant("nonexistent", updateRequest))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Tenant not found");
+                .hasMessageContaining("error.tenant.not.found");
     }
 
     @Test
@@ -442,7 +454,7 @@ class TenantServiceTest {
 
         assertThatThrownBy(() -> tenantService.deleteTenant("nonexistent"))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Tenant not found");
+                .hasMessageContaining("error.tenant.not.found");
     }
 
     // ==================== Get Tenant Entity Tests ====================
@@ -465,7 +477,7 @@ class TenantServiceTest {
 
         assertThatThrownBy(() -> tenantService.getTenantEntity("nonexistent"))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Tenant not found");
+                .hasMessageContaining("error.tenant.not.found");
     }
 
     // ==================== Deactivate Tenant Tests ====================
@@ -490,7 +502,7 @@ class TenantServiceTest {
 
         assertThatThrownBy(() -> tenantService.deactivateTenant("nonexistent"))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Tenant not found");
+                .hasMessageContaining("error.tenant.not.found");
     }
 
     @Test
@@ -532,7 +544,7 @@ class TenantServiceTest {
 
         assertThatThrownBy(() -> tenantService.activateTenant("nonexistent"))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Tenant not found");
+                .hasMessageContaining("error.tenant.not.found");
     }
 
     // ==================== mapToDTO Tests ====================
