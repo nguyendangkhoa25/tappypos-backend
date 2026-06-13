@@ -3,6 +3,7 @@ package com.tappy.pos.service.order;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.entity.order.Combo;
 import com.tappy.pos.model.entity.order.ComboItem;
+import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.order.ComboRepository;
 import com.tappy.pos.repository.order.OrderItemRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ public class ComboServiceImpl implements ComboService {
 
     private final ComboRepository     comboRepository;
     private final OrderItemRepository orderItemRepository;
+    private final TenantContext       tenantContext;
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -78,6 +80,7 @@ public class ComboServiceImpl implements ComboService {
     @Transactional
     public Map<String, Object> create(Map<String, Object> body) {
         Combo combo = Combo.builder()
+                .tenantId(tenantContext.getCurrentTenantId())
                 .name((String) body.get("name"))
                 .description((String) body.get("description"))
                 .price(body.get("price") != null
