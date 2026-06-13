@@ -60,6 +60,33 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
            nativeQuery = true)
     BigDecimal sumRevenueByDateRange(@Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
 
+    // ── End-of-day gold trading aggregates (money spent buying + gold item count/weight) ──
+
+    /** Money paid out buying gold from customers (BUY + EXCHANGE orders) in the range. */
+    @Query(value = "SELECT COALESCE(SUM(buy_amount), 0) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND order_type IN ('BUY','EXCHANGE') AND completed_at >= :from AND completed_at <= :to",
+           nativeQuery = true)
+    BigDecimal sumBuyAmountByDateRange(@Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
+
+    /** Count of gold-OUT (sold) line items across completed orders in the range. */
+    @Query(value = "SELECT COUNT(*) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND o.completed_at >= :from AND o.completed_at <= :to AND oi.item_type = 'GOLD_OUT'",
+           nativeQuery = true)
+    Long countGoldOutByDateRange(@Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
+
+    /** Total weight (chỉ) of gold-OUT items, read from the item metadata JSONB. */
+    @Query(value = "SELECT COALESCE(SUM((oi.metadata->>'goldWeight')::numeric), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND o.completed_at >= :from AND o.completed_at <= :to AND oi.item_type = 'GOLD_OUT'",
+           nativeQuery = true)
+    BigDecimal sumGoldOutWeightByDateRange(@Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
+
+    /** Count of gold-IN (bought) line items across completed orders in the range. */
+    @Query(value = "SELECT COUNT(*) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND o.completed_at >= :from AND o.completed_at <= :to AND oi.item_type = 'GOLD_IN'",
+           nativeQuery = true)
+    Long countGoldInByDateRange(@Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
+
+    /** Total weight (chỉ) of gold-IN items, read from the item metadata JSONB. */
+    @Query(value = "SELECT COALESCE(SUM((oi.metadata->>'goldWeight')::numeric), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND o.completed_at >= :from AND o.completed_at <= :to AND oi.item_type = 'GOLD_IN'",
+           nativeQuery = true)
+    BigDecimal sumGoldInWeightByDateRange(@Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
+
     @Query(value = "SELECT COALESCE(SUM(tax_amount), 0) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND order_type = 'SELL'",
            nativeQuery = true)
     BigDecimal sumTotalTax();

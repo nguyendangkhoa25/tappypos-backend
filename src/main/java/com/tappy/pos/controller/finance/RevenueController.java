@@ -9,7 +9,9 @@ import com.tappy.pos.model.dto.revenue.RevenueOverviewDTO;
 import com.tappy.pos.model.dto.revenue.RevenuePeriodDTO;
 import com.tappy.pos.model.dto.revenue.TopEmployeeDTO;
 import com.tappy.pos.model.dto.revenue.TopProductDTO;
+import com.tappy.pos.model.dto.report.EndOfDayReportDTO;
 import com.tappy.pos.service.finance.RevenueService;
+import com.tappy.pos.service.report.EndOfDayReportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -28,6 +30,15 @@ import org.springframework.format.annotation.DateTimeFormat;
 public class RevenueController {
 
     private final RevenueService revenueService;
+    private final EndOfDayReportService endOfDayReportService;
+
+    /** Owner's end-of-day cash summary (gold sold/bought + pawn). Defaults to today. */
+    @GetMapping("/end-of-day")
+    public ResponseEntity<ApiResponse<EndOfDayReportDTO>> getEndOfDay(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        log.info("Endpoint: GET /revenue/end-of-day - date: {}", date);
+        return ResponseEntity.ok(ApiResponse.success(endOfDayReportService.getEndOfDay(date), "End-of-day report retrieved"));
+    }
 
     @GetMapping("/overview")
     public ResponseEntity<ApiResponse<RevenueOverviewDTO>> getOverview() {
