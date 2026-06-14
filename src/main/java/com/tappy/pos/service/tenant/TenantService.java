@@ -1,5 +1,6 @@
 package com.tappy.pos.service.tenant;
 import com.tappy.pos.config.AuthContext;
+import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.exception.ForbiddenException;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.tenant.CreateTenantRequest;
@@ -155,6 +156,13 @@ public class TenantService {
     }
 
     public TenantDTO createTenant(CreateTenantRequest request) {
+        // Reject IDs that collide with app-level routes or marketing landing slugs
+        // (e.g. 'pos-quan-cafe', 'master') — see TenantConstants for the full list.
+        if (TenantConstants.isReserved(request.getTenantId())) {
+            throw new BadRequestException(
+                    messageService.getMessage("error.tenant.reserved.id", request.getTenantId()));
+        }
+
         if (tenantRepository.findByTenantId(request.getTenantId()).isPresent()) {
             throw new RuntimeException("Tenant already exists: " + request.getTenantId());
         }

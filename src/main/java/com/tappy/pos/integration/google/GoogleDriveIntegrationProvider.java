@@ -51,7 +51,12 @@ public class GoogleDriveIntegrationProvider implements IntegrationProvider {
 
     @Override
     public String buildAuthUrl(String tenantId) {
-        String nonce = stateStore.generate(tenantId);
+        return buildAuthUrl(tenantId, null);
+    }
+
+    @Override
+    public String buildAuthUrl(String tenantId, String origin) {
+        String nonce = stateStore.generate(tenantId, origin);
         return UriComponentsBuilder.fromUriString(AUTH_URL)
                 .queryParam("client_id",     clientId)
                 .queryParam("redirect_uri",  redirectUri)
@@ -61,6 +66,11 @@ public class GoogleDriveIntegrationProvider implements IntegrationProvider {
                 .queryParam("prompt",        "consent")
                 .queryParam("state",         nonce)
                 .build().toUriString();
+    }
+
+    @Override
+    public String peekOAuthOrigin(String state) {
+        return stateStore.peekOrigin(state);
     }
 
     /**

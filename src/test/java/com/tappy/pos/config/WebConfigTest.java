@@ -64,12 +64,12 @@ class WebConfigTest {
     @Test
     @DisplayName("Should configure CORS with single origin")
     void addCorsMappings_singleOrigin() {
-        ReflectionTestUtils.setField(webConfig, "allowedOriginConfig", "https://tappypos.vn");
+        ReflectionTestUtils.setField(webConfig, "allowedOriginConfig", "https://pos.tappy.vn");
 
         webConfig.addCorsMappings(corsRegistry);
 
         verify(corsRegistry).addMapping("/**");
-        verify(corsRegistration).allowedOriginPatterns(new String[]{"https://tappypos.vn"});
+        verify(corsRegistration).allowedOriginPatterns(new String[]{"https://pos.tappy.vn"});
     }
 
     @Test

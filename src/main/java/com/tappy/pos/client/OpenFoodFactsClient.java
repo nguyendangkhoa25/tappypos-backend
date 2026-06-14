@@ -23,7 +23,7 @@ public class OpenFoodFactsClient {
     private static final String SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl";
     private static final String PRODUCT_URL = "https://world.openfoodfacts.org/api/v2/product/";
     private static final String FIELDS = "code,product_name,brands,categories_tags,quantity,image_front_url";
-    private static final String USER_AGENT = "TappyPOS/1.0 (tappypos.vn; contact@tappypos.vn)";
+    private static final String USER_AGENT = "TappyPOS/1.0 (pos.tappy.vn; contact@tappy.vn)";
 
     private final RestTemplate restTemplate;
 

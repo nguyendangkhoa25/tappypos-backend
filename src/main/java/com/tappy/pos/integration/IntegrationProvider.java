@@ -19,6 +19,24 @@ public interface IntegrationProvider {
     String buildAuthUrl(String tenantId);
 
     /**
+     * Same as {@link #buildAuthUrl(String)} but also records the originating
+     * frontend {@code origin} (e.g. https://kim-ngan-phat.pos.tappy.vn) so the OAuth
+     * callback can redirect back to the right host. Non-OAuth providers ignore it.
+     */
+    default String buildAuthUrl(String tenantId, String origin) {
+        return buildAuthUrl(tenantId);
+    }
+
+    /**
+     * Returns the originating frontend origin recorded for an OAuth state nonce,
+     * without consuming it. Used by the callback to pick its redirect target.
+     * Null when not applicable / unknown.
+     */
+    default String peekOAuthOrigin(String state) {
+        return null;
+    }
+
+    /**
      * Exchanges the authorization code received from the provider's callback,
      * creates any required remote resources (e.g. Drive folders), and persists
      * the credentials for the given tenant.

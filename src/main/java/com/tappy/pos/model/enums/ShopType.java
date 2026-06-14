@@ -27,6 +27,8 @@ public enum ShopType {
     PUB_SEAFOOD("Quán nhậu hải sản",        "Seafood Pub"),
     PUB_GOAT("Quán nhậu chuyên dê",         "Goat Pub"),
     PUB_BEEF("Quán nhậu chuyên bò",         "Beef Pub"),
+    BILLIARDS_HALL("Quán bida / Billiards",  "Billiards Hall"),
+    TENNIS_COURT("Sân tennis / Sân thể thao", "Tennis Court"),
     OTHER("Khác",                           "Other");
 
     private final String displayName;

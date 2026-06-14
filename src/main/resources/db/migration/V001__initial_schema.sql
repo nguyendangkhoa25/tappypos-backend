@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     name                    VARCHAR(100) NOT NULL,
     db_name                 VARCHAR(100) DEFAULT NULL,  -- unused in shared-DB mode; kept for reference
     active                  BOOLEAN      NOT NULL DEFAULT TRUE,
-    expiration_date         DATE         DEFAULT NULL,
+    expiration_date         DATE         NOT NULL DEFAULT (CURRENT_DATE + INTERVAL '1 year'),
     max_users               INT          DEFAULT NULL,
     features                TEXT         DEFAULT NULL,
     subscription_type       VARCHAR(50)  DEFAULT NULL,
@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     vendor_id               BIGINT       DEFAULT NULL,
     deleted_at              TIMESTAMP DEFAULT NULL,
     deleted_by              VARCHAR(100) DEFAULT NULL,
+    max_orders_per_month    INT          DEFAULT NULL,
     CONSTRAINT fk_tenant_vendor FOREIGN KEY (vendor_id) REFERENCES agents (id) ON DELETE SET NULL,
     CONSTRAINT uq_tenants_tenant_id UNIQUE (tenant_id)
 );
@@ -162,6 +163,8 @@ CREATE TABLE IF NOT EXISTS users (
     avatar_url              VARCHAR(500) DEFAULT NULL,
     phone                   VARCHAR(20)  DEFAULT NULL,
     preferences             TEXT         DEFAULT NULL,
+    pin_hash                VARCHAR(255) DEFAULT NULL,
+    nickname                VARCHAR(20)  DEFAULT NULL,
     created_at              TIMESTAMP    DEFAULT NOW(),
     updated_at              TIMESTAMP    DEFAULT NOW(),
     deleted                 BOOLEAN      NOT NULL DEFAULT FALSE,
@@ -380,6 +383,7 @@ CREATE TABLE IF NOT EXISTS product (
     image_url        VARCHAR(500)   DEFAULT NULL,
     source_pawn_id   BIGINT         DEFAULT NULL,
     inventory_mode   VARCHAR(20)    NOT NULL DEFAULT 'TRACKED',
+    duration_minutes INT            NOT NULL DEFAULT 0,
     CONSTRAINT uq_product_sku_tenant     UNIQUE (sku, tenant_id),
     CONSTRAINT fk_product_type           FOREIGN KEY (product_type_id) REFERENCES product_type (id),
     CONSTRAINT fk_product_vendor         FOREIGN KEY (vendor_id)       REFERENCES vendors       (id)
@@ -492,7 +496,8 @@ CREATE TABLE IF NOT EXISTS inventory (
     created_at         TIMESTAMP      NOT NULL DEFAULT NOW(),
     updated_at         TIMESTAMP      NOT NULL DEFAULT NOW(),
     deleted_at         TIMESTAMP      DEFAULT NULL,
-    CONSTRAINT uq_inventory_product UNIQUE (product_id),
+    variant_id         BIGINT         DEFAULT NULL,
+    -- Uniqueness is enforced by the two partial indexes below (product-only vs product+variant).
     CONSTRAINT fk_inv_product       FOREIGN KEY (product_id) REFERENCES product (id)
 );
 
@@ -543,7 +548,8 @@ CREATE TABLE IF NOT EXISTS customers (
     updated_at                  TIMESTAMP      DEFAULT NOW(),
     deleted                     BOOLEAN        NOT NULL DEFAULT FALSE,
     deleted_at                  TIMESTAMP      DEFAULT NULL,
-    CONSTRAINT uq_customers_phone_tenant    UNIQUE (phone, tenant_id),
+    walk_in                     BOOLEAN        NOT NULL DEFAULT FALSE,
+    -- (phone, tenant_id) uniqueness is a partial index ignoring soft-deleted rows (below).
     CONSTRAINT uq_customers_idcard_tenant   UNIQUE (id_card_number, tenant_id)
 );
 
@@ -605,6 +611,10 @@ CREATE TABLE IF NOT EXISTS orders (
     deleted                 BOOLEAN        NOT NULL DEFAULT FALSE,
     deleted_at              TIMESTAMP      DEFAULT NULL,
     pickup_time             TIMESTAMPTZ    DEFAULT NULL,
+    -- QR table-ordering: customer-submitted orders await owner confirmation.
+    confirmed_at            TIMESTAMP      DEFAULT NULL,
+    confirmed_by            VARCHAR(100)   DEFAULT NULL,
+    table_id                BIGINT         DEFAULT NULL,
     -- Gold order summary columns: pre-computed buy/sell breakdowns on BUY and
     -- EXCHANGE orders so the receipt can display "Tiền vàng mới / Tiền vàng khách"
     -- lines without re-scanning all order_items.
@@ -613,7 +623,7 @@ CREATE TABLE IF NOT EXISTS orders (
     gold_diff_weight        DECIMAL(10,3)  NOT NULL DEFAULT 0,  -- Surplus/deficit weight in chỉ for EXCHANGE orders
     gold_diff_amount        DECIMAL(15,2)  NOT NULL DEFAULT 0,  -- Monetary value of surplus/deficit weight
     CONSTRAINT uq_orders_number_tenant  UNIQUE (order_number, tenant_id),
-    CONSTRAINT chk_orders_status        CHECK  (status IN ('PENDING','IN_PROGRESS','COMPLETED','CANCELLED','VOIDED')),
+    CONSTRAINT chk_orders_status        CHECK  (status IN ('SUBMITTED','PENDING','IN_PROGRESS','COMPLETED','CANCELLED','VOIDED')),
     CONSTRAINT chk_orders_order_type    CHECK  (order_type IN ('SELL', 'BUY', 'EXCHANGE')),
     CONSTRAINT fk_orders_customer       FOREIGN KEY (customer_id) REFERENCES customers (id)
 );
@@ -650,6 +660,7 @@ CREATE TABLE IF NOT EXISTS order_items (
     updated_at            TIMESTAMP      DEFAULT NOW(),
     deleted               BOOLEAN        NOT NULL DEFAULT FALSE,
     deleted_at            TIMESTAMP      DEFAULT NULL,
+    variant_id            BIGINT         DEFAULT NULL,
     CONSTRAINT chk_oi_status    CHECK (status IN ('PENDING','IN_PROGRESS','COMPLETED')),
     CONSTRAINT chk_oi_item_type CHECK (item_type IN ('STANDARD', 'GOLD_IN', 'GOLD_OUT')),
     CONSTRAINT fk_oi_order      FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
@@ -791,6 +802,7 @@ CREATE TABLE IF NOT EXISTS cart_items (
     duration_minutes       INT            NOT NULL DEFAULT 0,
     added_at               TIMESTAMP      NOT NULL DEFAULT NOW(),
     updated_at             TIMESTAMP      NOT NULL DEFAULT NOW(),
+    variant_id             BIGINT         DEFAULT NULL,
     CONSTRAINT chk_ci_item_type CHECK (item_type IN ('STANDARD', 'GOLD_IN', 'GOLD_OUT')),
     CONSTRAINT fk_ci_cart       FOREIGN KEY (cart_id) REFERENCES carts (id) ON DELETE CASCADE
 );
@@ -877,7 +889,7 @@ CREATE TABLE IF NOT EXISTS employees (
     full_name       VARCHAR(255)   NOT NULL,
     phone           VARCHAR(50)    DEFAULT NULL,
     email           VARCHAR(255)   DEFAULT NULL,
-    position        VARCHAR(50)    NOT NULL,
+    position        VARCHAR(50)    DEFAULT NULL,
     department      VARCHAR(255)   DEFAULT NULL,
     hire_date       DATE           DEFAULT NULL,
     active          BOOLEAN        NOT NULL DEFAULT TRUE,
@@ -900,6 +912,7 @@ CREATE TABLE IF NOT EXISTS employees (
     updated_at             TIMESTAMP      DEFAULT NOW(),
     deleted                BOOLEAN        NOT NULL DEFAULT FALSE,
     deleted_at             TIMESTAMP      DEFAULT NULL,
+    nick_name              VARCHAR(20)    DEFAULT NULL,
     CONSTRAINT fk_employee_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL
 );
 
@@ -1037,6 +1050,7 @@ CREATE TABLE IF NOT EXISTS purchase_order_items (
     deleted_at        TIMESTAMP      DEFAULT NULL,
     created_at        TIMESTAMP      NOT NULL DEFAULT NOW(),
     updated_at        TIMESTAMP      DEFAULT NULL,
+    variant_id        BIGINT         DEFAULT NULL,
     CONSTRAINT fk_poi_po FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders (id)
 );
 
@@ -1313,6 +1327,8 @@ CREATE TABLE IF NOT EXISTS shop_info (
     email            VARCHAR(100) DEFAULT '',
     supplier_tax_code VARCHAR(150) DEFAULT '',
     website          VARCHAR(200) DEFAULT '',
+    description      TEXT         DEFAULT NULL,
+    logo_url         VARCHAR(500) DEFAULT NULL,
     created_at       TIMESTAMP    DEFAULT NOW(),
     updated_at       TIMESTAMP    DEFAULT NOW(),
     deleted          BOOLEAN      NOT NULL DEFAULT FALSE,
@@ -1633,12 +1649,13 @@ CREATE INDEX IF NOT EXISTS idx_oi_status       ON order_items (status);
 CREATE INDEX IF NOT EXISTS idx_oi_employee     ON order_items (assigned_employee_id);
 CREATE INDEX IF NOT EXISTS idx_oi_item_type    ON order_items (item_type);
 
--- invoices
-CREATE INDEX IF NOT EXISTS idx_inv_tenant_id   ON invoices (tenant_id);
-CREATE INDEX IF NOT EXISTS idx_inv_order_id    ON invoices (order_id);
-CREATE INDEX IF NOT EXISTS idx_inv_status      ON invoices (status);
-CREATE INDEX IF NOT EXISTS idx_inv_deleted     ON invoices (deleted);
-CREATE INDEX IF NOT EXISTS idx_inv_direction   ON invoices (tenant_id, direction);
+-- invoices  (names were idx_inv_*, which collided with inventory's indexes — the
+-- IF NOT EXISTS variants silently skipped, leaving invoices with no such indexes)
+CREATE INDEX IF NOT EXISTS idx_invoices_tenant_id ON invoices (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_order_id  ON invoices (order_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_status    ON invoices (status);
+CREATE INDEX IF NOT EXISTS idx_invoices_deleted   ON invoices (deleted);
+CREATE INDEX IF NOT EXISTS idx_invoices_direction ON invoices (tenant_id, direction);
 
 CREATE INDEX IF NOT EXISTS idx_ci_item_type    ON cart_items (item_type);
 
@@ -2165,19 +2182,14 @@ UPDATE product SET unit = 'roll'   WHERE unit = 'cuộn';
 --   • cart_items, order_items, purchase_order_items: add variant_id for line-item traceability.
 --     No FK constraint on these tables (historical records must survive variant deletion).
 
--- ─── inventory ───────────────────────────────────────────────────────────────
-
-ALTER TABLE inventory
-    ADD COLUMN IF NOT EXISTS variant_id BIGINT DEFAULT NULL;
+-- ─── inventory (variant_id folded into CREATE TABLE) ──────────────────────────
 
 -- FK: block variant deletion when an inventory record references it (stock > 0 guard is in Java).
 ALTER TABLE inventory
     ADD CONSTRAINT fk_inventory_variant
         FOREIGN KEY (variant_id) REFERENCES product_variants (id) ON DELETE RESTRICT;
 
--- Remove the old product-level unique constraint; replaced by the two partial indexes below.
-ALTER TABLE inventory
-    DROP CONSTRAINT IF EXISTS uq_inventory_product;
+-- uq_inventory_product removed from CREATE TABLE; uniqueness now via the two partial indexes below.
 
 -- One inventory record per product when no variant is assigned.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_inv_product_no_variant
@@ -2194,27 +2206,12 @@ CREATE INDEX IF NOT EXISTS idx_inventory_variant_id
     ON inventory (variant_id)
     WHERE variant_id IS NOT NULL;
 
--- ─── cart_items ───────────────────────────────────────────────────────────────
-
-ALTER TABLE cart_items
-    ADD COLUMN IF NOT EXISTS variant_id BIGINT DEFAULT NULL;
-
--- ─── order_items ─────────────────────────────────────────────────────────────
-
-ALTER TABLE order_items
-    ADD COLUMN IF NOT EXISTS variant_id BIGINT DEFAULT NULL;
-
--- ─── purchase_order_items ────────────────────────────────────────────────────
-
-ALTER TABLE purchase_order_items
-    ADD COLUMN IF NOT EXISTS variant_id BIGINT DEFAULT NULL;
+-- cart_items / order_items / purchase_order_items: variant_id folded into CREATE TABLE.
 
 -- ════════════════════════════════════════════════════════════
 -- Merged from: V003__mobile_additions.sql
+-- (users.pin_hash + users.nickname folded into CREATE TABLE)
 -- ════════════════════════════════════════════════════════════
-
-ALTER TABLE users ADD COLUMN IF NOT EXISTS pin_hash VARCHAR(255);
-ALTER TABLE users ADD COLUMN IF NOT EXISTS nickname VARCHAR(100);
 
 -- ════════════════════════════════════════════════════════════
 -- Merged from: V004__combos.sql
@@ -2268,12 +2265,10 @@ CREATE TABLE IF NOT EXISTS exchange_rates (
 -- Merged from: V006__customers_phone_partial_unique.sql
 -- ════════════════════════════════════════════════════════════
 
--- Replace the full unique constraint on (phone, tenant_id) with a partial index
--- that ignores soft-deleted rows, so a new customer can reuse a phone number that
--- belonged to a previously deleted customer.
-ALTER TABLE customers DROP CONSTRAINT IF EXISTS uq_customers_phone_tenant;
-DROP INDEX IF EXISTS uq_customers_phone_tenant;
-CREATE UNIQUE INDEX uq_customers_phone_tenant
+-- Phone uniqueness: partial unique index ignoring soft-deleted rows, so a new
+-- customer can reuse a phone number that belonged to a previously deleted customer.
+-- (The full (phone, tenant_id) constraint was removed from the customers CREATE TABLE.)
+CREATE UNIQUE INDEX IF NOT EXISTS uq_customers_phone_tenant
     ON customers (phone, tenant_id)
     WHERE deleted = false;
 
@@ -2301,6 +2296,7 @@ CREATE TABLE IF NOT EXISTS product_suggestions (
     display_order    INT          NOT NULL DEFAULT 0,
     category_name    VARCHAR(200) DEFAULT NULL,
     name_en          VARCHAR(200) DEFAULT NULL,
+    duration_minutes INT          NOT NULL DEFAULT 0,
     CONSTRAINT uq_product_suggestion_name UNIQUE (name)
 );
 
@@ -2581,8 +2577,7 @@ ON CONFLICT (name) DO NOTHING;
 -- ════════════════════════════════════════════════════════════
 
 -- Add duration_minutes to products for timed services (e.g. barber shop)
-ALTER TABLE product
-    ADD COLUMN IF NOT EXISTS duration_minutes INT NOT NULL DEFAULT 0;
+-- product.duration_minutes folded into CREATE TABLE.
 
 
 -- ════════════════════════════════════════════════════════════
@@ -3473,7 +3468,9 @@ CREATE TABLE IF NOT EXISTS shop_table (
     reserved_time   VARCHAR(10)  DEFAULT NULL,
     deleted_at       TIMESTAMPTZ,
     created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    -- Per-table QR token for customer self-ordering (random, so URLs aren't enumerable).
+    qr_token         VARCHAR(64)  DEFAULT NULL
 );
 
 
@@ -3496,6 +3493,9 @@ CREATE INDEX IF NOT EXISTS idx_shop_table_tenant
 CREATE INDEX IF NOT EXISTS idx_shop_table_order
     ON shop_table (current_order_id)
     WHERE current_order_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_shop_table_qr_token
+    ON shop_table (tenant_id, qr_token) WHERE qr_token IS NOT NULL;
 
 -- ════════════════════════════════════════════════════════════
 -- Merged from: V010__add_pub_product_suggestions.sql
@@ -3554,27 +3554,9 @@ ON CONFLICT (name) DO NOTHING;
 
 
 -- ══════════════════════════════════════════════════════════════════════════════
--- Merged from V002: Add soft delete columns to salary tables
+-- Folded into CREATE TABLE: salary/salary_advance soft-delete columns,
+-- shop_info.description + logo_url, customers.walk_in.
 -- ══════════════════════════════════════════════════════════════════════════════
-ALTER TABLE salary
-    ADD COLUMN IF NOT EXISTS deleted    BOOLEAN   NOT NULL DEFAULT FALSE,
-    ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP DEFAULT NULL;
-
-ALTER TABLE salary_advance
-    ADD COLUMN IF NOT EXISTS deleted    BOOLEAN   NOT NULL DEFAULT FALSE,
-    ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP DEFAULT NULL;
-
--- ══════════════════════════════════════════════════════════════════════════════
--- Merged from V003: Add description and logo_url to shop_info
--- ══════════════════════════════════════════════════════════════════════════════
-ALTER TABLE shop_info
-    ADD COLUMN IF NOT EXISTS description TEXT DEFAULT NULL,
-    ADD COLUMN IF NOT EXISTS logo_url    VARCHAR(500) DEFAULT NULL;
-
--- ══════════════════════════════════════════════════════════════════════════════
--- Merged from V004: Add walk_in flag to customers
--- ══════════════════════════════════════════════════════════════════════════════
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS walk_in BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- ══════════════════════════════════════════════════════════════════════════════
 -- Merged from V005: Create default_expense table
@@ -3601,41 +3583,15 @@ CREATE POLICY tenant_isolation ON default_expense
     USING (tenant_id = current_setting('app.current_tenant', TRUE));
 
 -- ══════════════════════════════════════════════════════════════════════════════
--- Merged from V006: Add nick_name to employees, make position nullable
+-- Folded into CREATE TABLE: employees.nick_name VARCHAR(20), employees.position
+-- nullable, users.nickname VARCHAR(20).
 -- ══════════════════════════════════════════════════════════════════════════════
-ALTER TABLE employees
-    ADD COLUMN IF NOT EXISTS nick_name VARCHAR(100);
-
-ALTER TABLE employees
-    ALTER COLUMN position DROP NOT NULL;
 
 -- ══════════════════════════════════════════════════════════════════════════════
--- Merged from V007: Trim nickname length to VARCHAR(20)
+-- Folded into CREATE TABLE: tenants.max_orders_per_month, and expiration_date
+-- NOT NULL DEFAULT (CURRENT_DATE + INTERVAL '1 year').
+-- (Backfill UPDATEs dropped — no tenant rows exist at bootstrap.)
 -- ══════════════════════════════════════════════════════════════════════════════
-ALTER TABLE users
-    ALTER COLUMN nickname TYPE VARCHAR(20);
-
-ALTER TABLE employees
-    ALTER COLUMN nick_name TYPE VARCHAR(20);
-
--- ══════════════════════════════════════════════════════════════════════════════
--- Merged from V009: Add monthly order limit to tenants
--- ══════════════════════════════════════════════════════════════════════════════
-ALTER TABLE tenants ADD COLUMN IF NOT EXISTS max_orders_per_month INT DEFAULT NULL;
-
-UPDATE tenants SET max_orders_per_month = 1000
-WHERE subscription_type IN ('TRIAL', 'STARTER') OR subscription_type IS NULL;
-
-UPDATE tenants SET max_orders_per_month = 5000
-WHERE subscription_type = 'BASIC';
-
--- ══════════════════════════════════════════════════════════════════════════════
--- Merged from V010: Make expiration_date NOT NULL with default 1 year
--- ══════════════════════════════════════════════════════════════════════════════
-UPDATE tenants SET expiration_date = CURRENT_DATE + INTERVAL '1 year' WHERE expiration_date IS NULL;
-
-ALTER TABLE tenants ALTER COLUMN expiration_date SET NOT NULL;
-ALTER TABLE tenants ALTER COLUMN expiration_date SET DEFAULT (CURRENT_DATE + INTERVAL '1 year');
 
 -- ══════════════════════════════════════════════════════════════════════════════
 -- Merged from V008: Expand product_suggestions table
@@ -3648,8 +3604,7 @@ ALTER TABLE tenants ALTER COLUMN expiration_date SET DEFAULT (CURRENT_DATE + INT
 -- - Insert all products from every tenant DML file
 -- ============================================================
 
--- ── Step A: Add duration_minutes column ──────────────────────
-ALTER TABLE product_suggestions ADD COLUMN IF NOT EXISTS duration_minutes INT NOT NULL DEFAULT 0;
+-- ── Step A: duration_minutes folded into CREATE TABLE ────────
 
 -- ── Step B: Fix existing BARBER_SHOP entries ─────────────────
 -- Update product_type_code from 'BEAUTY' to 'SERVICE' and fix prices + duration
@@ -4566,8 +4521,7 @@ WHERE  i.product_id      = p.id
 UPDATE product_type SET default_inventory_mode = 'NO_INVENTORY' WHERE code = 'SERVICE';
 UPDATE product_type SET default_inventory_mode = 'UNIQUE'
     WHERE code IN ('JEWELRY', 'WATCH', 'BIKE', 'CAR', 'MOTORBIKE');
-ALTER TABLE product_type
-    ADD COLUMN IF NOT EXISTS default_unit VARCHAR(50) NOT NULL DEFAULT 'piece';
+-- product_type.default_unit folded into CREATE TABLE (backfill UPDATEs below stay).
 
 -- Priority 1: pawn-origin items are always UNIQUE
 UPDATE product SET inventory_mode = 'UNIQUE' WHERE source_pawn_id IS NOT NULL;
@@ -4594,3 +4548,162 @@ UPDATE product_type SET default_unit = 'chi'     WHERE code = 'JEWELRY'  AND def
 UPDATE product_type SET default_unit = 'session'  WHERE code = 'SERVICE'  AND default_unit = 'piece';
 UPDATE product_type SET default_unit = 'bottle'   WHERE code = 'BEVERAGE' AND default_unit = 'piece';
 UPDATE product_type SET default_unit = 'box'      WHERE code = 'DRUG'     AND default_unit = 'piece';
+
+-- ============================================================================
+-- CONSOLIDATED (pre-production): former V002-V006 merged into V001.
+-- Feature rows are inserted BY NAME (never hard-code ids in the 2026010xx
+-- range — they collide with the feature seed above). Per-tenant/role feature
+-- backfills from V005/V006 were dropped: no tenants exist at bootstrap.
+-- ============================================================================
+
+-- ----- QR table ordering (was V002) -----
+-- Folded directly into the CREATE TABLE definitions above:
+--   orders.status CHECK includes 'SUBMITTED'; orders.confirmed_at/confirmed_by/table_id;
+--   shop_table.qr_token + idx_shop_table_qr_token.
+
+
+-- ----- Cash-drawer reconciliation (was V003) -----
+-- Cash-drawer reconciliation: one "close" record per business day.
+--
+-- NOTE: next sequential version after V002. With spring.flyway.validate-on-migrate=false
+-- a reused version is silently skipped, so confirm V003 has not already been applied on the
+-- target environment (check flyway_schema_history) before deploying.
+
+CREATE TABLE IF NOT EXISTS cash_drawer_close (
+    id                BIGSERIAL     PRIMARY KEY,
+    tenant_id         VARCHAR(50)   NOT NULL,
+    business_date     DATE          NOT NULL,
+    opening_amount    NUMERIC(20,0) NOT NULL DEFAULT 0,
+    expected_amount   NUMERIC(20,0) NOT NULL DEFAULT 0,
+    counted_amount    NUMERIC(20,0) NOT NULL DEFAULT 0,
+    difference_amount NUMERIC(20,0) NOT NULL DEFAULT 0,
+    note              VARCHAR(500)  DEFAULT NULL,
+    closed_by         VARCHAR(100)  DEFAULT NULL,
+    closed_at         TIMESTAMP     DEFAULT NULL,
+    created_at        TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMP     DEFAULT NULL,
+    deleted           BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at        TIMESTAMP     DEFAULT NULL,
+    -- One reconciliation per shop per day; re-closing updates the same row.
+    CONSTRAINT uq_cash_drawer_close_day UNIQUE (tenant_id, business_date)
+);
+
+ALTER TABLE cash_drawer_close ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cash_drawer_close FORCE  ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON cash_drawer_close
+    USING (tenant_id = current_setting('app.current_tenant', true));
+
+CREATE INDEX IF NOT EXISTS idx_cash_drawer_close_tenant_date
+    ON cash_drawer_close (tenant_id, business_date);
+
+
+-- ----- Booking module tables (was V004; feature inserted by name below) -----
+-- Booking module: bookable resources (bida tables / tennis courts / …) and
+-- their bookings. Supports BOTH advance reservations (scheduled start/end) and
+-- walk-in timer sessions (started_at/ended_at, billed by elapsed time). On
+-- checkout a POS order is created and linked via linked_order_id.
+--
+-- NOTE: V001–V003 exist on disk; this is the next sequential version. Before
+-- deploying to an existing environment, confirm V004 has not already been
+-- applied — check the target DB's flyway_schema_history.
+
+-- ── Bookable resources (tables / courts) ─────────────────────────────────────
+CREATE TABLE IF NOT EXISTS booking_resources (
+    id              BIGSERIAL PRIMARY KEY,
+    tenant_id       VARCHAR(50)   NOT NULL,
+    name            VARCHAR(255)  NOT NULL,
+    resource_type   VARCHAR(30)   NOT NULL DEFAULT 'TABLE',   -- TABLE | COURT | OTHER
+    hourly_rate     DECIMAL(15,2) NOT NULL DEFAULT 0,
+    status          VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE',  -- ACTIVE | INACTIVE | MAINTENANCE
+    note            TEXT,
+    sort_order      INT           NOT NULL DEFAULT 0,
+    legacy_id       VARCHAR(50)   DEFAULT NULL,
+    created_by      VARCHAR(255)  NOT NULL,
+    created_at      TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP     NOT NULL DEFAULT NOW(),
+    deleted         BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at      TIMESTAMP
+);
+
+-- ── Bookings (reservation or walk-in timer) ──────────────────────────────────
+CREATE TABLE IF NOT EXISTS bookings (
+    id                   BIGSERIAL PRIMARY KEY,
+    tenant_id            VARCHAR(50)   NOT NULL,
+    booking_number       VARCHAR(20)   NOT NULL,
+    resource_id          BIGINT        NOT NULL REFERENCES booking_resources(id),
+    resource_name        VARCHAR(255)  NOT NULL,
+    customer_id          BIGINT,
+    customer_name        VARCHAR(255),
+    customer_phone       VARCHAR(20),
+    booking_type         VARCHAR(20)   NOT NULL DEFAULT 'WALK_IN',   -- RESERVATION | WALK_IN
+    scheduled_date       DATE,
+    scheduled_start_time TIME,
+    scheduled_end_time   TIME,
+    started_at           TIMESTAMP,
+    ended_at             TIMESTAMP,
+    duration_minutes     INT,
+    hourly_rate          DECIMAL(15,2) NOT NULL DEFAULT 0,
+    time_amount          DECIMAL(15,2) NOT NULL DEFAULT 0,
+    status               VARCHAR(20)   NOT NULL DEFAULT 'RESERVED', -- RESERVED | IN_PROGRESS | COMPLETED | CANCELLED | NO_SHOW
+    note                 TEXT,
+    linked_order_id      BIGINT,
+    legacy_id            VARCHAR(50)   DEFAULT NULL,
+    created_by           VARCHAR(255)  NOT NULL,
+    created_at           TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_at           TIMESTAMP     NOT NULL DEFAULT NOW(),
+    deleted              BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at           TIMESTAMP
+);
+
+-- ── RLS ──────────────────────────────────────────────────────────────────────
+ALTER TABLE booking_resources ENABLE ROW LEVEL SECURITY;
+ALTER TABLE booking_resources FORCE  ROW LEVEL SECURITY;
+ALTER TABLE bookings          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bookings          FORCE  ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies
+        WHERE tablename = 'booking_resources' AND policyname = 'booking_resources_tenant_isolation') THEN
+        CREATE POLICY booking_resources_tenant_isolation ON booking_resources
+            USING (tenant_id = current_setting('app.current_tenant', true));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies
+        WHERE tablename = 'bookings' AND policyname = 'bookings_tenant_isolation') THEN
+        CREATE POLICY bookings_tenant_isolation ON bookings
+            USING (tenant_id = current_setting('app.current_tenant', true));
+    END IF;
+END $$;
+
+-- ── Indexes ──────────────────────────────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_booking_resources_tenant
+    ON booking_resources (tenant_id) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_booking_resources_legacy
+    ON booking_resources (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_number
+    ON bookings (tenant_id, booking_number) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_bookings_tenant_date
+    ON bookings (tenant_id, scheduled_date) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_bookings_resource
+    ON bookings (tenant_id, resource_id) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_bookings_legacy
+    ON bookings (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+
+-- At most one running (IN_PROGRESS) session per resource.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_one_active_per_resource
+    ON bookings (tenant_id, resource_id)
+    WHERE status = 'IN_PROGRESS' AND deleted = FALSE;
+
+
+-- ----- BOOKING + UTILITIES feature rows (were V004/V005/V006) -----
+INSERT INTO features (name, display_name, description, active, deleted)
+VALUES ('BOOKING', 'Đặt Bàn / Đặt Sân',
+        'Quản lý bàn bida, sân thể thao: tính giờ chơi, đặt sân theo giờ và tạo hoá đơn khi kết thúc',
+        TRUE, FALSE)
+ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO features (name, display_name, description, active, deleted)
+VALUES ('UTILITIES', 'Tiện Ích',
+        'Bộ công cụ tính toán: tính lãi, khoản vay, thuế, ngân sách, đổi tiền, giá vàng thị trường, chia hóa đơn, điểm hòa vốn',
+        TRUE, FALSE)
+ON CONFLICT (name) DO NOTHING;

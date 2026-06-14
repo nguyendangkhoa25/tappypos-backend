@@ -1,6 +1,7 @@
 package com.tappy.pos.service.tenant;
 
 import com.tappy.pos.config.AuthContext;
+import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.exception.ForbiddenException;
 import com.tappy.pos.model.dto.tenant.CreateTenantRequest;
 import com.tappy.pos.model.dto.tenant.TenantDTO;
@@ -323,6 +324,35 @@ class TenantServiceTest {
         assertThatThrownBy(() -> tenantService.createTenant(createRequest))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Tenant already exists");
+    }
+
+    @Test
+    @DisplayName("Should reject a tenant ID that collides with a reserved marketing slug")
+    void testCreateTenant_ReservedSlugId() {
+        CreateTenantRequest reservedRequest = CreateTenantRequest.builder()
+                .tenantId("pos-quan-cafe").name("Collision Shop").dbName("collision_db")
+                .expirationDate(LocalDate.now().plusYears(1)).maxUsers(50)
+                .features(List.of("DASHBOARD")).subscriptionType("STANDARD").build();
+
+        assertThatThrownBy(() -> tenantService.createTenant(reservedRequest))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("error.tenant.reserved.id");
+
+        verify(tenantRepository, never()).save(any(Tenant.class));
+    }
+
+    @Test
+    @DisplayName("Should reject a reserved tenant ID case-insensitively")
+    void testCreateTenant_ReservedIdCaseInsensitive() {
+        CreateTenantRequest reservedRequest = CreateTenantRequest.builder()
+                .tenantId("MASTER").name("Fake Master").dbName("fake_master_db")
+                .expirationDate(LocalDate.now().plusYears(1)).maxUsers(50)
+                .features(List.of("DASHBOARD")).subscriptionType("STANDARD").build();
+
+        assertThatThrownBy(() -> tenantService.createTenant(reservedRequest))
+                .isInstanceOf(BadRequestException.class);
+
+        verify(tenantRepository, never()).save(any(Tenant.class));
     }
 
     @Test

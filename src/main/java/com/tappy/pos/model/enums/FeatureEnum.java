@@ -44,7 +44,9 @@ public enum FeatureEnum {
     COMMISSION_VIEW_ALL("Xem Hoa Hồng Toàn Đội", "Xem hoa hồng của tất cả nhân viên và báo cáo tổng; nếu không có quyền này, chỉ xem được hoa hồng của bản thân"),
     GOOGLE_DRIVE("Tích Hợp Google Drive", "Kết nối Google Drive cá nhân để lưu ảnh sản phẩm, hình căn cước khách hàng và ảnh hợp đồng cầm đồ"),
     APPOINTMENT("Lịch Hẹn", "Quản lý lịch hẹn với khách hàng, đặt lịch và xác nhận"),
-    TABLE_SERVICE("Quản Lý Bàn", "Theo dõi trạng thái bàn và gọi món theo bàn cho quán ăn / quán nhậu");
+    TABLE_SERVICE("Quản Lý Bàn", "Theo dõi trạng thái bàn và gọi món theo bàn cho quán ăn / quán nhậu"),
+    BOOKING("Đặt Bàn / Đặt Sân", "Quản lý bàn bida, sân thể thao: tính giờ chơi, đặt sân theo giờ và tạo hoá đơn khi kết thúc"),
+    UTILITIES("Tiện Ích", "Bộ công cụ tính toán: tính lãi, khoản vay, thuế, ngân sách, đổi tiền, giá vàng thị trường, chia hóa đơn, điểm hòa vốn");
 
     /**
      * -- GETTER --

@@ -34,9 +34,13 @@ public class IntegrationController {
     @GetMapping("/{type}/auth-url")
     @RequiresFeature("SHOP_INFO")
     public ResponseEntity<ApiResponse<Map<String, String>>> getAuthUrl(
-            @PathVariable String type) {
+            @PathVariable String type,
+            @RequestParam(required = false) String origin) {
         String tenantId = tenantContext.getCurrentTenantId();
-        String url      = integrationService.getAuthUrl(type.toUpperCase(), tenantId);
+        // Only carry the origin through OAuth state if it's one of ours — guards
+        // against an open redirect on the callback.
+        String safeOrigin = isAllowedOrigin(origin) ? origin : null;
+        String url = integrationService.getAuthUrl(type.toUpperCase(), tenantId, safeOrigin);
         return ResponseEntity.ok(ApiResponse.success(Map.of("url", url)));
     }
 
@@ -54,21 +58,53 @@ public class IntegrationController {
             @RequestParam(required = false, defaultValue = "GOOGLE_DRIVE") String type,
             HttpServletResponse response) throws IOException {
 
+        // Redirect back to the host the flow started on (e.g. the tenant subdomain)
+        // so the popup's postMessage to its opener is same-origin. Peeked from the
+        // state without consuming it; falls back to the configured apex URL.
+        String redirectBase = resolveRedirectBase(type, state);
+
         if (error != null || code == null || state == null) {
             log.warn("OAuth callback with error={}, code={}", error, code != null ? "present" : "null");
-            response.sendRedirect(frontendUrl + "/oauth-callback?status=error&type=" + type.toUpperCase()
+            response.sendRedirect(redirectBase + "/oauth-callback?status=error&type=" + type.toUpperCase()
                     + "&reason=" + (error != null ? error : "missing_params"));
             return;
         }
 
         try {
-            IntegrationStatusDTO result = integrationService.handleOAuthCallback(code, state, type.toUpperCase());
-            String tenantId = result.getEmail() != null ? extractTenantFromState(state) : "unknown";
-            response.sendRedirect(frontendUrl + "/oauth-callback?status=success&type=" + type.toUpperCase());
+            integrationService.handleOAuthCallback(code, state, type.toUpperCase());
+            response.sendRedirect(redirectBase + "/oauth-callback?status=success&type=" + type.toUpperCase());
         } catch (Exception e) {
             log.error("OAuth callback failed for type={}: {}", type, e.getMessage());
-            response.sendRedirect(frontendUrl + "/oauth-callback?status=error&type=" + type.toUpperCase()
+            response.sendRedirect(redirectBase + "/oauth-callback?status=error&type=" + type.toUpperCase()
                     + "&reason=server_error");
+        }
+    }
+
+    /** The validated frontend origin for the state nonce, or the configured apex URL. */
+    private String resolveRedirectBase(String type, String state) {
+        if (state == null) return frontendUrl;
+        try {
+            String origin = integrationService.peekOAuthOrigin(type.toUpperCase(), state);
+            return isAllowedOrigin(origin) ? origin : frontendUrl;
+        } catch (Exception e) {
+            return frontendUrl;
+        }
+    }
+
+    /**
+     * True only for our own hosts (pos.tappy.vn + its subdomains, localhost) — open-redirect guard.
+     * tappypos.vn is kept during the redirect-coexistence window; remove after cutover is verified.
+     */
+    private boolean isAllowedOrigin(String origin) {
+        if (origin == null || origin.isBlank()) return false;
+        try {
+            String host = java.net.URI.create(origin).getHost();
+            return host != null && (
+                    host.equals("pos.tappy.vn") || host.endsWith(".pos.tappy.vn")
+                    || host.equals("tappypos.vn") || host.endsWith(".tappypos.vn")
+                    || host.equals("localhost"));
+        } catch (Exception e) {
+            return false;
         }
     }
 
@@ -89,11 +125,5 @@ public class IntegrationController {
         String tenantId = tenantContext.getCurrentTenantId();
         integrationService.disconnect(type.toUpperCase(), tenantId);
         return ResponseEntity.ok(ApiResponse.success(null));
-    }
-
-    private String extractTenantFromState(String state) {
-        // State is a nonce that was already consumed in handleCallback;
-        // tenantId was embedded during callback processing — this is just for logging.
-        return "resolved-in-provider";
     }
 }

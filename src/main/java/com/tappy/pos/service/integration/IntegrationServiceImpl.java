@@ -28,13 +28,18 @@ public class IntegrationServiceImpl implements IntegrationService {
     }
 
     @Override
-    public String getAuthUrl(String integrationType, String tenantId) {
-        return getProvider(integrationType).buildAuthUrl(tenantId);
+    public String getAuthUrl(String integrationType, String tenantId, String origin) {
+        return getProvider(integrationType).buildAuthUrl(tenantId, origin);
     }
 
     @Override
     public IntegrationStatusDTO handleOAuthCallback(String code, String state, String integrationType) {
         return getProvider(integrationType).handleCallback(code, state);
+    }
+
+    @Override
+    public String peekOAuthOrigin(String integrationType, String state) {
+        return getProvider(integrationType).peekOAuthOrigin(state);
     }
 
     @Override

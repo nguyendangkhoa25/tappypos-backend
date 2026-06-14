@@ -109,7 +109,7 @@ public class TenantProvisioningService {
             "INVOICE", "ACCOUNTING", "REVENUE", "EXPENSE",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "POS",
             "TABLE_SERVICE", "ACTIVITY_LOG", "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
-            "COMMISSION", "COMMISSION_VIEW_ALL", "GOOGLE_DRIVE", "NOTIFICATION", "FEEDBACK", "APPOINTMENT"
+            "COMMISSION", "COMMISSION_VIEW_ALL", "GOOGLE_DRIVE", "NOTIFICATION", "FEEDBACK", "APPOINTMENT", "BOOKING"
         ));
         m.put(RoleEnum.MANAGER.getCode(), Arrays.asList(
             "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "PROMOTION",
@@ -117,12 +117,12 @@ public class TenantProvisioningService {
             "INVOICE", "ACCOUNTING", "REVENUE", "EXPENSE",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "POS",
             "TABLE_SERVICE", "ACTIVITY_LOG", "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
-            "COMMISSION", "COMMISSION_VIEW_ALL", "NOTIFICATION", "FEEDBACK"
+            "COMMISSION", "COMMISSION_VIEW_ALL", "NOTIFICATION", "FEEDBACK", "BOOKING"
         ));
         m.put(RoleEnum.CASHIER.getCode(), Arrays.asList(
             "DASHBOARD", "MY_WORK", "ORDER", "POS", "TABLE_SERVICE",
             "CUSTOMER", "LOYALTY", "PROMOTION", "COMMISSION",
-            "NOTIFICATION", "FEEDBACK"
+            "NOTIFICATION", "FEEDBACK", "BOOKING"
         ));
         m.put(RoleEnum.ACCOUNTANT.getCode(), Arrays.asList(
             "DASHBOARD", "MY_WORK", "REVENUE", "EXPENSE", "SALARY", "INVOICE", "ACCOUNTING", "CUSTOMER",
@@ -140,7 +140,7 @@ public class TenantProvisioningService {
         ));
         m.put(RoleEnum.SERVICE_STAFF.getCode(), Arrays.asList(
             "DASHBOARD", "MY_WORK", "ORDER", "POS", "TABLE_SERVICE",
-            "CUSTOMER", "COMMISSION", "NOTIFICATION", "FEEDBACK"
+            "CUSTOMER", "COMMISSION", "NOTIFICATION", "FEEDBACK", "BOOKING"
         ));
         m.put(RoleEnum.TECHNICIAN.getCode(), Arrays.asList(
             "DASHBOARD", "MY_WORK", "ORDER", "PRODUCT", "CUSTOMER", "INVENTORY", "POS",
@@ -148,11 +148,18 @@ public class TenantProvisioningService {
         ));
         m.put(RoleEnum.RECEPTIONIST.getCode(), Arrays.asList(
             "DASHBOARD", "MY_WORK", "ORDER", "CUSTOMER", "POS", "TABLE_SERVICE",
-            "APPOINTMENT", "COMMISSION", "NOTIFICATION", "FEEDBACK"
+            "APPOINTMENT", "COMMISSION", "NOTIFICATION", "FEEDBACK", "BOOKING"
         ));
         m.put(RoleEnum.CLEANER.getCode(), Arrays.asList(
             "DASHBOARD", "MY_WORK", "NOTIFICATION"
         ));
+        // UTILITIES (client-side calculators/tools hub) is available to every role.
+        // Which shop types actually expose it is decided by FEATURE_PROFILES below.
+        m.replaceAll((role, feats) -> {
+            List<String> withUtil = new ArrayList<>(feats);
+            if (!withUtil.contains("UTILITIES")) withUtil.add("UTILITIES");
+            return withUtil;
+        });
         ROLE_FEATURES = m;
     }
 
@@ -216,7 +223,7 @@ public class TenantProvisioningService {
             "DASHBOARD", "MY_WORK",
             "ORDER", "ORDER_VIEW_ALL", "POS",
             "PRODUCT", "PROMOTION",
-            "CUSTOMER", "LOYALTY", "APPOINTMENT",
+            "CUSTOMER", "LOYALTY", "APPOINTMENT", "BOOKING",
             "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
@@ -237,7 +244,7 @@ public class TenantProvisioningService {
 
         m.put("FNB", Arrays.asList(
             "DASHBOARD", "MY_WORK",
-            "ORDER", "ORDER_VIEW_ALL", "POS", "TABLE_SERVICE",
+            "ORDER", "ORDER_VIEW_ALL", "POS", "TABLE_SERVICE", "BOOKING",
             "PRODUCT", "INVENTORY", "VENDOR", "PROMOTION",
             "CUSTOMER", "LOYALTY", "APPOINTMENT",
             "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
@@ -245,6 +252,13 @@ public class TenantProvisioningService {
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
             "NOTIFICATION", "FEEDBACK"
         ));
+
+        // UTILITIES tools hub — scoped to jewelry / pawn / F&B shop types for now.
+        for (String profile : Arrays.asList("PAWN", "JEWELRY", "FNB")) {
+            List<String> feats = new ArrayList<>(m.get(profile));
+            if (!feats.contains("UTILITIES")) feats.add("UTILITIES");
+            m.put(profile, feats);
+        }
 
         FEATURE_PROFILES = Collections.unmodifiableMap(m);
     }
@@ -276,6 +290,8 @@ public class TenantProvisioningService {
         m.put(ShopType.PUB_SEAFOOD,        "FNB");
         m.put(ShopType.PUB_GOAT,           "FNB");
         m.put(ShopType.PUB_BEEF,           "FNB");
+        m.put(ShopType.BILLIARDS_HALL,     "FNB");      // POS + drinks/food orders; booking model TBD
+        m.put(ShopType.TENNIS_COURT,       "SERVICE");  // service-style; booking model TBD
         // ShopType.OTHER → no entry → all features (safe default)
         SHOP_TYPE_FEATURE_PROFILE = Collections.unmodifiableMap(m);
     }
