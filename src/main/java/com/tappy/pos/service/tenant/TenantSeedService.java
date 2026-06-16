@@ -53,7 +53,10 @@ public class TenantSeedService {
         Map.entry(ShopType.PUB,                "db/tenant/pub.sql"),
         Map.entry(ShopType.PUB_SEAFOOD,        "db/tenant/pub_seafood.sql"),
         Map.entry(ShopType.PUB_GOAT,           "db/tenant/pub_goat.sql"),
-        Map.entry(ShopType.PUB_BEEF,           "db/tenant/pub_beef.sql")
+        Map.entry(ShopType.PUB_BEEF,           "db/tenant/pub_beef.sql"),
+        Map.entry(ShopType.HOTEL,              "db/tenant/lodging.sql"),
+        Map.entry(ShopType.MOTEL,              "db/tenant/lodging.sql"),
+        Map.entry(ShopType.HOMESTAY,           "db/tenant/lodging.sql")
     );
     private static final String DEFAULT_DML = "db/tenant/general.sql";
 
@@ -68,6 +71,11 @@ public class TenantSeedService {
     private static final Set<ShopType> FOOD_SHOP_TYPES = EnumSet.of(
         ShopType.COFFEE_SHOP, ShopType.FOOD_BEVERAGE, ShopType.RESTAURANT,
         ShopType.PUB, ShopType.PUB_SEAFOOD, ShopType.PUB_GOAT, ShopType.PUB_BEEF
+    );
+
+    /** Lodging shops — get a room-folio checkout receipt ("Phiếu thanh toán phòng") with the room label shown. */
+    private static final Set<ShopType> LODGING_SHOP_TYPES = EnumSet.of(
+        ShopType.HOTEL, ShopType.MOTEL, ShopType.HOMESTAY
     );
 
     /**
@@ -91,6 +99,9 @@ public class TenantSeedService {
         } else if (shopType == ShopType.PHARMACY) {
             templateName = "Hóa đơn thuốc";
             configJson = "{\"headerText\":\"\",\"footerText\":\"Cảm ơn quý khách!\\nChúc bạn mau hồi phục!\",\"showAddress\":true,\"showTaxId\":true,\"showOrderNumber\":true,\"showDateTime\":true,\"showCustomer\":true,\"showTaxBreakdown\":true,\"showCashDetails\":true,\"paperWidth\":\"80mm\",\"autoClose\":true,\"showVietQr\":false}";
+        } else if (LODGING_SHOP_TYPES.contains(shopType)) {
+            templateName = "Phiếu thanh toán phòng";
+            configJson = "{\"headerText\":\"\",\"footerText\":\"Cảm ơn quý khách!\\nHẹn gặp lại!\",\"showAddress\":true,\"showTaxId\":false,\"showOrderNumber\":true,\"showDateTime\":true,\"showCustomer\":true,\"showTaxBreakdown\":false,\"showCashDetails\":true,\"paperWidth\":\"80mm\",\"autoClose\":true,\"showVietQr\":true,\"showTable\":true}";
         } else if (shopType == ShopType.CONVENIENCE_STORE) {
             templateName = "Hóa đơn siêu thị";
             configJson = "{\"headerText\":\"\",\"footerText\":\"Cảm ơn quý khách!\\nHẹn gặp lại!\",\"showAddress\":true,\"showTaxId\":false,\"showOrderNumber\":true,\"showDateTime\":true,\"showCustomer\":false,\"showTaxBreakdown\":false,\"showCashDetails\":true,\"paperWidth\":\"80mm\",\"autoClose\":true,\"showVietQr\":true}";

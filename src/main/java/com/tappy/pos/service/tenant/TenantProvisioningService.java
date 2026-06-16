@@ -176,6 +176,11 @@ public class TenantProvisioningService {
                 RoleEnum.CASHIER.getCode(), RoleEnum.PAWN_OFFICER.getCode());
         m.put(ShopType.PAWN_SHOP, pawnRoles);
         m.put(ShopType.JEWELRY,   jewelryRoles);
+        List<String> lodgingRoles = Arrays.asList(
+                RoleEnum.SHOP_OWNER.getCode(), RoleEnum.RECEPTIONIST.getCode(), RoleEnum.CLEANER.getCode());
+        m.put(ShopType.HOTEL,     lodgingRoles);
+        m.put(ShopType.MOTEL,     lodgingRoles);
+        m.put(ShopType.HOMESTAY,  lodgingRoles);
         SHOP_TYPE_ROLE_WHITELIST = Collections.unmodifiableMap(m);
     }
 
@@ -253,6 +258,18 @@ public class TenantProvisioningService {
             "NOTIFICATION", "FEEDBACK"
         ));
 
+        // Lodging (hotel / motel / homestay): ROOM board + folio sales + the usual back office.
+        m.put("LODGING", Arrays.asList(
+            "DASHBOARD", "MY_WORK", "ROOM",
+            "ORDER", "ORDER_VIEW_ALL", "POS",
+            "PRODUCT", "INVENTORY", "VENDOR", "PROMOTION",
+            "CUSTOMER", "LOYALTY",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL",
+            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
+            "NOTIFICATION", "FEEDBACK"
+        ));
+
         // UTILITIES tools hub — scoped to jewelry / pawn / F&B shop types for now.
         for (String profile : Arrays.asList("PAWN", "JEWELRY", "FNB")) {
             List<String> feats = new ArrayList<>(m.get(profile));
@@ -292,6 +309,9 @@ public class TenantProvisioningService {
         m.put(ShopType.PUB_BEEF,           "FNB");
         m.put(ShopType.BILLIARDS_HALL,     "FNB");      // POS + drinks/food orders; booking model TBD
         m.put(ShopType.TENNIS_COURT,       "SERVICE");  // service-style; booking model TBD
+        m.put(ShopType.HOTEL,              "LODGING");
+        m.put(ShopType.MOTEL,              "LODGING");
+        m.put(ShopType.HOMESTAY,           "LODGING");
         // ShopType.OTHER → no entry → all features (safe default)
         SHOP_TYPE_FEATURE_PROFILE = Collections.unmodifiableMap(m);
     }
