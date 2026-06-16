@@ -109,7 +109,7 @@ public class TenantProvisioningService {
             "INVOICE", "ACCOUNTING", "REVENUE", "EXPENSE",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "STOCK_TAKE", "POS",
             "TABLE_SERVICE", "ACTIVITY_LOG", "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
-            "COMMISSION", "COMMISSION_VIEW_ALL", "GOOGLE_DRIVE", "NOTIFICATION", "FEEDBACK", "APPOINTMENT", "BOOKING"
+            "COMMISSION", "COMMISSION_VIEW_ALL", "GOOGLE_DRIVE", "NOTIFICATION", "FEEDBACK", "APPOINTMENT", "BOOKING", "ROOM"
         ));
         m.put(RoleEnum.MANAGER.getCode(), Arrays.asList(
             "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "PROMOTION",
@@ -148,10 +148,10 @@ public class TenantProvisioningService {
         ));
         m.put(RoleEnum.RECEPTIONIST.getCode(), Arrays.asList(
             "DASHBOARD", "MY_WORK", "ORDER", "CUSTOMER", "POS", "TABLE_SERVICE",
-            "APPOINTMENT", "COMMISSION", "NOTIFICATION", "FEEDBACK", "BOOKING"
+            "APPOINTMENT", "COMMISSION", "NOTIFICATION", "FEEDBACK", "BOOKING", "ROOM", "PRODUCT"
         ));
         m.put(RoleEnum.CLEANER.getCode(), Arrays.asList(
-            "DASHBOARD", "MY_WORK", "NOTIFICATION"
+            "DASHBOARD", "MY_WORK", "NOTIFICATION", "ROOM"
         ));
         // UTILITIES (client-side calculators/tools hub) is available to every role.
         // Which shop types actually expose it is decided by FEATURE_PROFILES below.

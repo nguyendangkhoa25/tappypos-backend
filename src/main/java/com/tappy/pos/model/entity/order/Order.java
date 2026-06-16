@@ -121,6 +121,10 @@ public class Order extends TenantAwareEntity {
     @Column(name = "source", length = 20, nullable = false)
     private String source = "POS";
 
+    /** Set when this order settles a lodging room stay (ROOM feature); null otherwise. */
+    @Column(name = "room_stay_id")
+    private Long roomStayId;
+
     @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(name = "order_type", length = 20, nullable = false, columnDefinition = "VARCHAR(20) DEFAULT 'SELL'")
