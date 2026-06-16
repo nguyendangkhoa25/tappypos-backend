@@ -23,5 +23,6 @@ public class RoomDTO {
     private String qrToken;
     private String note;
     private Integer sortOrder;
-    private RoomStayDTO activeStay;  // current in-house stay, if any
+    private RoomStayDTO activeStay;    // current in-house stay, if any
+    private RoomStayDTO reservedStay;  // soonest due reservation (arriving today/overdue) when not occupied
 }

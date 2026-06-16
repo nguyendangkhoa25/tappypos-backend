@@ -30,25 +30,25 @@ public class Order extends TenantAwareEntity {
     @Column(name = "payment_method", length = 50)
     private String paymentMethod;
 
-    @Column(name = "amount_paid", precision = 10, scale = 2)
+    @Column(name = "amount_paid", precision = 15, scale = 2)
     private BigDecimal amountPaid;
 
-    @Column(name = "change_amount", precision = 10, scale = 2)
+    @Column(name = "change_amount", precision = 15, scale = 2)
     private BigDecimal changeAmount;
 
     @Builder.Default
-    @Column(name = "tip_amount", precision = 10, scale = 2, columnDefinition = "DECIMAL(10,2) DEFAULT 0")
+    @Column(name = "tip_amount", precision = 15, scale = 2, columnDefinition = "DECIMAL(15,2) DEFAULT 0")
     private BigDecimal tipAmount = BigDecimal.ZERO;
 
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
     private OrderStatus status;
 
-    @Column(name = "total_amount", nullable = false, precision = 10, scale = 2)
+    @Column(name = "total_amount", nullable = false, precision = 15, scale = 2)
     private BigDecimal totalAmount;
 
     @Builder.Default
-    @Column(name = "discount_amount", precision = 10, scale = 2, columnDefinition = "DECIMAL(10,2) DEFAULT 0")
+    @Column(name = "discount_amount", precision = 15, scale = 2, columnDefinition = "DECIMAL(15,2) DEFAULT 0")
     private BigDecimal discountAmount = BigDecimal.ZERO;
 
     @Builder.Default
@@ -56,11 +56,11 @@ public class Order extends TenantAwareEntity {
     private BigDecimal taxPercentage = BigDecimal.ZERO;
 
     @Builder.Default
-    @Column(name = "tax_amount", precision = 10, scale = 2)
+    @Column(name = "tax_amount", precision = 15, scale = 2)
     private BigDecimal taxAmount = BigDecimal.ZERO;
 
     @Builder.Default
-    @Column(name = "commission_amount", precision = 10, scale = 2, columnDefinition = "DECIMAL(10,2) DEFAULT 0")
+    @Column(name = "commission_amount", precision = 15, scale = 2, columnDefinition = "DECIMAL(15,2) DEFAULT 0")
     private BigDecimal commissionAmount = BigDecimal.ZERO;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -154,7 +154,7 @@ public class Order extends TenantAwareEntity {
     private String promotionCode;
 
     @Builder.Default
-    @Column(name = "promotion_discount", precision = 10, scale = 2)
+    @Column(name = "promotion_discount", precision = 15, scale = 2)
     private BigDecimal promotionDiscount = BigDecimal.ZERO;
 
     @Builder.Default
@@ -162,7 +162,7 @@ public class Order extends TenantAwareEntity {
     private Integer loyaltyPointsRedeemed = 0;
 
     @Builder.Default
-    @Column(name = "loyalty_discount", precision = 10, scale = 2)
+    @Column(name = "loyalty_discount", precision = 15, scale = 2)
     private BigDecimal loyaltyDiscount = BigDecimal.ZERO;
 
     @Builder.Default

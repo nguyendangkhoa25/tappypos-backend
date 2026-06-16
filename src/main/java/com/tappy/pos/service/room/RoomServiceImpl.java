@@ -35,6 +35,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
@@ -64,12 +65,28 @@ public class RoomServiceImpl implements RoomService {
 
     @Override
     public List<RoomDTO> getBoard() {
+        // One query each for in-house stays and due reservations, then map by roomId in memory
+        // (avoids an N+1 per-room lookup on this frequently-polled screen).
+        Map<Long, RoomStayEntity> inHouseByRoom = stayRepository
+                .findByStatusAndDeletedFalseOrderByCreatedAtDesc("IN_HOUSE", Pageable.unpaged())
+                .stream()
+                .collect(Collectors.toMap(RoomStayEntity::getRoomId, s -> s, (a, b) -> a));
+
+        // Reservations arriving today or overdue (not yet checked in) — surfaced so the front desk
+        // checks the booked guest in (rather than creating a walk-in). Earliest per room wins.
+        LocalDateTime endOfToday = LocalDate.now().atTime(23, 59, 59);
+        Map<Long, RoomStayEntity> dueResByRoom = stayRepository
+                .findByStatusAndReservedCheckinLessThanEqualAndDeletedFalseOrderByReservedCheckinAsc("RESERVED", endOfToday)
+                .stream()
+                .collect(Collectors.toMap(RoomStayEntity::getRoomId, s -> s, (a, b) -> a));
+
         return roomRepository.findByDeletedFalseOrderBySortOrderAscRoomNumberAsc().stream()
                 .map(room -> {
-                    RoomStayEntity stay = "OCCUPIED".equals(room.getStatus())
-                            ? stayRepository.findFirstByRoomIdAndStatusAndDeletedFalse(room.getId(), "IN_HOUSE").orElse(null)
-                            : null;
-                    return mapRoom(room, stay != null ? mapStay(stay, false) : null);
+                    RoomStayEntity active = "OCCUPIED".equals(room.getStatus()) ? inHouseByRoom.get(room.getId()) : null;
+                    RoomStayEntity reserved = active == null ? dueResByRoom.get(room.getId()) : null;
+                    return mapRoom(room,
+                            active != null ? mapStay(active, false) : null,
+                            reserved != null ? mapStay(reserved, false) : null);
                 })
                 .collect(Collectors.toList());
     }
@@ -198,12 +215,15 @@ public class RoomServiceImpl implements RoomService {
         String billingMode = normalizeBillingMode(request.getBillingMode());
         BigDecimal rate = request.getRate() != null ? request.getRate() : rateForMode(room, billingMode);
 
-        // Guardrail: reject a reservation overlapping an existing one for the same room.
-        // Half-open intervals [checkin, checkout); a missing checkout defaults to checkin + 1 day.
+        // Guardrail: reject a reservation overlapping an existing reservation OR the room's current
+        // occupancy. Half-open intervals [start, end); a missing end defaults to start + 1 day.
+        // RESERVED stays start at reservedCheckin; IN_HOUSE stays start at checkinAt.
         LocalDateTime newStart = request.getReservedCheckin();
         LocalDateTime newEnd = request.getExpectedCheckout() != null ? request.getExpectedCheckout() : newStart.plusDays(1);
-        for (RoomStayEntity existing : stayRepository.findByRoomIdAndStatusAndDeletedFalse(room.getId(), "RESERVED")) {
-            LocalDateTime exStart = existing.getReservedCheckin();
+        for (RoomStayEntity existing : stayRepository.findByRoomIdAndStatusInAndDeletedFalse(
+                room.getId(), List.of("RESERVED", "IN_HOUSE"))) {
+            LocalDateTime exStart = "IN_HOUSE".equals(existing.getStatus())
+                    ? existing.getCheckinAt() : existing.getReservedCheckin();
             if (exStart == null) continue;
             LocalDateTime exEnd = existing.getExpectedCheckout() != null ? existing.getExpectedCheckout() : exStart.plusDays(1);
             if (newStart.isBefore(exEnd) && exStart.isBefore(newEnd)) {
@@ -537,16 +557,20 @@ public class RoomServiceImpl implements RoomService {
 
     /** Nights/hours billed when not overridden at checkout. */
     private int computeUnits(RoomStayEntity stay, LocalDateTime checkoutAt) {
+        // checkin_at is nullable since V009 (reservations); fall back so a malformed/legacy row
+        // can never NPE and break the board. Defaults to reservedCheckin, else the checkout time (→ 1 unit).
+        LocalDateTime start = stay.getCheckinAt() != null ? stay.getCheckinAt()
+                : (stay.getReservedCheckin() != null ? stay.getReservedCheckin() : checkoutAt);
         switch (stay.getBillingMode()) {
             case "HOURLY": {
-                long minutes = ChronoUnit.MINUTES.between(stay.getCheckinAt(), checkoutAt);
+                long minutes = ChronoUnit.MINUTES.between(start, checkoutAt);
                 return (int) Math.max(1, (minutes + 59) / 60);   // round up to the next hour
             }
             case "OVERNIGHT":
                 return 1;
             case "NIGHTLY":
             default: {
-                long nights = ChronoUnit.DAYS.between(stay.getCheckinAt().toLocalDate(), checkoutAt.toLocalDate());
+                long nights = ChronoUnit.DAYS.between(start.toLocalDate(), checkoutAt.toLocalDate());
                 return (int) Math.max(1, nights);                // same-day checkout still bills 1 night
             }
         }
@@ -597,6 +621,10 @@ public class RoomServiceImpl implements RoomService {
     // ── Mappers ────────────────────────────────────────────────────────────────
 
     private RoomDTO mapRoom(RoomEntity r, RoomStayDTO activeStay) {
+        return mapRoom(r, activeStay, null);
+    }
+
+    private RoomDTO mapRoom(RoomEntity r, RoomStayDTO activeStay, RoomStayDTO reservedStay) {
         return RoomDTO.builder()
                 .id(r.getId())
                 .roomNumber(r.getRoomNumber())
@@ -611,6 +639,7 @@ public class RoomServiceImpl implements RoomService {
                 .note(r.getNote())
                 .sortOrder(r.getSortOrder())
                 .activeStay(activeStay)
+                .reservedStay(reservedStay)
                 .build();
     }
 

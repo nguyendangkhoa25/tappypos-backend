@@ -22,6 +22,13 @@ public interface RoomStayRepository extends JpaRepository<RoomStayEntity, Long> 
     /** All stays for a room in a given status (e.g. RESERVED) — used for overlap checks. */
     List<RoomStayEntity> findByRoomIdAndStatusAndDeletedFalse(Long roomId, String status);
 
+    /** All stays for a room in any of the given statuses (RESERVED + IN_HOUSE) — overlap checks. */
+    List<RoomStayEntity> findByRoomIdAndStatusInAndDeletedFalse(Long roomId, java.util.Collection<String> statuses);
+
+    /** Active reservations due on/before a cutoff (the board surfaces these for front-desk check-in). */
+    List<RoomStayEntity> findByStatusAndReservedCheckinLessThanEqualAndDeletedFalseOrderByReservedCheckinAsc(
+            String status, LocalDateTime cutoff);
+
     Page<RoomStayEntity> findByDeletedFalseOrderByCreatedAtDesc(Pageable pageable);
 
     Page<RoomStayEntity> findByStatusAndDeletedFalseOrderByCreatedAtDesc(String status, Pageable pageable);

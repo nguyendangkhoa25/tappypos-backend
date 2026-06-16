@@ -95,4 +95,10 @@ public class RoomStayEntity extends TenantAwareEntity {
 
     @Column(name = "created_by", length = 255)
     private String createdBy;
+
+    /** Optimistic-lock guard: prevents concurrent checkout / reservation check-in from both succeeding. */
+    @Version
+    @Builder.Default
+    @Column(name = "version", nullable = false)
+    private Long version = 0L;
 }

@@ -40,6 +40,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -186,7 +187,7 @@ class RoomServiceImplTest {
                 .roomId(1L).status("RESERVED")
                 .reservedCheckin(LocalDateTime.parse("2026-06-17T14:00:00"))
                 .expectedCheckout(LocalDateTime.parse("2026-06-19T12:00:00")).build();
-        when(stayRepository.findByRoomIdAndStatusAndDeletedFalse(1L, "RESERVED")).thenReturn(List.of(existing));
+        when(stayRepository.findByRoomIdAndStatusInAndDeletedFalse(eq(1L), any())).thenReturn(List.of(existing));
 
         CreateReservationRequest req = new CreateReservationRequest();
         req.setRoomId(1L);
@@ -204,7 +205,7 @@ class RoomServiceImplTest {
                 .roomId(1L).status("RESERVED")
                 .reservedCheckin(LocalDateTime.parse("2026-06-17T14:00:00"))
                 .expectedCheckout(LocalDateTime.parse("2026-06-19T12:00:00")).build();
-        when(stayRepository.findByRoomIdAndStatusAndDeletedFalse(1L, "RESERVED")).thenReturn(List.of(existing));
+        when(stayRepository.findByRoomIdAndStatusInAndDeletedFalse(eq(1L), any())).thenReturn(List.of(existing));
 
         CreateReservationRequest req = new CreateReservationRequest();
         req.setRoomId(1L);
@@ -214,6 +215,25 @@ class RoomServiceImplTest {
         RoomStayDTO dto = service.createReservation(req);
         assertThat(dto.getStatus()).isEqualTo("RESERVED");
         verify(stayRepository).save(any());
+    }
+
+    @Test
+    void createReservation_rejectsOverlapWithCurrentOccupancy() {
+        when(roomRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(room("OCCUPIED")));
+        // Room is occupied (IN_HOUSE) checked in yesterday, leaving tomorrow.
+        RoomStayEntity occupied = RoomStayEntity.builder()
+                .roomId(1L).status("IN_HOUSE")
+                .checkinAt(LocalDateTime.now().minusDays(1))
+                .expectedCheckout(LocalDateTime.now().plusDays(1)).build();
+        when(stayRepository.findByRoomIdAndStatusInAndDeletedFalse(eq(1L), any())).thenReturn(List.of(occupied));
+
+        CreateReservationRequest req = new CreateReservationRequest();
+        req.setRoomId(1L);
+        req.setReservedCheckin(LocalDateTime.now());                 // overlaps the current stay
+        req.setExpectedCheckout(LocalDateTime.now().plusDays(2));
+
+        assertThatThrownBy(() -> service.createReservation(req)).isInstanceOf(BadRequestException.class);
+        verify(stayRepository, never()).save(any());
     }
 
     @Test

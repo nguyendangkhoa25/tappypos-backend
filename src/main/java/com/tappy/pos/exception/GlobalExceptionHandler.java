@@ -125,6 +125,19 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handle optimistic-lock conflicts (e.g. two staff checking the same room out / in at once).
+     * The @Version mismatch means another transaction already updated the row — 409 Conflict.
+     */
+    @ExceptionHandler(org.springframework.dao.OptimisticLockingFailureException.class)
+    public ResponseEntity<ApiResponse<Void>> handleOptimisticLock(
+            org.springframework.dao.OptimisticLockingFailureException ex,
+            WebRequest request) {
+        log.warn("Optimistic lock conflict: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error("CONCURRENT_UPDATE", messageService.getMessage("error.concurrent.update")));
+    }
+
+    /**
      * Handle UnauthorizedException - 401 Unauthorized
      */
     @ExceptionHandler(UnauthorizedException.class)

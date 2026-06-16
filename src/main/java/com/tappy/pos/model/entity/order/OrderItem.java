@@ -37,10 +37,10 @@ public class OrderItem extends TenantAwareEntity {
     private Integer quantity;
 
     @Positive(message = "Unit price must be positive")
-    @Column(name = "unit_price", nullable = false, precision = 10, scale = 2)
+    @Column(name = "unit_price", nullable = false, precision = 15, scale = 2)
     private BigDecimal unitPrice;
 
-    @Column(name = "amount", nullable = false, precision = 10, scale = 2)
+    @Column(name = "amount", nullable = false, precision = 15, scale = 2)
     private BigDecimal amount;
 
     @Builder.Default
@@ -52,7 +52,7 @@ public class OrderItem extends TenantAwareEntity {
     private BigDecimal costAmount = BigDecimal.ZERO;
 
     @Builder.Default
-    @Column(name = "amount_before_tax", precision = 10, scale = 2, columnDefinition = "DECIMAL(10,2) DEFAULT 0")
+    @Column(name = "amount_before_tax", precision = 15, scale = 2, columnDefinition = "DECIMAL(15,2) DEFAULT 0")
     private BigDecimal amountBeforeTax = BigDecimal.ZERO;
 
     @Builder.Default
@@ -60,7 +60,7 @@ public class OrderItem extends TenantAwareEntity {
     private BigDecimal taxPercentage = BigDecimal.ZERO;
 
     @Builder.Default
-    @Column(name = "tax_amount", precision = 10, scale = 2)
+    @Column(name = "tax_amount", precision = 15, scale = 2)
     private BigDecimal taxAmount = BigDecimal.ZERO;
 
     @Column(name = "assigned_employee_id")
@@ -74,7 +74,7 @@ public class OrderItem extends TenantAwareEntity {
     private BigDecimal commissionRate = BigDecimal.ZERO;
 
     @Builder.Default
-    @Column(name = "commission_amount", precision = 10, scale = 2, columnDefinition = "DECIMAL(10,2) DEFAULT 0")
+    @Column(name = "commission_amount", precision = 15, scale = 2, columnDefinition = "DECIMAL(15,2) DEFAULT 0")
     private BigDecimal commissionAmount = BigDecimal.ZERO;
 
     @Builder.Default
