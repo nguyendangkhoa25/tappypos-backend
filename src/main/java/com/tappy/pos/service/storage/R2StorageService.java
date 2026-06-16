@@ -101,7 +101,7 @@ public class R2StorageService {
 
     /**
      * Extract the R2 key from a full public URL.
-     * e.g. "https://images.tappypos.vn/products/abc/42.jpg" → "products/abc/42.jpg"
+     * e.g. "https://images.tappy.vn/products/abc/42.jpg" → "products/abc/42.jpg"
      * Returns null if the URL is blank or does not start with the configured public URL.
      */
     public String keyFromUrl(String url) {

@@ -18,6 +18,10 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     Optional<Product> findByIdAndDeletedFalse(Long id);
     Page<Product> findByDeletedFalseAndStatusOrderByCreatedAtDesc(Product.ProductStatus status, Pageable pageable);
     Page<Product> findByProductTypeIdAndDeletedFalseOrderByCreatedAtDesc(Long productTypeId, Pageable pageable);
+
+    // Public QR menu: all active products for the tenant (RLS-scoped), eager-fetch categories.
+    @Query("SELECT DISTINCT p FROM Product p LEFT JOIN FETCH p.categories WHERE p.deleted = false AND p.status = :status")
+    List<Product> findActiveWithCategories(@Param("status") Product.ProductStatus status);
     
     @Query("SELECT p FROM Product p WHERE p.deleted = false AND " +
            "(LOWER(p.name) LIKE %:searchTerm% OR LOWER(p.sku) LIKE %:searchTerm%)")
@@ -31,5 +35,24 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     @Query("SELECT COUNT(p) FROM Product p WHERE p.deleted = false AND p.status = 'ACTIVE'")
     long countActive();
+
+    Optional<Product> findBySourcePawnIdAndDeletedFalse(Long sourcePawnId);
+
+    Page<Product> findByDeletedFalseAndStatusAndSourcePawnIdIsNotNullOrderByCreatedAtDesc(
+            Product.ProductStatus status, Pageable pageable);
+
+    Page<Product> findByDeletedFalseAndStatusAndProductTypeIdOrderByCreatedAtDesc(
+            Product.ProductStatus status, Long productTypeId, Pageable pageable);
+
+    Page<Product> findByDeletedFalseAndStatusAndProductTypeIdAndSourcePawnIdIsNotNullOrderByCreatedAtDesc(
+            Product.ProductStatus status, Long productTypeId, Pageable pageable);
+
+    @Query("SELECT p FROM Product p JOIN p.categories c " +
+           "WHERE p.deleted = false AND p.status = :status AND c.id = :categoryId " +
+           "AND p.sourcePawnId IS NOT NULL ORDER BY p.createdAt DESC")
+    Page<Product> findByStatusAndCategoryIdAndSourcePawnIdIsNotNull(
+            @Param("status") Product.ProductStatus status,
+            @Param("categoryId") Long categoryId,
+            Pageable pageable);
 }
 

@@ -8,6 +8,7 @@ import com.tappy.pos.model.dto.revenue.RevenueOverviewDTO;
 import com.tappy.pos.model.dto.revenue.RevenuePeriodDTO;
 import com.tappy.pos.model.dto.revenue.TopEmployeeDTO;
 import com.tappy.pos.model.dto.revenue.TopProductDTO;
+import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.finance.ShopExpenseRepository;
 import com.tappy.pos.repository.order.OrderItemRepository;
 import com.tappy.pos.repository.order.OrderRepository;
@@ -34,6 +35,7 @@ public class RevenueServiceImpl implements RevenueService {
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
     private final ShopExpenseRepository expenseRepository;
+    private final TenantContext tenantContext;
 
     private static final String[] VI_MONTHS = {
         "Th1","Th2","Th3","Th4","Th5","Th6","Th7","Th8","Th9","Th10","Th11","Th12"
@@ -66,9 +68,10 @@ public class RevenueServiceImpl implements RevenueService {
         BigDecimal yearCost    = orderItemRepository.sumCostByYear(year);
         Long       yearOrders  = orderRepository.countCompletedByYear(year);
 
-        BigDecimal totalExpenses = expenseRepository.sumAll();
-        BigDecimal monthExpenses = expenseRepository.sumByMonth(year, month);
-        BigDecimal yearExpenses  = expenseRepository.sumByYear(year);
+        String tid = tenantContext.getCurrentTenantId();
+        BigDecimal totalExpenses = expenseRepository.sumAll(tid);
+        BigDecimal monthExpenses = expenseRepository.sumByMonth(tid, year, month);
+        BigDecimal yearExpenses  = expenseRepository.sumByYear(tid, year);
 
         BigDecimal monthGrossProfit = monthRevenue.subtract(monthCost);
         BigDecimal yearGrossProfit  = yearRevenue.subtract(yearCost);
@@ -104,7 +107,7 @@ public class RevenueServiceImpl implements RevenueService {
     public List<RevenuePeriodDTO> getMonthlyBreakdown(int year) {
         List<Object[]> revenueRows = orderRepository.sumRevenueGroupedByMonth(year);
         List<Object[]> costRows    = orderItemRepository.sumCostGroupedByMonth(year);
-        List<Object[]> expenseRows = expenseRepository.sumGroupedByMonth(year);
+        List<Object[]> expenseRows = expenseRepository.sumGroupedByMonth(tenantContext.getCurrentTenantId(), year);
 
         Map<Integer, BigDecimal> costByMonth    = new HashMap<>();
         Map<Integer, BigDecimal> expenseByMonth = new HashMap<>();
@@ -142,7 +145,7 @@ public class RevenueServiceImpl implements RevenueService {
     public List<RevenuePeriodDTO> getDailyBreakdown(int year, int month) {
         List<Object[]> revenueRows = orderRepository.sumRevenueGroupedByDay(year, month);
         List<Object[]> costRows    = orderItemRepository.sumCostGroupedByDay(year, month);
-        List<Object[]> expenseRows = expenseRepository.sumGroupedByDay(year, month);
+        List<Object[]> expenseRows = expenseRepository.sumGroupedByDay(tenantContext.getCurrentTenantId(), year, month);
 
         Map<Integer, BigDecimal> costByDay    = new HashMap<>();
         Map<Integer, BigDecimal> expenseByDay = new HashMap<>();

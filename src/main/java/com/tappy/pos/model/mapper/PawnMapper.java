@@ -6,6 +6,7 @@ import com.tappy.pos.model.entity.pawn.*;
 import com.tappy.pos.model.enums.PawnInterestCalculation;
 import org.springframework.stereotype.Component;
 
+
 @Component
 public class PawnMapper {
 
@@ -15,8 +16,6 @@ public class PawnMapper {
         entity.setCustomerId(req.getCustomerId());
         entity.setItemName(req.getItemName());
         entity.setItemDescription(req.getItemDescription());
-        entity.setItemWeight(req.getItemWeight());
-        entity.setGemWeight(req.getGemWeight());
         entity.setItemValue(req.getItemValue());
         entity.setItemType(req.getItemType());
         entity.setItemBrand(req.getItemBrand());
@@ -32,7 +31,9 @@ public class PawnMapper {
         entity.setForfeitedReason(req.getForfeitedReason());
         entity.setForfeitedAmount(req.getForfeitedAmount());
         entity.setInterestCalcMode(req.getInterestCalcMode());
-        entity.setHeldDays((int) req.getHeldDays());
+        if (req.getHeldDays() != null) {
+            entity.setHeldDays(req.getHeldDays().intValue());
+        }
         entity.setVisible(req.isVisible());
         entity.setPawnCategory(req.getPawnCategory());
         return entity;
@@ -48,8 +49,6 @@ public class PawnMapper {
         response.setItemType(entity.getItemType());
         response.setItemDescription(entity.getItemDescription());
         response.setItemValue(entity.getItemValue());
-        response.setItemWeight(entity.getItemWeight());
-        response.setGemWeight(entity.getGemWeight());
         response.setPawnDate(entity.getPawnDate());
         response.setPawnDueDate(entity.getPawnDueDate());
         response.setPawnAmount(entity.getPawnAmount());
@@ -83,8 +82,6 @@ public class PawnMapper {
         response.setItemType(query.getItemType());
         response.setItemDescription(query.getItemDescription());
         response.setItemValue(query.getItemValue());
-        response.setItemWeight(query.getItemWeight());
-        response.setGemWeight(query.getGemWeight());
         response.setPawnDate(query.getPawnDate());
         response.setPawnDueDate(query.getPawnDueDate());
         response.setPawnAmount(query.getPawnAmount());
@@ -127,8 +124,6 @@ public class PawnMapper {
                 .customerId(entity.getCustomerId())
                 .itemName(entity.getItemName())
                 .itemDescription(entity.getItemDescription())
-                .itemWeight(entity.getItemWeight())
-                .gemWeight(entity.getGemWeight())
                 .itemValue(entity.getItemValue())
                 .itemType(entity.getItemType())
                 .itemBrand(entity.getItemBrand())
@@ -246,6 +241,23 @@ public class PawnMapper {
         return PawnGeneralEntity.builder()
                 .tenantId(tenantId).pawnId(pawnId)
                 .serialNumber(d.getSerialNumber()).condition(d.getCondition())
+                .build();
+    }
+
+    public PawnJewelryDetail fromJewelryEntity(PawnJewelryEntity e) {
+        if (e == null) return null;
+        return PawnJewelryDetail.builder()
+                .totalWeight(e.getTotalWeight()).gemWeight(e.getGemWeight()).goldWeight(e.getGoldWeight())
+                .purity(e.getPurity()).metalType(e.getMetalType()).hallmark(e.getHallmark())
+                .build();
+    }
+
+    public PawnJewelryEntity toJewelryEntity(String tenantId, Long pawnId, PawnJewelryDetail d) {
+        if (d == null) return null;
+        return PawnJewelryEntity.builder()
+                .tenantId(tenantId).pawnId(pawnId)
+                .totalWeight(d.getTotalWeight()).gemWeight(d.getGemWeight()).goldWeight(d.getGoldWeight())
+                .purity(d.getPurity()).metalType(d.getMetalType()).hallmark(d.getHallmark())
                 .build();
     }
 }

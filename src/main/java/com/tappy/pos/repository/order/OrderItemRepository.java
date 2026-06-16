@@ -13,24 +13,26 @@ import java.util.List;
 @Repository
 public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
 
+    // ── Cost aggregation ──────────────────────────────────────────────────────
+
     @Query("SELECT COALESCE(SUM(oi.costAmount), 0) FROM OrderItem oi JOIN oi.order o WHERE o.deleted = false AND o.status = 'COMPLETED'")
     BigDecimal sumTotalCost();
 
-    @Query(value = "SELECT COALESCE(SUM(oi.cost_amount), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.status = 'COMPLETED' AND EXTRACT(YEAR FROM o.completed_at) = :year AND EXTRACT(MONTH FROM o.completed_at) = :month",
+    @Query(value = "SELECT COALESCE(SUM(oi.cost_amount), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND EXTRACT(YEAR FROM o.completed_at) = :year AND EXTRACT(MONTH FROM o.completed_at) = :month",
            nativeQuery = true)
     BigDecimal sumCostByMonth(@Param("year") int year, @Param("month") int month);
 
-    @Query(value = "SELECT COALESCE(SUM(oi.cost_amount), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.status = 'COMPLETED' AND EXTRACT(YEAR FROM o.completed_at) = :year",
+    @Query(value = "SELECT COALESCE(SUM(oi.cost_amount), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND EXTRACT(YEAR FROM o.completed_at) = :year",
            nativeQuery = true)
     BigDecimal sumCostByYear(@Param("year") int year);
 
     // Monthly cost breakdown: [month, cost]
-    @Query(value = "SELECT EXTRACT(MONTH FROM o.completed_at), COALESCE(SUM(oi.cost_amount), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.status = 'COMPLETED' AND EXTRACT(YEAR FROM o.completed_at) = :year GROUP BY EXTRACT(MONTH FROM o.completed_at) ORDER BY EXTRACT(MONTH FROM o.completed_at)",
+    @Query(value = "SELECT EXTRACT(MONTH FROM o.completed_at), COALESCE(SUM(oi.cost_amount), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND EXTRACT(YEAR FROM o.completed_at) = :year GROUP BY EXTRACT(MONTH FROM o.completed_at) ORDER BY EXTRACT(MONTH FROM o.completed_at)",
            nativeQuery = true)
     List<Object[]> sumCostGroupedByMonth(@Param("year") int year);
 
     // Daily cost breakdown: [day, cost]
-    @Query(value = "SELECT EXTRACT(DAY FROM o.completed_at), COALESCE(SUM(oi.cost_amount), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.status = 'COMPLETED' AND EXTRACT(YEAR FROM o.completed_at) = :year AND EXTRACT(MONTH FROM o.completed_at) = :month GROUP BY EXTRACT(DAY FROM o.completed_at) ORDER BY EXTRACT(DAY FROM o.completed_at)",
+    @Query(value = "SELECT EXTRACT(DAY FROM o.completed_at), COALESCE(SUM(oi.cost_amount), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND EXTRACT(YEAR FROM o.completed_at) = :year AND EXTRACT(MONTH FROM o.completed_at) = :month GROUP BY EXTRACT(DAY FROM o.completed_at) ORDER BY EXTRACT(DAY FROM o.completed_at)",
            nativeQuery = true)
     List<Object[]> sumCostGroupedByDay(@Param("year") int year, @Param("month") int month);
 
@@ -44,6 +46,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
               AND oi.is_salary_calculated = false
               AND oi.included_in_salary_id IS NULL
               AND o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
               AND o.status = 'COMPLETED'
               AND EXTRACT(YEAR  FROM o.completed_at) = :year
               AND EXTRACT(MONTH FROM o.completed_at) = :month
@@ -63,6 +66,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
               AND oi.is_salary_calculated = false
               AND oi.included_in_salary_id IS NULL
               AND o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
               AND o.status = 'COMPLETED'
               AND EXTRACT(YEAR  FROM o.completed_at) = :year
               AND EXTRACT(MONTH FROM o.completed_at) = :month
@@ -74,12 +78,12 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             @Param("year") int year);
 
     @Modifying
-    @Query(value = "UPDATE order_items SET is_salary_calculated = true WHERE included_in_salary_id = :salaryId",
+    @Query(value = "UPDATE order_items SET is_salary_calculated = true WHERE included_in_salary_id = :salaryId AND tenant_id = current_setting('app.current_tenant', true)",
            nativeQuery = true)
     int markSalaryCalculated(@Param("salaryId") Long salaryId);
 
     @Modifying
-    @Query(value = "UPDATE order_items SET included_in_salary_id = NULL WHERE included_in_salary_id = :salaryId",
+    @Query(value = "UPDATE order_items SET included_in_salary_id = NULL WHERE included_in_salary_id = :salaryId AND tenant_id = current_setting('app.current_tenant', true)",
            nativeQuery = true)
     int unlinkFromSalary(@Param("salaryId") Long salaryId);
 
@@ -89,6 +93,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
             WHERE oi.included_in_salary_id = :salaryId
+              AND o.tenant_id = current_setting('app.current_tenant', true)
             ORDER BY o.completed_at
             """, nativeQuery = true)
     List<Object[]> findCommissionItemsBySalaryId(@Param("salaryId") Long salaryId);
@@ -108,6 +113,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             JOIN orders o ON o.id = oi.order_id
             WHERE oi.assigned_employee_id = :employeeId
               AND o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
               AND o.status = 'COMPLETED'
               AND EXTRACT(YEAR  FROM o.completed_at) = :year
               AND EXTRACT(MONTH FROM o.completed_at) = :month
@@ -128,6 +134,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
               AND oi.commission_amount IS NOT NULL
               AND oi.commission_amount > 0
               AND o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
               AND o.status = 'COMPLETED'
               AND EXTRACT(YEAR  FROM o.completed_at) = :year
               AND EXTRACT(MONTH FROM o.completed_at) = :month
@@ -151,6 +158,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
               AND oi.commission_amount IS NOT NULL
               AND oi.commission_amount > 0
               AND o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
               AND o.status = 'COMPLETED'
               AND EXTRACT(YEAR  FROM o.completed_at) = :year
               AND EXTRACT(MONTH FROM o.completed_at) = :month
@@ -176,6 +184,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
               AND oi.commission_amount IS NOT NULL
               AND oi.commission_amount > 0
               AND o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
               AND o.status = 'COMPLETED'
               AND EXTRACT(YEAR  FROM o.completed_at) = :year
               AND EXTRACT(MONTH FROM o.completed_at) = :month
@@ -202,12 +211,15 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             LEFT JOIN product p ON p.id = oi.product_id
             WHERE oi.assigned_employee_id = :employeeId
               AND o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
             ORDER BY o.created_at ASC
             """, nativeQuery = true,
          countQuery = """
             SELECT COUNT(*) FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
-            WHERE oi.assigned_employee_id = :employeeId AND o.deleted = false
+            WHERE oi.assigned_employee_id = :employeeId
+              AND o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
             """)
     org.springframework.data.domain.Page<Object[]> findWorkItemsByEmployeeId(
             @Param("employeeId") Long employeeId,
@@ -228,16 +240,53 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             WHERE oi.assigned_employee_id = :employeeId
               AND oi.status IN ('PENDING', 'IN_PROGRESS')
               AND o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
             ORDER BY o.created_at ASC
             """, nativeQuery = true,
          countQuery = """
             SELECT COUNT(*) FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
             WHERE oi.assigned_employee_id = :employeeId
-              AND oi.status IN ('PENDING', 'IN_PROGRESS') AND o.deleted = false
+              AND oi.status IN ('PENDING', 'IN_PROGRESS')
+              AND o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
             """)
     org.springframework.data.domain.Page<Object[]> findPendingWorkItemsByEmployeeId(
             @Param("employeeId") Long employeeId,
+            org.springframework.data.domain.Pageable pageable);
+
+    /**
+     * All-staff oversight board: PENDING + IN_PROGRESS items assigned to ANY employee
+     * in the tenant (not just the caller). Backs the Staff Queue board, which groups
+     * these by employee. Access is gated by ORDER_VIEW_ALL at the controller.
+     */
+    @Query(value = """
+            SELECT oi.id, o.id AS order_id, o.order_number, c.name AS customer_name,
+                   oi.product_id, oi.product_name, oi.quantity, oi.unit_price, oi.amount,
+                   COALESCE(p.duration_minutes, 0) AS duration_minutes,
+                   oi.status, oi.completed_at, oi.assigned_employee_id, oi.assigned_employee_name,
+                   o.created_at AS order_created_at,
+                   NULL::numeric AS commission_rate, NULL::numeric AS commission_amount,
+                   oi.note
+            FROM order_items oi
+            JOIN orders o ON o.id = oi.order_id
+            LEFT JOIN customers c ON c.id = o.customer_id
+            LEFT JOIN product p ON p.id = oi.product_id
+            WHERE oi.assigned_employee_id IS NOT NULL
+              AND oi.status IN ('PENDING', 'IN_PROGRESS')
+              AND o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
+            ORDER BY o.created_at ASC
+            """, nativeQuery = true,
+         countQuery = """
+            SELECT COUNT(*) FROM order_items oi
+            JOIN orders o ON o.id = oi.order_id
+            WHERE oi.assigned_employee_id IS NOT NULL
+              AND oi.status IN ('PENDING', 'IN_PROGRESS')
+              AND o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
+            """)
+    org.springframework.data.domain.Page<Object[]> findAllPendingWorkItems(
             org.springframework.data.domain.Pageable pageable);
 
     @Query("SELECT oi FROM OrderItem oi WHERE oi.id = :itemId AND oi.assignedEmployeeId = :employeeId")
@@ -260,6 +309,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             WHERE oi.assigned_employee_id IS NULL
               AND oi.status = 'PENDING'
               AND o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
               AND o.status NOT IN ('CANCELLED', 'COMPLETED', 'VOIDED')
             ORDER BY o.created_at ASC
             """, nativeQuery = true,
@@ -269,6 +319,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             WHERE oi.assigned_employee_id IS NULL
               AND oi.status = 'PENDING'
               AND o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
               AND o.status NOT IN ('CANCELLED', 'COMPLETED', 'VOIDED')
             """)
     org.springframework.data.domain.Page<Object[]> findAvailableWorkItems(
@@ -294,6 +345,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             LEFT JOIN product p ON p.id = oi.product_id
             WHERE oi.assigned_employee_id = :employeeId
               AND oi.status = 'COMPLETED'
+              AND o.tenant_id = current_setting('app.current_tenant', true)
               AND oi.completed_at >= :from
               AND oi.completed_at < :to
               AND (CAST(:keyword AS text) IS NULL
@@ -308,6 +360,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             LEFT JOIN customers c ON c.id = o.customer_id
             WHERE oi.assigned_employee_id = :employeeId
               AND oi.status = 'COMPLETED'
+              AND o.tenant_id = current_setting('app.current_tenant', true)
               AND oi.completed_at >= :from
               AND oi.completed_at < :to
               AND (CAST(:keyword AS text) IS NULL
@@ -330,6 +383,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             FROM order_items oi
             LEFT JOIN product p ON p.id = oi.product_id
             WHERE oi.assigned_employee_id = :employeeId
+              AND oi.tenant_id = current_setting('app.current_tenant', true)
               AND oi.status = 'COMPLETED'
               AND oi.completed_at >= :from
               AND oi.completed_at < :to
@@ -346,6 +400,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
                    COALESCE(SUM(oi.amount), 0)
             FROM order_items oi
             WHERE oi.assigned_employee_id = :employeeId
+              AND oi.tenant_id = current_setting('app.current_tenant', true)
               AND oi.status = 'COMPLETED'
               AND oi.completed_at >= :from
               AND oi.completed_at < :to
@@ -363,6 +418,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
                    COALESCE(SUM(oi.amount), 0)
             FROM order_items oi
             WHERE oi.assigned_employee_id = :employeeId
+              AND oi.tenant_id = current_setting('app.current_tenant', true)
               AND oi.status = 'COMPLETED'
               AND oi.completed_at >= :from
               AND oi.completed_at < :to
@@ -380,6 +436,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
                    COALESCE(SUM(oi.amount), 0)
             FROM order_items oi
             WHERE oi.assigned_employee_id = :employeeId
+              AND oi.tenant_id = current_setting('app.current_tenant', true)
               AND oi.status = 'COMPLETED'
               AND oi.completed_at >= :from
               AND oi.completed_at < :to
@@ -406,7 +463,9 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
             WHERE oi.combo_id IS NOT NULL
-              AND o.deleted = false AND o.status = 'COMPLETED'
+              AND o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
+              AND o.status = 'COMPLETED'
               AND o.completed_at >= :from AND o.completed_at < :to
             """, nativeQuery = true)
     List<Object[]> getComboSummary(
@@ -427,7 +486,9 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             JOIN combos c ON c.id = oi.combo_id
             JOIN orders o ON o.id = oi.order_id
             WHERE oi.combo_id IS NOT NULL
-              AND o.deleted = false AND o.status = 'COMPLETED'
+              AND o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
+              AND o.status = 'COMPLETED'
               AND o.completed_at >= :from AND o.completed_at < :to
             GROUP BY c.id, c.name
             ORDER BY revenue DESC
@@ -448,7 +509,9 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
             WHERE oi.combo_id IS NOT NULL
-              AND o.deleted = false AND o.status = 'COMPLETED'
+              AND o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
+              AND o.status = 'COMPLETED'
               AND o.completed_at >= :from AND o.completed_at < :to
             GROUP BY lbl ORDER BY lbl
             """, nativeQuery = true)
@@ -466,7 +529,9 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
             WHERE oi.combo_id IS NOT NULL
-              AND o.deleted = false AND o.status = 'COMPLETED'
+              AND o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
+              AND o.status = 'COMPLETED'
               AND o.completed_at >= :from AND o.completed_at < :to
             GROUP BY lbl ORDER BY lbl
             """, nativeQuery = true)
@@ -484,7 +549,9 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
             WHERE oi.combo_id IS NOT NULL
-              AND o.deleted = false AND o.status = 'COMPLETED'
+              AND o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
+              AND o.status = 'COMPLETED'
               AND o.completed_at >= :from AND o.completed_at < :to
             GROUP BY lbl ORDER BY lbl
             """, nativeQuery = true)
@@ -501,7 +568,9 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             SELECT COALESCE(SUM(oi.commission_amount), 0)
             FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
-            WHERE o.deleted = false AND o.status = 'COMPLETED'
+            WHERE o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
+              AND o.status = 'COMPLETED'
               AND oi.commission_amount IS NOT NULL AND oi.commission_amount > 0
               AND o.completed_at >= :from AND o.completed_at < :to
             """, nativeQuery = true)
@@ -521,7 +590,9 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
                    COALESCE(SUM(oi.amount), 0)               AS revenue
             FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
-            WHERE o.deleted = false AND o.status = 'COMPLETED'
+            WHERE o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
+              AND o.status = 'COMPLETED'
               AND oi.assigned_employee_id IS NOT NULL
               AND o.completed_at >= :from AND o.completed_at < :to
             GROUP BY oi.assigned_employee_id, oi.assigned_employee_name
@@ -541,7 +612,9 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
                    COALESCE(SUM(oi.commission_amount), 0)   AS commission
             FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
-            WHERE o.deleted = false AND o.status = 'COMPLETED'
+            WHERE o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
+              AND o.status = 'COMPLETED'
               AND oi.commission_amount IS NOT NULL AND oi.commission_amount > 0
               AND o.completed_at >= :from AND o.completed_at < :to
             GROUP BY lbl ORDER BY lbl
@@ -558,7 +631,9 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
                    COALESCE(SUM(oi.commission_amount), 0)   AS commission
             FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
-            WHERE o.deleted = false AND o.status = 'COMPLETED'
+            WHERE o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
+              AND o.status = 'COMPLETED'
               AND oi.commission_amount IS NOT NULL AND oi.commission_amount > 0
               AND o.completed_at >= :from AND o.completed_at < :to
             GROUP BY lbl ORDER BY lbl
@@ -575,7 +650,9 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
                    COALESCE(SUM(oi.commission_amount), 0)    AS commission
             FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
-            WHERE o.deleted = false AND o.status = 'COMPLETED'
+            WHERE o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
+              AND o.status = 'COMPLETED'
               AND oi.commission_amount IS NOT NULL AND oi.commission_amount > 0
               AND o.completed_at >= :from AND o.completed_at < :to
             GROUP BY lbl ORDER BY lbl
@@ -584,11 +661,11 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             @Param("from") java.time.LocalDateTime from,
             @Param("to")   java.time.LocalDateTime to);
 
-    @Query(value = "SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.status = 'COMPLETED' AND EXTRACT(YEAR FROM o.completed_at) = :year AND EXTRACT(MONTH FROM o.completed_at) = :month",
+    @Query(value = "SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND EXTRACT(YEAR FROM o.completed_at) = :year AND EXTRACT(MONTH FROM o.completed_at) = :month",
            nativeQuery = true)
     Long sumItemsSoldByMonth(@Param("year") int year, @Param("month") int month);
 
-    @Query(value = "SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.status = 'COMPLETED' AND EXTRACT(YEAR FROM o.completed_at) = :year",
+    @Query(value = "SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND EXTRACT(YEAR FROM o.completed_at) = :year",
            nativeQuery = true)
     Long sumItemsSoldByYear(@Param("year") int year);
 
@@ -596,7 +673,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
     Long sumItemsSoldByDateRange(@Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
 
     // Top products: [productId, productName, quantity, revenue, cost]
-    @Query(value = "SELECT oi.product_id, oi.product_name, SUM(oi.quantity), COALESCE(SUM(oi.amount), 0), COALESCE(SUM(oi.cost_amount), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.status = 'COMPLETED' AND (CAST(:year AS integer) IS NULL OR EXTRACT(YEAR FROM o.completed_at) = CAST(:year AS integer)) AND (CAST(:month AS integer) IS NULL OR EXTRACT(MONTH FROM o.completed_at) = CAST(:month AS integer)) GROUP BY oi.product_id, oi.product_name ORDER BY SUM(oi.amount) DESC",
+    @Query(value = "SELECT oi.product_id, oi.product_name, SUM(oi.quantity), COALESCE(SUM(oi.amount), 0), COALESCE(SUM(oi.cost_amount), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND (CAST(:year AS integer) IS NULL OR EXTRACT(YEAR FROM o.completed_at) = CAST(:year AS integer)) AND (CAST(:month AS integer) IS NULL OR EXTRACT(MONTH FROM o.completed_at) = CAST(:month AS integer)) GROUP BY oi.product_id, oi.product_name ORDER BY SUM(oi.amount) DESC",
            nativeQuery = true)
     List<Object[]> findTopProducts(@Param("year") Integer year, @Param("month") Integer month);
 
@@ -610,6 +687,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             JOIN orders o ON o.id = oi.order_id
             WHERE o.customer_id = :customerId
               AND o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
               AND o.status = 'COMPLETED'
               AND o.completed_at >= :from
               AND o.completed_at <= :to
@@ -633,12 +711,14 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
                    COALESCE(SUM(oi.amount), 0), MAX(o.completed_at)
             FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
-            WHERE o.deleted = false AND o.status = 'COMPLETED'
+            WHERE o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
+              AND o.status = 'COMPLETED'
               AND oi.product_id = :productId
               AND o.completed_at >= :from
             """, nativeQuery = true)
     List<Object[]> getProductPeriodStats(@Param("productId") Long productId,
-                                        @Param("from") java.time.LocalDateTime from);
+                                         @Param("from") java.time.LocalDateTime from);
 
     /**
      * Revenue for one product in a specific calendar month.
@@ -647,7 +727,9 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             SELECT COALESCE(SUM(oi.amount), 0)
             FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
-            WHERE o.deleted = false AND o.status = 'COMPLETED'
+            WHERE o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
+              AND o.status = 'COMPLETED'
               AND oi.product_id = :productId
               AND EXTRACT(YEAR  FROM o.completed_at) = :year
               AND EXTRACT(MONTH FROM o.completed_at) = :month
@@ -665,7 +747,9 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
             JOIN customers c ON c.id = o.customer_id
-            WHERE o.deleted = false AND o.status = 'COMPLETED'
+            WHERE o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
+              AND o.status = 'COMPLETED'
               AND oi.product_id = :productId
               AND o.completed_at >= :from
               AND o.customer_id IS NOT NULL
@@ -685,7 +769,9 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             SELECT oi.assigned_employee_name, COUNT(DISTINCT o.id)
             FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
-            WHERE o.deleted = false AND o.status = 'COMPLETED'
+            WHERE o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
+              AND o.status = 'COMPLETED'
               AND oi.product_id = :productId
               AND o.completed_at >= :from
               AND oi.assigned_employee_name IS NOT NULL

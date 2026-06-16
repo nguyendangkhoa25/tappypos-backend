@@ -22,8 +22,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -48,6 +50,13 @@ public class AppointmentServiceImpl implements AppointmentService {
     public Page<AppointmentDTO> getByDate(LocalDate date, Pageable pageable) {
         String tenantId = tenantContext.getCurrentTenantId();
         return appointmentRepository.findByTenantIdAndDate(tenantId, date, pageable)
+                .map(this::mapToDTO);
+    }
+
+    @Override
+    public Page<AppointmentDTO> getByCustomer(Long customerId, Pageable pageable) {
+        String tenantId = tenantContext.getCurrentTenantId();
+        return appointmentRepository.findByCustomerId(tenantId, customerId, pageable)
                 .map(this::mapToDTO);
     }
 
@@ -194,6 +203,67 @@ public class AppointmentServiceImpl implements AppointmentService {
         Appointment appointment = findOrThrow(id);
         appointment.softDelete();
         appointmentRepository.save(appointment);
+    }
+
+    @Override
+    public Map<String, Object> getAnalytics(LocalDate from, LocalDate to, String granularity, int limit) {
+        // ── Summary ──────────────────────────────────────────────────────────
+        Object[] sumRow       = appointmentRepository.getAnalyticsSummary(from, to);
+        long total            = sumRow[0] != null ? ((Number) sumRow[0]).longValue() : 0;
+        long completedCount   = sumRow[1] != null ? ((Number) sumRow[1]).longValue() : 0;
+        long cancelledCount   = sumRow[2] != null ? ((Number) sumRow[2]).longValue() : 0;
+        long days             = ChronoUnit.DAYS.between(from, to) + 1;
+        double completionRate = total > 0 ? Math.round(completedCount * 1000.0 / total) / 1000.0 : 0.0;
+        double avgPerDay      = days > 0 ? Math.round(total * 10.0 / days) / 10.0 : 0.0;
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("total",          total);
+        summary.put("completedCount", completedCount);
+        summary.put("completionRate", completionRate);
+        summary.put("cancelledCount", cancelledCount);
+        summary.put("avgPerDay",      avgPerDay);
+
+        // ── Trend ─────────────────────────────────────────────────────────────
+        List<Object[]> trendRows = switch (granularity) {
+            case "week"  -> appointmentRepository.getAnalyticsTrendByWeek(from, to);
+            case "month" -> appointmentRepository.getAnalyticsTrendByMonth(from, to);
+            default      -> appointmentRepository.getAnalyticsTrendByDay(from, to);
+        };
+        List<Map<String, Object>> trend = trendRows.stream().map(r -> {
+            Map<String, Object> p = new LinkedHashMap<>();
+            p.put("label",     r[0] != null ? r[0].toString() : "");
+            p.put("total",     r[1] != null ? ((Number) r[1]).longValue() : 0);
+            p.put("completed", r[2] != null ? ((Number) r[2]).longValue() : 0);
+            p.put("cancelled", r[3] != null ? ((Number) r[3]).longValue() : 0);
+            return p;
+        }).collect(Collectors.toList());
+
+        // ── Service ranking ───────────────────────────────────────────────────
+        List<Map<String, Object>> rankingServices = appointmentRepository
+                .getServiceRanking(from, to, Math.max(1, limit))
+                .stream().map(r -> {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("name",  r[0] != null ? r[0].toString() : "");
+                    item.put("count", r[1] != null ? ((Number) r[1]).longValue() : 0);
+                    return item;
+                }).collect(Collectors.toList());
+
+        // ── Employee ranking ──────────────────────────────────────────────────
+        List<Map<String, Object>> rankingEmployees = appointmentRepository
+                .getEmployeeRanking(from, to, Math.max(1, limit))
+                .stream().map(r -> {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("name",  r[0] != null ? r[0].toString() : "");
+                    item.put("count", r[1] != null ? ((Number) r[1]).longValue() : 0);
+                    return item;
+                }).collect(Collectors.toList());
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("summary",          summary);
+        result.put("trend",            trend);
+        result.put("rankingServices",  rankingServices);
+        result.put("rankingEmployees", rankingEmployees);
+        return result;
     }
 
     @Override

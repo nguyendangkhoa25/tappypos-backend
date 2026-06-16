@@ -5,7 +5,9 @@ import org.springframework.core.io.FileSystemResource;
 import org.springframework.data.domain.Pageable;
 
 import java.io.IOException;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 public interface PawnService {
     PawnResponse createPawn(PawnRequest pawnRequest);
@@ -41,4 +43,12 @@ public interface PawnService {
     PawnSetting updatePawnSetting(PawnSetting setting);
 
     PawnSetting getPawnSetting();
+
+    List<Map<String, Object>> getTopPawnCustomers(int limit, LocalDate from, LocalDate to);
+
+    PawnCustomerInsights getPawnCustomerInsights(LocalDate from, LocalDate to);
+
+    PawnResponse lookupByCode(String code);
+
+    Map<String, Object> getCustomerPawnSummary(Long customerId);
 }

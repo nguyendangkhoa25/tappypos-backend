@@ -262,11 +262,12 @@ public class CustomerController {
             @RequestParam(defaultValue = "10") int limit,
             @RequestParam(defaultValue = "true") boolean allTime,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "spend") String sortBy) {
         LocalDate resolvedFrom = from != null ? from : LocalDate.now().minusDays(30);
         LocalDate resolvedTo   = to   != null ? to   : LocalDate.now();
-        log.info("Endpoint: GET /customers/analytics/ranking limit={} allTime={} from={} to={}", limit, allTime, resolvedFrom, resolvedTo);
-        return ResponseEntity.ok(ApiResponse.success(customerService.getTopCustomersRanking(limit, allTime, resolvedFrom, resolvedTo), "OK"));
+        log.info("Endpoint: GET /customers/analytics/ranking limit={} allTime={} from={} to={} sortBy={}", limit, allTime, resolvedFrom, resolvedTo, sortBy);
+        return ResponseEntity.ok(ApiResponse.success(customerService.getTopCustomersRanking(limit, allTime, resolvedFrom, resolvedTo, sortBy), "OK"));
     }
 
     // ── Avatar ────────────────────────────────────────────────────────────────

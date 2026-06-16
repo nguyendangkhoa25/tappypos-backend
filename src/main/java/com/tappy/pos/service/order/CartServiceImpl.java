@@ -203,8 +203,9 @@ public class CartServiceImpl implements CartService {
             );
         }
 
-        // Step 2b: Unique-item validation (JEWELRY, WATCH, etc.)
-        if (UniqueItemProductTypes.isUniqueItem(product.getProductTypeCode())) {
+        // Step 2b: Unique-item validation — covers type-level UNIQUE (JEWELRY, WATCH, BIKE…)
+        // AND pawn-origin items (any type with sourcePawnId set → inventoryMode = UNIQUE).
+        if ("UNIQUE".equals(product.getInventoryMode())) {
             if (!"ACTIVE".equals(product.getStatus())) {
                 throw new BadRequestException(messageService.getMessage("product.already.sold"));
             }
@@ -223,9 +224,11 @@ public class CartServiceImpl implements CartService {
             resolvedUnitPrice = product.getPrice();
         }
 
-        // Step 3: Check stock availability via InventoryService (skipped for no-inventory types e.g. SERVICE)
+        // Step 3: Check stock availability via InventoryService.
+        // Read the stored inventoryMode field — not re-derived from type code — so pawn-origin
+        // items (e.g. a pawned phone: type=ELECTRONICS, mode=UNIQUE) are handled correctly.
         BigDecimal resolvedUnitCost = product.getCostPrice() != null ? product.getCostPrice() : BigDecimal.ZERO;
-        if (!NoInventoryProductTypes.isNoInventory(product.getProductTypeCode())) {
+        if (!"NO_INVENTORY".equals(product.getInventoryMode())) {
             try {
                 var pageable = org.springframework.data.domain.PageRequest.of(0, 1);
                 var inventoryPage = (request.getVariantId() != null)
@@ -370,7 +373,7 @@ public class CartServiceImpl implements CartService {
     public CartResponse addComboToCart(String cartId, Long comboId) throws JsonProcessingException {
         log.info("Adding combo {} to cart {}", comboId, cartId);
         Combo combo = comboRepository.findById(comboId)
-                .orElseThrow(() -> new ResourceNotFoundException("Combo not found: " + comboId));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.combo.not.found", comboId)));
         if (Boolean.FALSE.equals(combo.getActive())) {
             throw new BadRequestException(messageService.getMessage("combo.inactive"));
         }
@@ -870,17 +873,20 @@ public class CartServiceImpl implements CartService {
         BigDecimal totalTax;
         BigDecimal total;
 
+        // Pre-compute gold sums for buy_amount / sell_amount columns on the order.
+        // Used by all order types so the receipt can show the breakdown.
+        BigDecimal buyGoldSum = cart.getItems().stream()
+                .filter(i -> i.getItemType() == CartItemEntity.ItemType.GOLD_IN)
+                .map(CartItemEntity::getLineGrandTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal sellGoldSum = cart.getItems().stream()
+                .filter(i -> i.getItemType() != CartItemEntity.ItemType.GOLD_IN)
+                .map(CartItemEntity::getLineGrandTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         if (orderType == Order.OrderType.EXCHANGE) {
-            // Net = SUM(GOLD_OUT lineGrandTotal) - SUM(GOLD_IN lineGrandTotal); tax already in line totals
-            BigDecimal sellSum = cart.getItems().stream()
-                    .filter(i -> i.getItemType() == CartItemEntity.ItemType.GOLD_OUT)
-                    .map(CartItemEntity::getLineGrandTotal)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-            BigDecimal buySum = cart.getItems().stream()
-                    .filter(i -> i.getItemType() == CartItemEntity.ItemType.GOLD_IN)
-                    .map(CartItemEntity::getLineGrandTotal)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-            total        = sellSum.subtract(buySum);
+            // Net = SUM(GOLD_OUT + STANDARD) - SUM(GOLD_IN); tax already included in line totals
+            total        = sellGoldSum.subtract(buyGoldSum);
             totalDiscount = BigDecimal.ZERO;
             totalTax     = BigDecimal.ZERO;
         } else if (orderType == Order.OrderType.BUY) {
@@ -968,6 +974,11 @@ public class CartServiceImpl implements CartService {
         order.setStatus(inProgress ? Order.OrderStatus.IN_PROGRESS : Order.OrderStatus.COMPLETED);
         order.setOrderType(orderType);
         order.setTotalAmount(total);
+        // sell/buy summary is meaningful only for gold BUY/EXCHANGE; SELL leaves them 0 (total holds the value).
+        order.setSellAmount(orderType == Order.OrderType.EXCHANGE ? sellGoldSum : BigDecimal.ZERO);
+        order.setBuyAmount(buyGoldSum);
+        if (request.getGoldDiffWeight() != null) order.setGoldDiffWeight(request.getGoldDiffWeight());
+        if (request.getGoldDiffAmount() != null) order.setGoldDiffAmount(request.getGoldDiffAmount());
         order.setDiscountAmount(totalDiscount);
         order.setTipAmount(tipAmount);
         order.setTaxPercentage(cart.getTaxRate().multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP));
@@ -1012,34 +1023,34 @@ public class CartServiceImpl implements CartService {
             oi.setComboId(cartItem.getComboId());
             orderItems.add(oi);
 
-            // Deduct stock only for catalog items that track inventory; gold and service items skip this
-            if (cartItem.getItemType() == CartItemEntity.ItemType.STANDARD
-                    && !NoInventoryProductTypes.isNoInventory(cartItem.getProductTypeCode())) {
-                try {
-                    var pageable = org.springframework.data.domain.PageRequest.of(0, 1);
-                    var inventoryPage = (cartItem.getVariantId() != null)
-                            ? inventoryService.getInventoryByProductIdAndVariantId(cartItem.getProductId(), cartItem.getVariantId(), pageable)
-                            : inventoryService.getInventoryByProductId(cartItem.getProductId(), pageable);
-                    if (!inventoryPage.isEmpty()) {
-                        Long inventoryId = inventoryPage.getContent().get(0).getId();
-                        inventoryService.removeStock(inventoryId, (long) cartItem.getQuantity().intValue());
-                    } else {
-                        log.warn("No inventory found for product {} variant {} — stock not deducted",
-                                cartItem.getProductId(), cartItem.getVariantId());
-                    }
-                } catch (Exception e) {
-                    log.warn("Inventory deduction failed for product {}: {}", cartItem.getProductId(), e.getMessage());
-                }
-
-                // Unique-item types (JEWELRY, WATCH): flip product status to INACTIVE ("Đã bán")
+            // Post-sale inventory update for standard catalog items.
+            // Read stored inventoryMode — not re-derived from type code — so pawn-origin items
+            // (e.g. type=ELECTRONICS, mode=UNIQUE) are handled correctly.
+            //   TRACKED  → decrement qty
+            //   UNIQUE   → flip status to INACTIVE ("Đã bán"); never decrement qty
+            //   NO_INVENTORY → skip entirely
+            if (cartItem.getItemType() == CartItemEntity.ItemType.STANDARD) {
                 try {
                     ProductDTO soldProduct = productService.getProductById(cartItem.getProductId());
-                    if (UniqueItemProductTypes.isUniqueItem(soldProduct.getProductTypeCode())) {
+                    String mode = soldProduct.getInventoryMode();
+
+                    if ("TRACKED".equals(mode)) {
+                        var pageable = org.springframework.data.domain.PageRequest.of(0, 1);
+                        var inventoryPage = (cartItem.getVariantId() != null)
+                                ? inventoryService.getInventoryByProductIdAndVariantId(cartItem.getProductId(), cartItem.getVariantId(), pageable)
+                                : inventoryService.getInventoryByProductId(cartItem.getProductId(), pageable);
+                        if (!inventoryPage.isEmpty()) {
+                            inventoryService.removeStock(inventoryPage.getContent().get(0).getId(), (long) cartItem.getQuantity().intValue());
+                        } else {
+                            log.warn("No inventory found for product {} variant {} — stock not deducted",
+                                    cartItem.getProductId(), cartItem.getVariantId());
+                        }
+                    } else if ("UNIQUE".equals(mode)) {
                         productService.markAsSold(cartItem.getProductId());
                         log.info("Unique item {} ({}) marked as sold", cartItem.getProductId(), soldProduct.getProductTypeCode());
                     }
                 } catch (Exception e) {
-                    log.warn("Failed to mark unique item {} as sold: {}", cartItem.getProductId(), e.getMessage());
+                    log.warn("Post-order inventory update failed for product {}: {}", cartItem.getProductId(), e.getMessage());
                 }
             }
 
@@ -1125,6 +1136,11 @@ public class CartServiceImpl implements CartService {
                 .promotionCode(appliedPromotionCode)
                 .loyaltyPointsRedeemed(loyaltyPointsRedeemed > 0 ? loyaltyPointsRedeemed : null)
                 .completedAt(savedOrder.getCompletedAt())
+                .orderType(orderType.name())
+                .buyAmount(savedOrder.getBuyAmount())
+                .sellAmount(savedOrder.getSellAmount())
+                .goldDiffWeight(savedOrder.getGoldDiffWeight())
+                .goldDiffAmount(savedOrder.getGoldDiffAmount())
                 .build();
     }
 
@@ -1138,12 +1154,28 @@ public class CartServiceImpl implements CartService {
      * gold price has been configured for that category.
      */
     private BigDecimal calculateDynamicUnitPrice(ProductDTO product) {
+        Map<String, Object> attrs = product.getAttributes() != null ? product.getAttributes() : Map.of();
+
+        // SILVER uses purity code attribute (e.g. "B925") to look up silver price directly.
+        if ("SILVER".equals(product.getProductTypeCode())) {
+            Object purityRaw = attrs.get("purity");
+            String purityCode = (purityRaw != null && !purityRaw.toString().isBlank()) ? purityRaw.toString() : "B925";
+            GoldPriceDTO silverPrice;
+            try {
+                silverPrice = goldPriceService.getPriceByCode(purityCode);
+            } catch (Exception e) {
+                throw new BadRequestException(
+                        messageService.getMessage("error.product.dynamic.price.no.gold.price"));
+            }
+            return extractWeightAndComputePrice(attrs, silverPrice);
+        }
+
+        // JEWELRY and others: look up price by linked category.
         if (product.getCategoryIds() == null || product.getCategoryIds().isEmpty()) {
             throw new BadRequestException(
                     messageService.getMessage("error.product.dynamic.price.no.category"));
         }
         Long categoryId = product.getCategoryIds().iterator().next();
-
         GoldPriceDTO goldPrice;
         try {
             goldPrice = goldPriceService.getPriceForCategory(categoryId);
@@ -1151,13 +1183,14 @@ public class CartServiceImpl implements CartService {
             throw new BadRequestException(
                     messageService.getMessage("error.product.dynamic.price.no.gold.price"));
         }
+        return extractWeightAndComputePrice(attrs, goldPrice);
+    }
 
-        Map<String, Object> attrs = product.getAttributes() != null ? product.getAttributes() : Map.of();
-
-        BigDecimal goldWeight = BigDecimal.ZERO;
-        Object goldWeightRaw = attrs.get("gold_weight");
-        if (goldWeightRaw != null && !goldWeightRaw.toString().isBlank()) {
-            try { goldWeight = new BigDecimal(goldWeightRaw.toString()); } catch (NumberFormatException ignored) {}
+    private BigDecimal extractWeightAndComputePrice(Map<String, Object> attrs, GoldPriceDTO price) {
+        BigDecimal weight = BigDecimal.ZERO;
+        Object weightRaw = attrs.get("gold_weight");
+        if (weightRaw != null && !weightRaw.toString().isBlank()) {
+            try { weight = new BigDecimal(weightRaw.toString()); } catch (NumberFormatException ignored) {}
         }
 
         BigDecimal procFee = BigDecimal.ZERO;
@@ -1166,7 +1199,7 @@ public class CartServiceImpl implements CartService {
             try { procFee = new BigDecimal(procFeeRaw.toString()); } catch (NumberFormatException ignored) {}
         }
 
-        return goldWeight.multiply(goldPrice.getSell()).add(procFee).setScale(0, RoundingMode.HALF_UP);
+        return weight.multiply(price.getSell()).add(procFee).setScale(0, RoundingMode.HALF_UP);
     }
 
     private String generateOrderNumber() {

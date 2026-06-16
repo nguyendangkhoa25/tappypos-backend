@@ -350,6 +350,7 @@ public class ProfileServiceImpl implements ProfileService {
                 .username(user.getUsername())
                 .email(user.getEmail())
                 .fullName(user.getFullName())
+                .nickname(user.getNickname())
                 .avatar(user.getAvatar())
                 .avatarUrl(user.getAvatarUrl())
                 .colorPreference(user.getColorPreference())

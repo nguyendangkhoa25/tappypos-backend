@@ -29,9 +29,11 @@ public enum FeatureEnum {
     SHOP_INFO("Thông Tin Cửa Hàng", "Cập nhật thông tin cửa hàng, cấu hình hệ thống"),
     VENDOR("Nhà Cung Cấp", "Quản lý nhà cung cấp, đơn đặt hàng, nhập hàng"),
     INVENTORY("Quản Lý Kho", "Quản lý tồn kho, nhập xuất kho và kiểm kho"),
+    STOCK_TAKE("Kiểm Kho", "Kiểm kê tồn kho thực tế bằng cách quét mã, đối chiếu và điều chỉnh chênh lệch so với hệ thống"),
     POS("Điểm Bán Hàng", "Bán hàng tại quầy, thanh toán và in hóa đơn"),
     ACTIVITY_LOG("Nhật Ký Hoạt Động", "Xem nhật ký hoạt động của người dùng trong cửa hàng"),
     PAWN("Cầm Đồ", "Quản lý hợp đồng cầm đồ, lãi suất và thanh lý tài sản"),
+    PAWN_VIEW_ALL("Xem Tất Cả Cầm Đồ", "Xem hợp đồng cầm đồ của tất cả nhân viên; nếu không có quyền này, chỉ xem được hợp đồng tự tạo"),
     NOTIFICATION("Thông Báo", "Nhận thông báo và nhắc nhở từ hệ thống"),
     FEEDBACK("Góp Ý", "Gửi phản hồi và đề xuất đến quản trị hệ thống"),
     PRINT_TEMPLATE("Mẫu In", "Quản lý mẫu in biên nhận và hóa đơn"),
@@ -43,7 +45,9 @@ public enum FeatureEnum {
     COMMISSION_VIEW_ALL("Xem Hoa Hồng Toàn Đội", "Xem hoa hồng của tất cả nhân viên và báo cáo tổng; nếu không có quyền này, chỉ xem được hoa hồng của bản thân"),
     GOOGLE_DRIVE("Tích Hợp Google Drive", "Kết nối Google Drive cá nhân để lưu ảnh sản phẩm, hình căn cước khách hàng và ảnh hợp đồng cầm đồ"),
     APPOINTMENT("Lịch Hẹn", "Quản lý lịch hẹn với khách hàng, đặt lịch và xác nhận"),
-    TABLE_SERVICE("Quản Lý Bàn", "Theo dõi trạng thái bàn và gọi món theo bàn cho quán ăn / quán nhậu");
+    TABLE_SERVICE("Quản Lý Bàn", "Theo dõi trạng thái bàn và gọi món theo bàn cho quán ăn / quán nhậu"),
+    BOOKING("Đặt Bàn / Đặt Sân", "Quản lý bàn bida, sân thể thao: tính giờ chơi, đặt sân theo giờ và tạo hoá đơn khi kết thúc"),
+    UTILITIES("Tiện Ích", "Bộ công cụ tính toán: tính lãi, khoản vay, thuế, ngân sách, đổi tiền, giá vàng thị trường, chia hóa đơn, điểm hòa vốn");
 
     /**
      * -- GETTER --

@@ -15,5 +15,7 @@ public class ProductTypeDTO {
     private String code;
     private String name;
     private String description;
+    private String defaultInventoryMode;
+    private String defaultUnit;
 }
 

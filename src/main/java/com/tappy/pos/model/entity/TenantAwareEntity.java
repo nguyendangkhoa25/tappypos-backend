@@ -20,8 +20,8 @@ import org.hibernate.annotations.ParamDef;
 @Setter
 @NoArgsConstructor
 @SuperBuilder
-@FilterDef(name = "tenantFilter", parameters = @ParamDef(name = "tenantId", type = String.class))
-@Filter(name = "tenantFilter", condition = "tenant_id = :tenantId")
+@FilterDef(name = "tenantFilter", parameters = @ParamDef(name = "tenantFilterId", type = String.class))
+@Filter(name = "tenantFilter", condition = "tenant_id = :tenantFilterId")
 public abstract class TenantAwareEntity extends BaseEntity {
 
     @Column(name = "tenant_id", nullable = false)

@@ -40,6 +40,8 @@ public class ProductDTO {
     private Long stockQuantity;
     private Boolean inStock;
     private String imageUrl;
+    private Long sourcePawnId;
+    private String inventoryMode;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

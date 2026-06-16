@@ -55,7 +55,7 @@ public class GoldPriceServiceImpl implements GoldPriceService {
             throw new BadRequestException(messageService.getMessage("error.goldprice.category.required"));
         }
         Category cat = categoryRepository.findByIdAndDeletedFalse(dto.getCategoryId())
-                .orElseThrow(() -> new ResourceNotFoundException("Category not found: " + dto.getCategoryId()));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.category.not.found", dto.getCategoryId())));
         if (cat.getParent() == null) {
             throw new BadRequestException(messageService.getMessage("error.goldprice.category.must.be.leaf"));
         }
@@ -95,7 +95,7 @@ public class GoldPriceServiceImpl implements GoldPriceService {
         log.info("Request: Update gold price id={}", id);
         GoldPrice price = goldPriceRepository.findById(id)
                 .filter(g -> !Boolean.TRUE.equals(g.getDeleted()))
-                .orElseThrow(() -> new ResourceNotFoundException("Gold price not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.goldprice.not.found", id)));
 
         if (dto.getBuy()         != null) price.setBuy(dto.getBuy());
         if (dto.getSell()        != null) price.setSell(dto.getSell());
@@ -120,7 +120,7 @@ public class GoldPriceServiceImpl implements GoldPriceService {
         log.info("Request: Delete gold price id={}", id);
         GoldPrice price = goldPriceRepository.findById(id)
                 .filter(g -> !Boolean.TRUE.equals(g.getDeleted()))
-                .orElseThrow(() -> new ResourceNotFoundException("Gold price not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.goldprice.not.found", id)));
         price.softDelete();
         goldPriceRepository.save(price);
         log.info("Gold price {} soft-deleted by {}", id, getCurrentUsername());
@@ -130,16 +130,24 @@ public class GoldPriceServiceImpl implements GoldPriceService {
     public GoldPriceDTO getPriceForCategory(Long categoryId) {
         log.info("Request: Get gold price for categoryId={}", categoryId);
         GoldPrice price = goldPriceRepository.findByCategoryIdAndDeletedFalse(categoryId)
-                .orElseThrow(() -> new ResourceNotFoundException("No price configured for category: " + categoryId));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.goldprice.category.not.configured")));
         Map<Long, Category> catMap = buildCategoryMap();
         return toDTO(price, catMap);
+    }
+
+    @Override
+    public GoldPriceDTO getPriceByCode(String code) {
+        log.info("Request: Get price by code={}", code);
+        GoldPrice price = goldPriceRepository.findByCodeAndDeletedFalse(code)
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.goldprice.code.not.configured", code)));
+        return toDTO(price, buildCategoryMap());
     }
 
     @Override
     public PriceBoardResponse getPriceBoard(String code) {
         log.info("Request: Get price board code={}", code);
         ShopInfo shopInfo = shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc()
-                .orElseThrow(() -> new ResourceNotFoundException("Shop info not configured"));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.shopInfo.not.found")));
 
         String configuredCode = shopConfigService.getString(ShopConfigKey.PRICE_BOARD_CODE);
         if (configuredCode != null && !configuredCode.isBlank() && !configuredCode.equals(code)) {

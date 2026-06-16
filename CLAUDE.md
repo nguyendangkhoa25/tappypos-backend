@@ -90,7 +90,7 @@ Features are enforced at three levels:
 | `CUSTOMER` | `CustomerController` |
 | `LOYALTY` | `LoyaltyController` |
 | `INVOICE` | `InvoiceController` |
-| `REVENUE` | `RevenueController` |
+| `REVENUE` | `RevenueController` (incl. `GET /revenue/end-of-day` — daily gold-trading + pawn cash summary via `EndOfDayReportService`; and `GET /revenue/cash-drawer` + `POST /revenue/cash-drawer/close` — per-day cash-drawer reconciliation via `CashDrawerService` (`cash_drawer_close` table, opening carries over from the prior day's count); pawn rows gated by `PAWN`) |
 | `EXPENSE` | `ShopExpenseController` |
 | `USER` | `UserController` |
 | `SHOP_INFO` | `ShopInfoController` |
@@ -211,7 +211,7 @@ Base `Product` holds SKU, price, cost, unit, vendor, shelf location, and status.
 
 #### Dynamic-Price Product Types
 
-`DynamicPriceProductTypes` (`com.knp.model.enums`) — currently `CODES = Set.of("JEWELRY")`.
+`DynamicPriceProductTypes` (`com.tappy.pos.model.enums`) — currently `CODES = Set.of("JEWELRY")`.
 
 For these types the `price` column on `Product` is stored as `0`. The real sell price is computed at cart-add time in `CartServiceImpl.calculateDynamicUnitPrice()`:
 
@@ -236,20 +236,20 @@ Throws `BadRequestException` (with Vietnamese message) if the product has no cat
 `POST /api/multi-tenants` (master-only) calls `TenantProvisioningService.provision()` which:
 1. Inserts a row into the `tenants` master table.
 2. Sets `TenantContext` to the new tenant ID so RLS scopes subsequent writes to that tenant.
-3. Executes the shop-type DML file (e.g. `pawn_shop.sql`) — this uses `current_setting('app.current_tenant', true)` as the `tenant_id` value so all seed rows land in the correct tenant's partition.
+3. Executes the shop-type DML file (e.g. `pawn_store.sql`) — this uses `current_setting('app.current_tenant', true)` as the `tenant_id` value so all seed rows land in the correct tenant's partition.
 4. Seeds roles, role-feature mappings, shop info, default walk-in customer (`phone=0000000000`, name `"Khách lẻ"`), default shop configs (`DEFAULT_TAX_RATE`, `POS_MODE`), and admin user via `TenantProvisioningService` — these are **not** in the DML files.
 
 ### Layer Conventions
 
 | Layer | Pattern |
 |-------|---------|
-| Controllers | `@RestController` in `com.knp.controller` |
-| Services | Interface + `Impl` class in `com.knp.service` |
-| Repositories | Spring Data JPA in `com.knp.repository` |
-| Entities | `com.knp.model.entity` |
-| DTOs | `com.knp.model.dto` (organized by domain) |
-| Enums | `com.knp.model.enums` |
-| Exceptions | `com.knp.exception` |
+| Controllers | `@RestController` in `com.tappy.pos.controller` |
+| Services | Interface + `Impl` class in `com.tappy.pos.service` |
+| Repositories | Spring Data JPA in `com.tappy.pos.repository` |
+| Entities | `com.tappy.pos.model.entity` |
+| DTOs | `com.tappy.pos.model.dto` (organized by domain) |
+| Enums | `com.tappy.pos.model.enums` |
+| Exceptions | `com.tappy.pos.exception` |
 
 Constructor injection via Lombok `@RequiredArgsConstructor` is the project standard.
 
@@ -257,15 +257,20 @@ All API responses use `ApiResponse<T>` with `success`, `message`, `data`, and `e
 
 ### Shop-Type DML Files
 
-Each shop type gets its own seed data file under `src/main/resources/db/tenant/`. `TenantDatabaseSetupService` maps `ShopType` → DML path:
+Each shop type gets its own seed data file under `src/main/resources/db/tenant/`. `TenantSeedService` holds the `DML_FILES` map (`Map<ShopType, String>`) of `ShopType` → DML path, with `DEFAULT_DML = "db/tenant/general.sql"` as the fallback for any unmapped type:
 
 | ShopType | DML file |
 |----------|----------|
-| `CONVENIENCE_STORE` | `tenant/convenience_store.sql` |
-| `PAWN_SHOP` | `tenant/pawn_shop.sql` |
-| Everything else | `tenant/general.sql` |
+| `PAWN_SHOP` | `db/tenant/pawn_store.sql` |
+| `JEWELRY` | `db/tenant/jewelry_store.sql` |
+| `CONVENIENCE_STORE` | `db/tenant/convenience_store.sql` |
+| `RESTAURANT`, `COFFEE_SHOP`, `PUB`, `PUB_SEAFOOD`, `PUB_GOAT`, `PUB_BEEF` | one F&B file each (`restaurant.sql`, …) |
+| `BARBER_SHOP`, `BARBER_SHOP_MEN`, `HAIR_SALON`, `NAIL_SHOP`, `LASH_PMU_STUDIO`, `SPA_SHOP`, `MASSAGE_SHOP`, `BEAUTY_CLINIC`, `MAKEUP_STUDIO` | one service file each (`nail_shop.sql`, …) |
+| Unmapped (`PHARMACY`, `ELECTRONICS`, `FASHION`, `FOOD_BEVERAGE`, `BOOK_STORE`, `OTHER`) | `db/tenant/general.sql` (fallback) |
 
-**When to add a dedicated DML instead of falling through to `general.sql`:** whenever a shop type has a dominant product type with non-trivial attribute needs (e.g. `PHARMACY` → `DRUG`, `ELECTRONICS` → `ELECTRONICS`, `JEWELRY` → JEWELRY/gold). Add `Map.entry(ShopType.PHARMACY, "db/tenant/pharmacy.sql")` in `TenantDatabaseSetupService` and create the file.
+`TenantSeedService` also categorizes types into two `EnumSet`s used by `seedShopTypeTemplates()`: `SERVICE_SHOP_TYPES` (beauty/personal-service → "Phiếu dịch vụ" template, no table) and `FOOD_SHOP_TYPES` (F&B → "Phiếu dịch vụ" with `showTable`). A plain retail type is in neither and gets the default RECEIPT template.
+
+**When to add a dedicated DML instead of falling through to `general.sql`:** whenever a shop type has a dominant product type with non-trivial attribute needs (e.g. `PHARMACY` → `DRUG`, `ELECTRONICS` → `ELECTRONICS`, `JEWELRY` → JEWELRY/gold). Add `Map.entry(ShopType.PHARMACY, "db/tenant/pharmacy.sql")` to `DML_FILES` in `TenantSeedService` and create the file. The full add-a-shop-type workflow is automated by the `/add-shop-type` skill.
 
 #### Required sections in every DML file
 
@@ -486,9 +491,10 @@ When adding a column or table:
 | `db/migration/V001__initial_schema.sql` | Flyway bootstrap — all DDL + master seed data (runs automatically) |
 | `db/migration/V0XX__*.sql` | Subsequent Flyway migrations for schema changes |
 | `db/tenant/general.sql` | Default seed data for generic shop types (product types, categories, sample products, loyalty, print template, shop config) |
-| `db/tenant/pawn_shop.sql` | Seed data for pawn shops — includes pawn-specific product types, attributes, and pawn config keys |
+| `db/tenant/pawn_store.sql` | Seed data for pawn shops — includes pawn-specific product types, attributes, and pawn config keys |
 | `db/tenant/convenience_store.sql` | Seed data for convenience stores |
-| `db/tenant/jewelry.sql` | Seed data for jewelry/gold shops — includes jewelry attributes and pawn config keys |
+| `db/tenant/jewelry_store.sql` | Seed data for jewelry/gold shops — includes jewelry attributes and pawn config keys |
+| `db/tenant/<type>.sql` (15+ more) | One file per mapped shop type (F&B, service, beauty) — see the `DML_FILES` map in `TenantSeedService` |
 | `db/*.sql` (prefixed `master-*`) | Ad-hoc one-off data patches for existing deployments — not applied automatically; run manually via psql |
 
 The `db/tenant/` files are executed by `TenantProvisioningService` at shop creation time (not by Flyway). Each file uses `current_setting('app.current_tenant', true)` as the `tenant_id` so all seed rows are automatically scoped to the new tenant via RLS.
@@ -523,7 +529,7 @@ All timestamps are stored and served in **Asia/Ho_Chi_Minh (UTC+7)**. This is en
 
 | Layer | Where set | What it controls |
 |-------|-----------|-----------------|
-| JVM default | `RetailPlatformApplication.main()` — `TimeZone.setDefault("Asia/Ho_Chi_Minh")` before Spring starts | `@CreationTimestamp`, `@UpdateTimestamp`, `LocalDateTime.now()` |
+| JVM default | `TappyPosApplication.main()` — `TimeZone.setDefault("Asia/Ho_Chi_Minh")` before Spring starts | `@CreationTimestamp`, `@UpdateTimestamp`, `LocalDateTime.now()` |
 | Hibernate JDBC | `spring.jpa.properties.hibernate.jdbc.time_zone=Asia/Ho_Chi_Minh` in `application.properties` | How Hibernate serialises `java.time.*` values onto the JDBC wire |
 | Jackson | `spring.jackson.time-zone=Asia/Ho_Chi_Minh` in `application.properties` | `LocalDateTime` fields in JSON API responses |
 | Docker image | `ENV TZ="Asia/Ho_Chi_Minh"` in `backend/Dockerfile` | OS timezone inside the container (also sets JVM `TZ` env var) |
@@ -537,4 +543,4 @@ When running locally outside Docker (`mvn spring-boot:run`), the `TimeZone.setDe
 - **Repository tests**: `@DataJpaTest` with H2 in-memory database.
 - JaCoCo excludes `model/**`, `controller/**`, `util/**` from coverage.
 
-Tests live under `src/test/java/com/knp/` mirroring the main package structure.
+Tests live under `src/test/java/com/tappy/pos/` mirroring the main package structure.

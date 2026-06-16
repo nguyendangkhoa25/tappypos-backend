@@ -19,10 +19,10 @@ public class OAuthStateStore {
 
     private final Map<String, Entry> store = new ConcurrentHashMap<>();
 
-    public String generate(String tenantId) {
+    public String generate(String tenantId, String origin) {
         purgeExpired();
         String nonce = UUID.randomUUID().toString().replace("-", "");
-        store.put(nonce, new Entry(tenantId, Instant.now().toEpochMilli()));
+        store.put(nonce, new Entry(tenantId, origin, Instant.now().toEpochMilli()));
         return nonce;
     }
 
@@ -34,10 +34,23 @@ public class OAuthStateStore {
         return entry.tenantId;
     }
 
+    /**
+     * Returns the originating frontend origin for the nonce WITHOUT consuming it
+     * (so the callback can compute its redirect target before {@link #consume}
+     * runs in the provider). Null when unknown/expired.
+     */
+    public String peekOrigin(String nonce) {
+        if (nonce == null) return null;
+        Entry entry = store.get(nonce);
+        if (entry == null) return null;
+        if (Instant.now().toEpochMilli() - entry.createdAt > TTL_MS) return null;
+        return entry.origin;
+    }
+
     private void purgeExpired() {
         long now = Instant.now().toEpochMilli();
         store.entrySet().removeIf(e -> now - e.getValue().createdAt > TTL_MS);
     }
 
-    private record Entry(String tenantId, long createdAt) {}
+    private record Entry(String tenantId, String origin, long createdAt) {}
 }

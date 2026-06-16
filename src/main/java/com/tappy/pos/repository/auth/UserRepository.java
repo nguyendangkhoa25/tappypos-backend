@@ -82,12 +82,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
     );
 
     /**
-     * Get all active users
-     */
-    @Query("SELECT u FROM User u WHERE u.active = true AND u.deletedAt IS NULL ORDER BY u.id DESC")
-    Page<User> findAllActiveUsers(Pageable pageable);
-
-    /**
      * Find active user by username
      */
     @Query("SELECT u FROM User u WHERE u.username = :username AND u.active = true AND u.deletedAt IS NULL")

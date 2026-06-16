@@ -7,13 +7,14 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface ProductService {
     ProductDTO createProduct(CreateProductRequest request);
     ProductDTO getProductById(Long id);
     ProductDTO updateProduct(Long id, UpdateProductRequest request);
     void deleteProduct(Long id);
-    Page<ProductDTO> getAllProducts(String status, Long categoryId, Pageable pageable);
+    Page<ProductDTO> getAllProducts(String status, Long categoryId, Long productTypeId, boolean pawnOriginOnly, Pageable pageable);
     Page<ProductDTO> getProductsByType(Long productTypeId, Pageable pageable);
     Page<ProductDTO> searchProducts(String searchTerm, Pageable pageable);
     List<ProductTypeDTO> getAllProductTypes();
@@ -26,5 +27,6 @@ public interface ProductService {
     ProductDTO uploadImage(Long id, MultipartFile file);
     void deleteImage(Long id);
     ProductStatsDTO getProductStats(Long id, int days);
+    Optional<ProductDTO> getBySourcePawnId(Long pawnId);
 }
 

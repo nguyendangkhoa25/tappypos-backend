@@ -14,4 +14,6 @@ public class DateFilterRequest {
     private long toDate;
     private long equalDate;
     private String type;
+    /** Chart granularity: "day" | "week" | "month" | "year" (default: "month") */
+    private String granularity;
 }

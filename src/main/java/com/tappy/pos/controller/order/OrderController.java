@@ -23,6 +23,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import com.tappy.pos.annotation.RequiresFeature;
+import jakarta.validation.Valid;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -158,6 +159,21 @@ public class OrderController {
         log.info("Endpoint: GET /orders/work-items/pending - page: {}, size: {}", page, size);
         Page<WorkItemDTO> items = orderService.getMyPendingWorkItems(PageRequest.of(page, size));
         return ResponseEntity.ok(ApiResponse.success(items, "Pending work items retrieved successfully"));
+    }
+
+    /**
+     * GET /api/orders/work-items/all-pending
+     * All-staff oversight board: PENDING + IN_PROGRESS items assigned to ANY employee in the
+     * tenant (not just the caller). Backs the Staff Queue board. Gated by ORDER_VIEW_ALL.
+     */
+    @GetMapping("/work-items/all-pending")
+    @RequiresFeature("ORDER_VIEW_ALL")
+    public ResponseEntity<ApiResponse<Page<WorkItemDTO>>> getAllPendingWorkItems(
+            @RequestParam(defaultValue = "0")  int page,
+            @RequestParam(defaultValue = "20") int size) {
+        log.info("Endpoint: GET /orders/work-items/all-pending - page: {}, size: {}", page, size);
+        Page<WorkItemDTO> items = orderService.getAllPendingWorkItems(PageRequest.of(page, size));
+        return ResponseEntity.ok(ApiResponse.success(items, "All pending work items retrieved successfully"));
     }
 
     /**
@@ -505,7 +521,7 @@ public class OrderController {
     @PostMapping("/{id}/items")
     public ResponseEntity<ApiResponse<OrderItemDTO>> addItemToOrder(
             @PathVariable Long id,
-            @RequestBody AddOrderItemRequest request) {
+            @Valid @RequestBody AddOrderItemRequest request) {
         log.info("Endpoint: POST /orders/{}/items productId={}", id, request.getProductId());
         OrderItemDTO item = orderService.addItemToOrder(id, request);
         return ResponseEntity.ok(ApiResponse.success(item, "Item added to order"));
@@ -661,5 +677,34 @@ public class OrderController {
     public ResponseEntity<ApiResponse<OrderItemDTO>> bumpKitchenItem(@PathVariable Long itemId) {
         log.info("Endpoint: PATCH /orders/kitchen/items/{}/bump", itemId);
         return ResponseEntity.ok(ApiResponse.success(orderService.bumpKitchenItem(itemId), "Item status updated"));
+    }
+
+    // ── QR customer-order confirmation ───────────────────────────────────────────
+
+    /** GET /api/orders/pending-confirmation — customer-submitted orders awaiting the owner. */
+    @GetMapping("/pending-confirmation")
+    @RequiresFeature("TABLE_SERVICE")
+    public ResponseEntity<ApiResponse<java.util.List<OrderDTO>>> getPendingConfirmationOrders() {
+        log.info("Endpoint: GET /orders/pending-confirmation");
+        return ResponseEntity.ok(ApiResponse.success(orderService.getPendingConfirmationOrders(), "Pending customer orders retrieved"));
+    }
+
+    /** PATCH /api/orders/{id}/confirm — owner confirms a customer order (→ kitchen). */
+    @PatchMapping("/{orderId}/confirm")
+    @RequiresFeature("TABLE_SERVICE")
+    public ResponseEntity<ApiResponse<OrderDTO>> confirmOrder(@PathVariable Long orderId) {
+        log.info("Endpoint: PATCH /orders/{}/confirm", orderId);
+        return ResponseEntity.ok(ApiResponse.success(orderService.confirmOrder(orderId), "Order confirmed"));
+    }
+
+    /** PATCH /api/orders/{id}/reject — owner rejects a customer order (→ cancelled). */
+    @PatchMapping("/{orderId}/reject")
+    @RequiresFeature("TABLE_SERVICE")
+    public ResponseEntity<ApiResponse<OrderDTO>> rejectOrder(
+            @PathVariable Long orderId,
+            @RequestBody(required = false) com.tappy.pos.model.dto.order.CancelOrderRequest request) {
+        log.info("Endpoint: PATCH /orders/{}/reject", orderId);
+        String reason = request != null ? request.getReason() : null;
+        return ResponseEntity.ok(ApiResponse.success(orderService.rejectOrder(orderId, reason), "Order rejected"));
     }
 }

@@ -119,7 +119,6 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
 
     /**
      * Returns Object[3]: [total, completedCount, cancelledCount]
-     * Relies on RLS for tenant isolation.
      */
     @Query(value = """
         SELECT
@@ -129,6 +128,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
         FROM appointments
         WHERE scheduled_date BETWEEN :from AND :to
           AND deleted = false
+          AND tenant_id = current_setting('app.current_tenant', true)
         """, nativeQuery = true)
     Object[] getAnalyticsSummary(
             @Param("from") LocalDate from,
@@ -144,6 +144,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
         FROM appointments
         WHERE scheduled_date BETWEEN :from AND :to
           AND deleted = false
+          AND tenant_id = current_setting('app.current_tenant', true)
         GROUP BY scheduled_date
         ORDER BY scheduled_date
         """, nativeQuery = true)
@@ -161,6 +162,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
         FROM appointments
         WHERE scheduled_date BETWEEN :from AND :to
           AND deleted = false
+          AND tenant_id = current_setting('app.current_tenant', true)
         GROUP BY DATE_TRUNC('week', scheduled_date)
         ORDER BY DATE_TRUNC('week', scheduled_date)
         """, nativeQuery = true)
@@ -178,6 +180,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
         FROM appointments
         WHERE scheduled_date BETWEEN :from AND :to
           AND deleted = false
+          AND tenant_id = current_setting('app.current_tenant', true)
         GROUP BY DATE_TRUNC('month', scheduled_date)
         ORDER BY DATE_TRUNC('month', scheduled_date)
         """, nativeQuery = true)
@@ -192,6 +195,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
         JOIN appointment_services asi ON asi.appointment_id = a.id
         WHERE a.scheduled_date BETWEEN :from AND :to
           AND a.deleted = false
+          AND a.tenant_id = current_setting('app.current_tenant', true)
         GROUP BY asi.product_name
         ORDER BY cnt DESC
         LIMIT :limit
@@ -211,6 +215,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
         WHERE a.scheduled_date BETWEEN :from AND :to
           AND a.deleted = false
           AND asi.assigned_employee_id IS NOT NULL
+          AND a.tenant_id = current_setting('app.current_tenant', true)
         GROUP BY asi.assigned_employee_name, asi.assigned_employee_id
         ORDER BY cnt DESC
         LIMIT :limit
@@ -219,4 +224,16 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
             @Param("from") LocalDate from,
             @Param("to") LocalDate to,
             @Param("limit") int limit);
+
+    @Query("""
+        SELECT a FROM Appointment a
+        WHERE a.tenantId = :tenantId
+          AND a.customerId = :customerId
+          AND a.deleted = false
+        ORDER BY a.scheduledDate DESC, a.scheduledStartTime DESC
+        """)
+    Page<Appointment> findByCustomerId(
+            @Param("tenantId") String tenantId,
+            @Param("customerId") Long customerId,
+            Pageable pageable);
 }

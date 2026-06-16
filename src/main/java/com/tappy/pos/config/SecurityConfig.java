@@ -59,6 +59,7 @@ public class SecurityConfig {
                         .requestMatchers("/shop-types").permitAll()
                         .requestMatchers("/product-templates").permitAll()
                         .requestMatchers("/expense-suggestions").permitAll()
+                        .requestMatchers("/public/**").permitAll()   // QR customer ordering (no JWT; tenant-gated in service)
                         // All other endpoints require authentication
                         .anyRequest().authenticated()
                 )

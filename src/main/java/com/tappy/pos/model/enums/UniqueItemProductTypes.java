@@ -9,10 +9,16 @@ import java.util.Set;
  */
 public final class UniqueItemProductTypes {
 
-    public static final Set<String> CODES = Set.of("JEWELRY", "WATCH");
+    /** Delegates to InventoryMode — single source of truth for UNIQUE type codes. */
+    public static final Set<String> CODES = InventoryMode.UNIQUE_CODES;
 
     public static boolean isUniqueItem(String productTypeCode) {
         return productTypeCode != null && CODES.contains(productTypeCode);
+    }
+
+    /** Returns true when a product is UNIQUE by type OR because it came from a pawn contract. */
+    public static boolean isUniqueItem(String productTypeCode, Long sourcePawnId) {
+        return sourcePawnId != null || isUniqueItem(productTypeCode);
     }
 
     private UniqueItemProductTypes() {}

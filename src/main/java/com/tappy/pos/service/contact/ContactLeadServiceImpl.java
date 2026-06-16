@@ -7,6 +7,7 @@ import com.tappy.pos.model.dto.contact.UpdateLeadStatusRequest;
 import com.tappy.pos.model.entity.contact.ContactLead;
 import com.tappy.pos.model.enums.LeadStatus;
 import com.tappy.pos.repository.contact.ContactLeadRepository;
+import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +24,7 @@ public class ContactLeadServiceImpl implements ContactLeadService {
 
     private final ContactLeadRepository contactLeadRepository;
     private final NotificationService notificationService;
+    private final MessageService messageService;
 
     @Override
     @Transactional
@@ -61,10 +63,22 @@ public class ContactLeadServiceImpl implements ContactLeadService {
     @Transactional
     public ContactLeadDTO updateStatus(Long id, UpdateLeadStatusRequest request) {
         ContactLead lead = contactLeadRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Contact lead not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.contactLead.not.found", id)));
         lead.setStatus(request.getStatus());
         lead.setAdminNote(request.getAdminNote());
         return toDTO(contactLeadRepository.save(lead));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countAllActive() {
+        return contactLeadRepository.countAllActive();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countByStatus(LeadStatus status) {
+        return contactLeadRepository.countByStatus(status);
     }
 
     private ContactLeadDTO toDTO(ContactLead l) {

@@ -245,6 +245,7 @@ public class InventoryController {
      * Resolves the product-level inventory record automatically via productId,
      * so the mobile does not need to know the internal inventory record ID.
      */
+    @RequiresFeature({"INVENTORY", "PRODUCT"})
     @PostMapping("/adjust")
     public ResponseEntity<ApiResponse<InventoryDTO>> adjustInventory(
             @RequestBody @Valid AdjustInventoryRequest request) {

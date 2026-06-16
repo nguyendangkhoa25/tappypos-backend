@@ -18,4 +18,6 @@ public interface GoldPriceRepository extends JpaRepository<GoldPrice, Long> {
     List<GoldPrice> findAllVisibleInBoard();
 
     Optional<GoldPrice> findByCategoryIdAndDeletedFalse(Long categoryId);
+
+    Optional<GoldPrice> findByCodeAndDeletedFalse(String code);
 }

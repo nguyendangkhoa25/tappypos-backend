@@ -53,6 +53,14 @@ public class Product extends TenantAwareEntity {
     @Column(name = "legacy_id", length = 50)
     private String legacyId;
 
+    @Column(name = "source_pawn_id")
+    private Long sourcePawnId;
+
+    @Column(name = "inventory_mode", nullable = false, length = 20)
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    private com.tappy.pos.model.enums.InventoryMode inventoryMode = com.tappy.pos.model.enums.InventoryMode.TRACKED;
+
     @Column(name = "image_url", length = 500)
     private String imageUrl;
 

@@ -21,6 +21,8 @@ public class AuthResponse {
     private String requiredAction;
     private boolean setupComplete;
     private String tenantId;
+    /** The user's saved UI language ('vi' | 'en'); the client applies it to its locale on login. */
+    private String lang;
 
     public static AuthResponse requiredAction(String username, String requiredAction, String accessToken, Long expiresIn) {
         return AuthResponse.builder()

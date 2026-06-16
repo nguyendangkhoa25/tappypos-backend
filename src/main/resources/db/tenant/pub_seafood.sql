@@ -6,26 +6,26 @@
 -- ============================================================
 
 -- ── 1. Product types ─────────────────────────────────────────
-INSERT INTO product_type (tenant_id, code, name, description) VALUES
-    (current_setting('app.current_tenant', true), 'FOOD',         'Thực phẩm',                  'Thực phẩm và đồ ăn'),
-    (current_setting('app.current_tenant', true), 'BEVERAGE',     'Đồ uống',                    'Nước giải khát, bia, nước suối'),
-    (current_setting('app.current_tenant', true), 'DRUG',         'Dược phẩm',                  'Thuốc và sản phẩm dược'),
-    (current_setting('app.current_tenant', true), 'CONVENIENCE',  'Hàng tiêu dùng',             'Hàng tiêu dùng thiết yếu'),
-    (current_setting('app.current_tenant', true), 'BIKE',         'Xe đạp / Xe máy',            'Xe đạp và phụ tùng xe máy'),
-    (current_setting('app.current_tenant', true), 'HARDWARE',     'Đồ sắt / Dụng cụ',          'Đồ sắt và dụng cụ'),
-    (current_setting('app.current_tenant', true), 'CLOTHING',     'Quần áo / May mặc',          'Quần áo và phụ kiện'),
-    (current_setting('app.current_tenant', true), 'ELECTRONICS',  'Điện tử',                    'Thiết bị điện tử'),
-    (current_setting('app.current_tenant', true), 'FURNITURE',    'Đồ nội thất',                'Nội thất gia đình'),
-    (current_setting('app.current_tenant', true), 'BEAUTY',       'Làm đẹp / Chăm sóc cá nhân','Sản phẩm làm đẹp và vệ sinh cá nhân'),
-    (current_setting('app.current_tenant', true), 'TOYS',         'Đồ chơi / Trò chơi',        'Đồ chơi và trò chơi'),
-    (current_setting('app.current_tenant', true), 'BOOKS',        'Sách / Văn phòng phẩm',     'Sách và văn phòng phẩm'),
-    (current_setting('app.current_tenant', true), 'SPORTS',       'Thể thao / Ngoài trời',     'Thiết bị thể thao'),
-    (current_setting('app.current_tenant', true), 'AUTO_PARTS',   'Phụ tùng ô tô',             'Phụ tùng và phụ kiện ô tô'),
-    (current_setting('app.current_tenant', true), 'APPLIANCES',   'Đồ gia dụng',                'Thiết bị gia dụng'),
-    (current_setting('app.current_tenant', true), 'OFFICE',       'Văn phòng phẩm',             'Đồ dùng văn phòng'),
-    (current_setting('app.current_tenant', true), 'PET',          'Thú cưng',                  'Thức ăn và phụ kiện thú cưng'),
-    (current_setting('app.current_tenant', true), 'HEALTH',       'Sức khỏe / Dinh dưỡng',     'Sản phẩm sức khỏe và dinh dưỡng')
-ON CONFLICT (code, tenant_id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
+INSERT INTO product_type (tenant_id, code, name, description, default_inventory_mode, default_unit) VALUES
+    (current_setting('app.current_tenant', true), 'FOOD',         'Thực phẩm',                  'Thực phẩm và đồ ăn', 'TRACKED', 'piece'),
+    (current_setting('app.current_tenant', true), 'BEVERAGE',     'Đồ uống',                    'Nước giải khát, bia, nước suối', 'TRACKED', 'bottle'),
+    (current_setting('app.current_tenant', true), 'DRUG',         'Dược phẩm',                  'Thuốc và sản phẩm dược', 'TRACKED', 'box'),
+    (current_setting('app.current_tenant', true), 'CONVENIENCE',  'Hàng tiêu dùng',             'Hàng tiêu dùng thiết yếu', 'TRACKED', 'piece'),
+    (current_setting('app.current_tenant', true), 'BIKE',         'Xe đạp / Xe máy',            'Xe đạp và phụ tùng xe máy', 'UNIQUE', 'piece'),
+    (current_setting('app.current_tenant', true), 'HARDWARE',     'Đồ sắt / Dụng cụ',          'Đồ sắt và dụng cụ', 'TRACKED', 'piece'),
+    (current_setting('app.current_tenant', true), 'CLOTHING',     'Quần áo / May mặc',          'Quần áo và phụ kiện', 'TRACKED', 'piece'),
+    (current_setting('app.current_tenant', true), 'ELECTRONICS',  'Điện tử',                    'Thiết bị điện tử', 'TRACKED', 'piece'),
+    (current_setting('app.current_tenant', true), 'FURNITURE',    'Đồ nội thất',                'Nội thất gia đình', 'TRACKED', 'piece'),
+    (current_setting('app.current_tenant', true), 'BEAUTY',       'Làm đẹp / Chăm sóc cá nhân','Sản phẩm làm đẹp và vệ sinh cá nhân', 'TRACKED', 'piece'),
+    (current_setting('app.current_tenant', true), 'TOYS',         'Đồ chơi / Trò chơi',        'Đồ chơi và trò chơi', 'TRACKED', 'piece'),
+    (current_setting('app.current_tenant', true), 'BOOKS',        'Sách / Văn phòng phẩm',     'Sách và văn phòng phẩm', 'TRACKED', 'piece'),
+    (current_setting('app.current_tenant', true), 'SPORTS',       'Thể thao / Ngoài trời',     'Thiết bị thể thao', 'TRACKED', 'piece'),
+    (current_setting('app.current_tenant', true), 'AUTO_PARTS',   'Phụ tùng ô tô',             'Phụ tùng và phụ kiện ô tô', 'TRACKED', 'piece'),
+    (current_setting('app.current_tenant', true), 'APPLIANCES',   'Đồ gia dụng',                'Thiết bị gia dụng', 'TRACKED', 'piece'),
+    (current_setting('app.current_tenant', true), 'OFFICE',       'Văn phòng phẩm',             'Đồ dùng văn phòng', 'TRACKED', 'piece'),
+    (current_setting('app.current_tenant', true), 'PET',          'Thú cưng',                  'Thức ăn và phụ kiện thú cưng', 'TRACKED', 'piece'),
+    (current_setting('app.current_tenant', true), 'HEALTH',       'Sức khỏe / Dinh dưỡng',     'Sản phẩm sức khỏe và dinh dưỡng', 'TRACKED', 'piece')
+ON CONFLICT (code, tenant_id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, default_inventory_mode = EXCLUDED.default_inventory_mode;
 
 -- ── 2. Categories ─────────────────────────────────────────────
 INSERT INTO category (tenant_id, name, parent_id) VALUES
@@ -77,7 +77,7 @@ VALUES
     (current_setting('app.current_tenant', true), 'Thành viên',  0,         1.00, '#CD7F32', 'Thành viên cơ bản',        1),
     (current_setting('app.current_tenant', true), 'Bạc',         2000000,   1.25, '#9E9E9E', 'Chi tiêu từ 2 triệu VND',  2),
     (current_setting('app.current_tenant', true), 'Vàng',        10000000,  1.50, '#FFC107', 'Chi tiêu từ 10 triệu VND', 3),
-    (current_setting('app.current_tenant', true), 'VIP',         30000000,  2.00, '#00BCD4', 'Chi tiêu từ 30 triệu VND', 4);
+    (current_setting('app.current_tenant', true), 'VIP',         30000000,  2.00, '#00BCD4', 'Chi tiêu từ 30 triệu VND', 4, 'TRACKED');
 
 -- ── 9. Print templates ────────────────────────────────────────
 INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_default) VALUES
@@ -93,7 +93,7 @@ INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_def
   "showCashDetails": true,
   "paperWidth": "80mm",
   "autoClose": true
-}', TRUE),
+}', TRUE, 'TRACKED'),
     (current_setting('app.current_tenant', true), 'PRODUCT_STAMP', 'Tem sản phẩm', '{
   "showShopName": true,
   "showSku": true,
@@ -104,7 +104,7 @@ INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_def
   "showExpiry": false,
   "labelWidth": 60,
   "labelHeight": 38
-}', TRUE),
+}', TRUE, 'TRACKED'),
     (current_setting('app.current_tenant', true), 'INVENTORY_STAMP', 'Tem kho', '{
   "showShopName": true,
   "showSku": true,
@@ -115,7 +115,7 @@ INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_def
   "showExpiry": false,
   "labelWidth": 60,
   "labelHeight": 38
-}', TRUE)
+}', TRUE, 'TRACKED')
 ON CONFLICT (template_type, name, tenant_id) DO NOTHING;
 
 -- ── 10. Attribute groups & definitions ───────────────────────

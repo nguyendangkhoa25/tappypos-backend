@@ -10,7 +10,9 @@ import com.tappy.pos.model.dto.tenant.SavePrintTemplateRequest;
 import com.tappy.pos.model.dto.tenant.StampTemplateConfig;
 import com.tappy.pos.model.entity.tenant.PrintTemplate;
 import com.tappy.pos.multitenant.TenantContext;
+import com.tappy.pos.repository.finance.BankAccountRepository;
 import com.tappy.pos.repository.tenant.PrintTemplateRepository;
+import com.tappy.pos.repository.tenant.ShopInfoRepository;
 import com.tappy.pos.service.MessageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -37,12 +39,14 @@ class PrintTemplateServiceTest {
     @Mock private PrintTemplateRepository repo;
     @Mock private MessageService messageService;
     @Mock private TenantContext tenantContext;
+    @Mock private ShopInfoRepository shopInfoRepository;
+    @Mock private BankAccountRepository bankAccountRepository;
 
     private PrintTemplateService service;
 
     @BeforeEach
     void setUp() {
-        service = new PrintTemplateService(repo, new ObjectMapper(), messageService, tenantContext);
+        service = new PrintTemplateService(repo, new ObjectMapper(), messageService, tenantContext, shopInfoRepository, bankAccountRepository);
         // Stub messages whose content is asserted in exception tests
         lenient().when(messageService.getMessage(eq("error.printTemplate.wrongType"), any(Object[].class)))
                 .thenReturn("Template does not belong to type RECEIPT");

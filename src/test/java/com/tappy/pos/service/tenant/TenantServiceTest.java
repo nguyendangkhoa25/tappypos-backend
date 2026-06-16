@@ -1,6 +1,7 @@
 package com.tappy.pos.service.tenant;
 
 import com.tappy.pos.config.AuthContext;
+import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.exception.ForbiddenException;
 import com.tappy.pos.model.dto.tenant.CreateTenantRequest;
 import com.tappy.pos.model.dto.tenant.TenantDTO;
@@ -12,6 +13,7 @@ import com.tappy.pos.model.entity.tenant.Tenant;
 import com.tappy.pos.repository.auth.UserRepository;
 import com.tappy.pos.repository.tenant.TenantRepository;
 import com.tappy.pos.repository.tenant.AgentRepository;
+import com.tappy.pos.service.MessageService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -31,6 +33,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -49,12 +52,22 @@ class TenantServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private MessageService messageService;
+
     @InjectMocks
     private TenantService tenantService;
 
     private Tenant tenant;
     private CreateTenantRequest createRequest;
     private UpdateTenantRequest updateRequest;
+
+    @BeforeEach
+    void stubMessages() {
+        // MessageService is now used to resolve error text; echo the key so assertions can verify it.
+        lenient().when(messageService.getMessage(anyString(), any(Object[].class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+    }
 
     @AfterEach
     void tearDown() {
@@ -267,7 +280,7 @@ class TenantServiceTest {
 
         assertThatThrownBy(() -> tenantService.getTenantById("nonexistent"))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Tenant not found");
+                .hasMessageContaining("error.tenant.not.found");
     }
 
     // ==================== Create Tenant Tests ====================
@@ -311,6 +324,55 @@ class TenantServiceTest {
         assertThatThrownBy(() -> tenantService.createTenant(createRequest))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Tenant already exists");
+    }
+
+    @Test
+    @DisplayName("Should reject a tenant ID that collides with a reserved marketing slug")
+    void testCreateTenant_ReservedSlugId() {
+        CreateTenantRequest reservedRequest = CreateTenantRequest.builder()
+                .tenantId("pos-quan-cafe").name("Collision Shop").dbName("collision_db")
+                .expirationDate(LocalDate.now().plusYears(1)).maxUsers(50)
+                .features(List.of("DASHBOARD")).subscriptionType("STANDARD").build();
+
+        assertThatThrownBy(() -> tenantService.createTenant(reservedRequest))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("error.tenant.reserved.id");
+
+        verify(tenantRepository, never()).save(any(Tenant.class));
+    }
+
+    @Test
+    @DisplayName("Should reject a reserved tenant ID case-insensitively")
+    void testCreateTenant_ReservedIdCaseInsensitive() {
+        CreateTenantRequest reservedRequest = CreateTenantRequest.builder()
+                .tenantId("MASTER").name("Fake Master").dbName("fake_master_db")
+                .expirationDate(LocalDate.now().plusYears(1)).maxUsers(50)
+                .features(List.of("DASHBOARD")).subscriptionType("STANDARD").build();
+
+        assertThatThrownBy(() -> tenantService.createTenant(reservedRequest))
+                .isInstanceOf(BadRequestException.class);
+
+        verify(tenantRepository, never()).save(any(Tenant.class));
+    }
+
+    @Test
+    @DisplayName("Should reject 'register' and 'onboarding' — reserved public route slugs")
+    void testCreateTenant_ReservedOnboardingRouteIds() {
+        // These mirror the frontend RESERVED_PATHS (/register, /onboarding); a shop with
+        // either ID would be permanently shadowed by those public routes.
+        for (String reservedId : List.of("register", "onboarding")) {
+            CreateTenantRequest reservedRequest = CreateTenantRequest.builder()
+                    .tenantId(reservedId).name("Collision Shop").dbName("collision_db")
+                    .expirationDate(LocalDate.now().plusYears(1)).maxUsers(50)
+                    .features(List.of("DASHBOARD")).subscriptionType("STANDARD").build();
+
+            assertThatThrownBy(() -> tenantService.createTenant(reservedRequest))
+                    .as("tenant ID '%s' must be rejected as reserved", reservedId)
+                    .isInstanceOf(BadRequestException.class)
+                    .hasMessageContaining("error.tenant.reserved.id");
+        }
+
+        verify(tenantRepository, never()).save(any(Tenant.class));
     }
 
     @Test
@@ -406,7 +468,7 @@ class TenantServiceTest {
 
         assertThatThrownBy(() -> tenantService.updateTenant("nonexistent", updateRequest))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Tenant not found");
+                .hasMessageContaining("error.tenant.not.found");
     }
 
     @Test
@@ -442,7 +504,7 @@ class TenantServiceTest {
 
         assertThatThrownBy(() -> tenantService.deleteTenant("nonexistent"))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Tenant not found");
+                .hasMessageContaining("error.tenant.not.found");
     }
 
     // ==================== Get Tenant Entity Tests ====================
@@ -465,7 +527,7 @@ class TenantServiceTest {
 
         assertThatThrownBy(() -> tenantService.getTenantEntity("nonexistent"))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Tenant not found");
+                .hasMessageContaining("error.tenant.not.found");
     }
 
     // ==================== Deactivate Tenant Tests ====================
@@ -490,7 +552,7 @@ class TenantServiceTest {
 
         assertThatThrownBy(() -> tenantService.deactivateTenant("nonexistent"))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Tenant not found");
+                .hasMessageContaining("error.tenant.not.found");
     }
 
     @Test
@@ -532,7 +594,7 @@ class TenantServiceTest {
 
         assertThatThrownBy(() -> tenantService.activateTenant("nonexistent"))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Tenant not found");
+                .hasMessageContaining("error.tenant.not.found");
     }
 
     // ==================== mapToDTO Tests ====================

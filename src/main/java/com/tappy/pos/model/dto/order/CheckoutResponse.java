@@ -49,6 +49,15 @@ public class CheckoutResponse {
     private Long customerId;
     private String customerName;
 
+    // Order type (SELL / BUY / EXCHANGE) — for receipt rendering
+    private String orderType;
+
+    // Gold trading summary (only populated for BUY / EXCHANGE orders)
+    private BigDecimal buyAmount;
+    private BigDecimal sellAmount;
+    private BigDecimal goldDiffWeight;
+    private BigDecimal goldDiffAmount;
+
     // Meta
     private String notes;
     private LocalDateTime completedAt;

@@ -7,6 +7,7 @@ import com.tappy.pos.model.entity.finance.Invoice;
 import com.tappy.pos.model.entity.tenant.ShopInfo;
 import com.tappy.pos.model.enums.ShopConfigKey;
 import com.tappy.pos.repository.tenant.ShopInfoRepository;
+import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.audit.ApiAuditLogService;
 import com.tappy.pos.service.invoice.sinvoice.SAccessTokenResponse;
 import com.tappy.pos.service.invoice.sinvoice.SInvoiceFileResponse;
@@ -37,6 +38,7 @@ class SInvoiceServiceTest {
     @Mock private ShopInfoRepository shopInfoRepository;
     @Mock private ShopConfigService shopConfigService;
     @Mock private ApiAuditLogService auditLogService;
+    @Mock private MessageService messageService;
 
     @InjectMocks private SInvoiceService sInvoiceService;
 
@@ -68,6 +70,7 @@ class SInvoiceServiceTest {
         lenient().when(shopConfigService.getString(ShopConfigKey.EINVOICE_PASSWORD)).thenReturn("testpass");
         lenient().when(shopConfigService.getString(ShopConfigKey.EINVOICE_TEMPLATE_CODE)).thenReturn("01GTKT");
         lenient().doNothing().when(auditLogService).logApiCall(any());
+        lenient().when(messageService.getMessage(anyString())).thenAnswer(inv -> inv.getArgument(0));
     }
 
     // ── createInvoice ─────────────────────────────────────────────────────────
@@ -85,7 +88,7 @@ class SInvoiceServiceTest {
 
         assertThatThrownBy(() -> sInvoiceService.createInvoice(req))
                 .isInstanceOf(ResourceNotFoundException.class)
-                .hasMessageContaining("Shop info not found");
+                .hasMessageContaining("error.shopInfo.not.found");
     }
 
     @Test

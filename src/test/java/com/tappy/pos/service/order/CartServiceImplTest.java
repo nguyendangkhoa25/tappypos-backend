@@ -1131,9 +1131,6 @@ class CartServiceImplTest {
         savedOrder.setTotalAmount(new BigDecimal("33000"));
 
         when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
-
-        when(inventoryService.getInventoryByProductId(eq(1L), any()))
-                .thenReturn(new PageImpl<>(List.of(InventoryDTO.builder().id(5L).quantityInStock(10L).build())));
         when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
         when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
         when(shopInfoService.getShopInfo()).thenReturn(ShopInfoDTO.builder().shopName("Test Shop").build());
@@ -1193,9 +1190,6 @@ class CartServiceImplTest {
         savedOrder.setTotalAmount(new BigDecimal("29700"));
 
         when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
-
-        when(inventoryService.getInventoryByProductId(eq(1L), any()))
-                .thenReturn(new PageImpl<>(List.of(InventoryDTO.builder().id(5L).quantityInStock(10L).build())));
         when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
         when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
 
@@ -1222,9 +1216,6 @@ class CartServiceImplTest {
         savedOrder.setTotalAmount(new BigDecimal("27500"));
 
         when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
-
-        when(inventoryService.getInventoryByProductId(eq(1L), any()))
-                .thenReturn(new PageImpl<>(List.of(InventoryDTO.builder().id(5L).quantityInStock(10L).build())));
         when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
         when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
 
@@ -1253,9 +1244,6 @@ class CartServiceImplTest {
         savedOrder.setStatus(Order.OrderStatus.COMPLETED);
 
         when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
-
-        when(inventoryService.getInventoryByProductId(eq(1L), any()))
-                .thenReturn(new PageImpl<>(List.of(InventoryDTO.builder().id(5L).quantityInStock(10L).build())));
         when(orderRepository.findById(50L)).thenReturn(Optional.of(pendingOrder));
         when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
         when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
@@ -1283,10 +1271,7 @@ class CartServiceImplTest {
         savedOrder.setStatus(Order.OrderStatus.COMPLETED);
 
         when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
-        when(customerRepository.findByIdActive(10L)).thenReturn(Optional.of(customer));
-        when(inventoryService.getInventoryByProductId(eq(1L), any()))
-                .thenReturn(new PageImpl<>(List.of(InventoryDTO.builder().id(5L).quantityInStock(10L).build())));
-        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(customerRepository.findByIdActive(10L)).thenReturn(Optional.of(customer));        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
         when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
 
         CheckoutResponse response = cartService.checkout("cart-001", request);
@@ -1397,10 +1382,7 @@ class CartServiceImplTest {
 
         when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
 
-        when(promotionService.applyAtCheckout(eq("PROMO10"), any())).thenReturn(new BigDecimal("3000"));
-        when(inventoryService.getInventoryByProductId(eq(1L), any()))
-                .thenReturn(new PageImpl<>(List.of(InventoryDTO.builder().id(5L).quantityInStock(10L).build())));
-        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(promotionService.applyAtCheckout(eq("PROMO10"), any())).thenReturn(new BigDecimal("3000"));        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
         when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
 
         CheckoutResponse response = cartService.checkout("cart-001", request);
@@ -1431,10 +1413,7 @@ class CartServiceImplTest {
 
         when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
         when(customerRepository.findByIdActive(10L)).thenReturn(Optional.of(customer));
-        when(loyaltyService.redeemPoints(eq(10L), eq(100), isNull())).thenReturn(new BigDecimal("5000"));
-        when(inventoryService.getInventoryByProductId(eq(1L), any()))
-                .thenReturn(new PageImpl<>(List.of(InventoryDTO.builder().id(5L).quantityInStock(10L).build())));
-        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(loyaltyService.redeemPoints(eq(10L), eq(100), isNull())).thenReturn(new BigDecimal("5000"));        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
         when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
 
         CheckoutResponse response = cartService.checkout("cart-001", request);
@@ -1463,10 +1442,7 @@ class CartServiceImplTest {
         savedOrder.setStatus(Order.OrderStatus.COMPLETED);
 
         when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
-        when(customerRepository.findByPhone("0000000000")).thenReturn(Optional.of(khachLe));
-        when(inventoryService.getInventoryByProductId(eq(1L), any()))
-                .thenReturn(new PageImpl<>(List.of(InventoryDTO.builder().id(5L).quantityInStock(10L).build())));
-        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(customerRepository.findByPhone("0000000000")).thenReturn(Optional.of(khachLe));        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
         when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
 
         CheckoutResponse response = cartService.checkout("cart-001", request);

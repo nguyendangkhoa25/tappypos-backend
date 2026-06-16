@@ -1,5 +1,6 @@
 package com.tappy.pos.service.tenant;
 import com.tappy.pos.config.AuthContext;
+import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.exception.ForbiddenException;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.tenant.CreateTenantRequest;
@@ -13,6 +14,7 @@ import com.tappy.pos.model.entity.auth.User;
 import com.tappy.pos.repository.auth.UserRepository;
 import com.tappy.pos.repository.tenant.TenantRepository;
 import com.tappy.pos.repository.tenant.AgentRepository;
+import com.tappy.pos.service.MessageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
@@ -38,6 +40,7 @@ public class TenantService {
     private final AgentRepository agentRepository;
     private final UserRepository userRepository;
     private final AuthContext authContext;
+    private final MessageService messageService;
 
     private String deriveTenantDbName(String tenantId) {
         return tenantId;
@@ -153,6 +156,13 @@ public class TenantService {
     }
 
     public TenantDTO createTenant(CreateTenantRequest request) {
+        // Reject IDs that collide with app-level routes or marketing landing slugs
+        // (e.g. 'pos-quan-cafe', 'master') — see TenantConstants for the full list.
+        if (TenantConstants.isReserved(request.getTenantId())) {
+            throw new BadRequestException(
+                    messageService.getMessage("error.tenant.reserved.id", request.getTenantId()));
+        }
+
         if (tenantRepository.findByTenantId(request.getTenantId()).isPresent()) {
             throw new RuntimeException("Tenant already exists: " + request.getTenantId());
         }
@@ -280,7 +290,7 @@ public class TenantService {
 
     private Tenant findTenant(String tenantId) {
         return tenantRepository.findByTenantId(tenantId)
-                .orElseThrow(() -> new ResourceNotFoundException("Tenant not found: " + tenantId));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.tenant.not.found", tenantId)));
     }
 
     /**

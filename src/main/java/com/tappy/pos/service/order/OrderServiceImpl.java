@@ -80,6 +80,7 @@ public class OrderServiceImpl implements OrderService {
     private final TenantContext tenantContext;
     private final FeatureContext featureContext;
     private final TableRepository tableRepository;
+    private final com.tappy.pos.service.table.TableService tableService;
 
     @Override
     public Page<OrderDTO> getAllOrders(String status, String orderType, Pageable pageable) {
@@ -199,6 +200,10 @@ public class OrderServiceImpl implements OrderService {
                 .loyaltyDiscount(order.getLoyaltyDiscount())
                 .tableLabel(order.getTableLabel())
                 .pickupTime(order.getPickupTime())
+                .buyAmount(order.getBuyAmount())
+                .sellAmount(order.getSellAmount())
+                .goldDiffWeight(order.getGoldDiffWeight())
+                .goldDiffAmount(order.getGoldDiffAmount())
                 .items(items)
                 .build();
     }
@@ -648,6 +653,13 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    public Page<WorkItemDTO> getAllPendingWorkItems(Pageable pageable) {
+        log.info("Request: Get all-staff pending work items (oversight board)");
+        Page<Object[]> rows = orderItemRepository.findAllPendingWorkItems(pageable);
+        return rows.map(this::mapRowToWorkItemDTO);
+    }
+
+    @Override
     @Transactional
     public WorkItemDTO startWorkItem(Long itemId) {
         Long employeeId = resolveCurrentEmployeeId();
@@ -769,7 +781,7 @@ public class OrderServiceImpl implements OrderService {
     private Employee resolveCurrentEmployee() {
         String username = getCurrentUsername();
         var user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + username));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.user.not.found", username)));
         return employeeRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException(
                         messageService.getMessage("error.employee.not.found", username)));
@@ -859,7 +871,7 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public void softDeleteOrder(Long id) {
         Order order = orderRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Order not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.order.not.found", id)));
         order.setDeleted(true);
         orderRepository.save(order);
     }
@@ -958,6 +970,60 @@ public class OrderServiceImpl implements OrderService {
             case COMPLETED   -> item.setStatus(OrderItem.ItemStatus.PENDING); // allow undo
         }
         return mapItemToDTO(orderItemRepository.save(item));
+    }
+
+    // ── QR customer-order confirmation ───────────────────────────────────────────
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderDTO> getPendingConfirmationOrders() {
+        return orderRepository.findAllSubmittedOrders()
+                .stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public OrderDTO confirmOrder(Long orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.order.not.found", orderId)));
+        if (order.getStatus() != Order.OrderStatus.SUBMITTED) {
+            throw new BadRequestException(messageService.getMessage("error.order.not.submitted"));
+        }
+        String actor = getCurrentUsername();
+        order.confirm(actor);
+        Order saved = orderRepository.save(order);
+        // Now that it's confirmed (PENDING) it belongs to the kitchen — occupy its table.
+        if (saved.getTableId() != null) {
+            try {
+                tableService.occupyTable(saved.getTableId(), saved.getId());
+            } catch (Exception e) {
+                log.warn("Could not occupy table {} for confirmed order {}: {}",
+                        saved.getTableId(), saved.getOrderNumber(), e.getMessage());
+            }
+        }
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.ORDER_CONFIRMED, "ORDER", saved.getOrderNumber(),
+                "Xác nhận đơn khách đặt #" + saved.getOrderNumber(), null);
+        return mapToDTO(saved);
+    }
+
+    @Override
+    @Transactional
+    public OrderDTO rejectOrder(Long orderId, String reason) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.order.not.found", orderId)));
+        if (order.getStatus() != Order.OrderStatus.SUBMITTED) {
+            throw new BadRequestException(messageService.getMessage("error.order.not.submitted"));
+        }
+        String actor = getCurrentUsername();
+        order.cancel(reason != null && !reason.isBlank() ? reason : "Từ chối đơn khách đặt", actor);
+        Order saved = orderRepository.save(order);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.ORDER_REJECTED, "ORDER", saved.getOrderNumber(),
+                "Từ chối đơn khách đặt #" + saved.getOrderNumber(), null);
+        return mapToDTO(saved);
     }
 
     @Override

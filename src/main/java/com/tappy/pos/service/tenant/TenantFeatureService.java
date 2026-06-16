@@ -4,6 +4,7 @@ import com.tappy.pos.model.entity.tenant.Tenant;
 import com.tappy.pos.model.enums.RoleEnum;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.auth.RoleFeatureRepository;
+import com.tappy.pos.repository.auth.RoleRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -37,6 +38,7 @@ import java.util.stream.Collectors;
 public class TenantFeatureService {
 
     private final RoleFeatureRepository roleFeatureRepository;
+    private final RoleRepository roleRepository;
     private final TenantContext tenantContext;
 
     /**
@@ -172,6 +174,20 @@ public class TenantFeatureService {
 
         log.debug("Parsed {} features for tenant {}: {}", features.size(), tenant.getTenantId(), features);
         return features;
+    }
+
+    /**
+     * Returns the role names for the SHOP_OWNER role in the given tenant.
+     * Falls back to ["SHOP_OWNER"] if the role row is not yet persisted
+     * (e.g. called immediately after provisioning before the transaction commits).
+     *
+     * @param tenantId the tenant whose role table is queried
+     * @return a single-element list with the resolved role name
+     */
+    public List<String> getShopOwnerRoleNames(String tenantId) {
+        return roleRepository.findByNameAndTenantId("SHOP_OWNER", tenantId)
+                .map(r -> List.of(r.getName()))
+                .orElse(List.of("SHOP_OWNER"));
     }
 
     /**

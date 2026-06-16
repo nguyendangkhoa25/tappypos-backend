@@ -23,4 +23,6 @@ public class TableDTO {
     private String reservedFor;
     /** Human-readable reservation time, e.g. "19:00" (null if not RESERVED). */
     private String reservedTime;
+    /** Opaque token embedded in this table's QR code (for building the customer ordering URL). */
+    private String qrToken;
 }

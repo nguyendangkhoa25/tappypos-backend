@@ -11,6 +11,7 @@ import com.tappy.pos.model.entity.finance.ShopExpense;
 import com.tappy.pos.model.enums.ExpenseCategory;
 import com.tappy.pos.repository.finance.ShopExpenseRepository;
 import com.tappy.pos.multitenant.TenantContext;
+import com.tappy.pos.service.MessageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -35,6 +36,7 @@ public class ShopExpenseServiceImpl implements ShopExpenseService {
     private final AuthContext authContext;
     private final TenantContext tenantContext;
     private final ActivityLogService activityLogService;
+    private final MessageService messageService;
 
     @Override
     @Transactional
@@ -79,7 +81,7 @@ public class ShopExpenseServiceImpl implements ShopExpenseService {
     @Override
     @Transactional(readOnly = true)
     public Page<ShopExpenseDTO> search(LocalDate from, LocalDate to, ExpenseCategory category, Pageable pageable) {
-        return expenseRepository.search(from, to, category != null ? category.name() : null, pageable).map(this::toDTO);
+        return expenseRepository.search(tenantContext.getCurrentTenantId(), from, to, category != null ? category.name() : null, pageable).map(this::toDTO);
     }
 
     @Override
@@ -93,7 +95,7 @@ public class ShopExpenseServiceImpl implements ShopExpenseService {
     @Override
     @Transactional(readOnly = true)
     public List<ExpenseCategoryBreakdownDTO> getCategoryBreakdown(Integer year, Integer month) {
-        List<Object[]> rows = expenseRepository.sumGroupedByCategory(year, month);
+        List<Object[]> rows = expenseRepository.sumGroupedByCategory(tenantContext.getCurrentTenantId(), year, month);
 
         BigDecimal grandTotal = rows.stream()
                 .map(r -> (BigDecimal) r[1])
@@ -120,7 +122,7 @@ public class ShopExpenseServiceImpl implements ShopExpenseService {
     @Override
     @Transactional(readOnly = true)
     public List<ExpenseCategoryBreakdownDTO> getCategoryBreakdown(LocalDate from, LocalDate to) {
-        List<Object[]> rows = expenseRepository.sumGroupedByCategoryDateRange(from, to);
+        List<Object[]> rows = expenseRepository.sumGroupedByCategoryDateRange(tenantContext.getCurrentTenantId(), from, to);
 
         BigDecimal grandTotal = rows.stream()
                 .map(r -> (BigDecimal) r[1])
@@ -150,9 +152,10 @@ public class ShopExpenseServiceImpl implements ShopExpenseService {
     @Override
     @Transactional(readOnly = true)
     public java.util.Map<String, Object> getSummary(LocalDate from, LocalDate to) {
-        BigDecimal total = expenseRepository.sumByDateRange(from, to);
+        String tid = tenantContext.getCurrentTenantId();
+        BigDecimal total = expenseRepository.sumByDateRange(tid, from, to);
         if (total == null) total = BigDecimal.ZERO;
-        BigDecimal fixed = expenseRepository.sumByDateRangeAndCategories(from, to, FIXED_CATEGORIES);
+        BigDecimal fixed = expenseRepository.sumByDateRangeAndCategories(tid, from, to, FIXED_CATEGORIES);
         if (fixed == null) fixed = BigDecimal.ZERO;
         BigDecimal variable = total.subtract(fixed);
         return java.util.Map.of("total", total, "fixed", fixed, "variable", variable, "netVsRevenue", BigDecimal.ZERO);
@@ -167,11 +170,12 @@ public class ShopExpenseServiceImpl implements ShopExpenseService {
     @Override
     @Transactional(readOnly = true)
     public java.util.List<java.util.Map<String, Object>> getChart(LocalDate from, LocalDate to, String granularity) {
+        String tid = tenantContext.getCurrentTenantId();
         List<Object[]> rows = switch (granularity == null ? "day" : granularity) {
-            case "week"  -> expenseRepository.getWeeklyChart(from, to);
-            case "month" -> expenseRepository.getMonthlyChart(from, to);
-            case "year"  -> expenseRepository.getYearlyChart(from, to);
-            default      -> expenseRepository.getDailyChart(from, to);
+            case "week"  -> expenseRepository.getWeeklyChart(tid, from, to);
+            case "month" -> expenseRepository.getMonthlyChart(tid, from, to);
+            case "year"  -> expenseRepository.getYearlyChart(tid, from, to);
+            default      -> expenseRepository.getDailyChart(tid, from, to);
         };
         java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
         for (Object[] row : rows) { result.add(java.util.Map.of("label", row[0].toString(), "value", row[1])); }
@@ -181,7 +185,7 @@ public class ShopExpenseServiceImpl implements ShopExpenseService {
     private ShopExpense findActive(Long id) {
         return expenseRepository.findById(id)
                 .filter(e -> !e.isDeleted())
-                .orElseThrow(() -> new ResourceNotFoundException("Expense not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.expense.not.found", id)));
     }
 
     private ShopExpenseDTO toDTO(ShopExpense e) {

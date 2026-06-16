@@ -39,7 +39,7 @@ public class PromotionService {
         return promotionRepository.findById(id)
                 .filter(p -> !p.isDeleted())
                 .map(this::mapToDTO)
-                .orElseThrow(() -> new ResourceNotFoundException("Promotion not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.promotion.not.found", id)));
     }
 
     @Transactional
@@ -69,7 +69,7 @@ public class PromotionService {
     public PromotionDTO update(Long id, SavePromotionRequest req) {
         Promotion promo = promotionRepository.findById(id)
                 .filter(p -> !p.isDeleted())
-                .orElseThrow(() -> new ResourceNotFoundException("Promotion not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.promotion.not.found", id)));
 
         String newCode = req.getCode().toUpperCase().trim();
         if (!newCode.equals(promo.getCode())) {
@@ -97,7 +97,7 @@ public class PromotionService {
     public void delete(Long id) {
         Promotion promo = promotionRepository.findById(id)
                 .filter(p -> !p.isDeleted())
-                .orElseThrow(() -> new ResourceNotFoundException("Promotion not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.promotion.not.found", id)));
         promo.softDelete();
         promotionRepository.save(promo);
     }
@@ -108,12 +108,12 @@ public class PromotionService {
      */
     public ApplyPromotionResponse validatePromotion(String code, BigDecimal orderSubtotal) {
         Promotion promo = promotionRepository.findValidPromotion(code.toUpperCase().trim(), LocalDateTime.now())
-                .orElseThrow(() -> new BadRequestException("Invalid or expired promotion code: " + code));
+                .orElseThrow(() -> new BadRequestException(messageService.getMessage("error.promotion.invalid", code)));
 
         if (promo.getMinOrderAmount() != null
                 && orderSubtotal.compareTo(promo.getMinOrderAmount()) < 0) {
             throw new BadRequestException(
-                    "Order must be at least " + promo.getMinOrderAmount() + " to use this promotion");
+                    messageService.getMessage("error.promotion.minOrder", promo.getMinOrderAmount()));
         }
 
         BigDecimal discount = calculateDiscount(promo, orderSubtotal);
@@ -121,7 +121,7 @@ public class PromotionService {
                 .code(promo.getCode())
                 .name(promo.getName())
                 .discountAmount(discount)
-                .message("Promotion applied: " + promo.getName())
+                .message(messageService.getMessage("promotion.applied", promo.getName()))
                 .build();
     }
 
@@ -132,12 +132,12 @@ public class PromotionService {
     @Transactional
     public BigDecimal applyAtCheckout(String code, BigDecimal orderSubtotal) {
         Promotion promo = promotionRepository.findValidPromotion(code.toUpperCase().trim(), LocalDateTime.now())
-                .orElseThrow(() -> new BadRequestException("Invalid or expired promotion code: " + code));
+                .orElseThrow(() -> new BadRequestException(messageService.getMessage("error.promotion.invalid", code)));
 
         if (promo.getMinOrderAmount() != null
                 && orderSubtotal.compareTo(promo.getMinOrderAmount()) < 0) {
             throw new BadRequestException(
-                    "Order must be at least " + promo.getMinOrderAmount() + " to use this promotion");
+                    messageService.getMessage("error.promotion.minOrder", promo.getMinOrderAmount()));
         }
 
         BigDecimal discount = calculateDiscount(promo, orderSubtotal);

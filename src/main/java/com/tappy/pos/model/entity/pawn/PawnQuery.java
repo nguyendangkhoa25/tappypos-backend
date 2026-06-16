@@ -18,7 +18,7 @@ import java.util.Set;
 @AllArgsConstructor
 @NoArgsConstructor
 @ToString
-@Filter(name = "tenantFilter", condition = "tenant_id = :tenantId")
+@Filter(name = "tenantFilter", condition = "tenant_id = :tenantFilterId")
 public class PawnQuery {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -39,13 +39,6 @@ public class PawnQuery {
     //Additional details about the item.
     @Column(name = "item_description")
     private String itemDescription;
-
-    //Weight of the item(For Gold item)
-    @Column(name = "item_weight")
-    private BigDecimal itemWeight;
-
-    @Column(name = "gem_weight")
-    private BigDecimal gemWeight;
 
     //Estimated value of the item
     @Column(name = "item_value")

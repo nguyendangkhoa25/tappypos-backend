@@ -61,7 +61,7 @@ public class CategoryServiceImpl implements CategoryService {
     public CategoryDTO getCategoryById(Long id) {
         log.info("Getting category by id: {}", id);
         Category category = categoryRepository.findByIdAndDeletedFalse(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Category not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.category.not.found", id)));
         return mapToDTO(category, null);
     }
 
@@ -78,7 +78,7 @@ public class CategoryServiceImpl implements CategoryService {
 
         if (request.getParentId() != null) {
             Category parent = categoryRepository.findByIdAndDeletedFalse(request.getParentId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Parent category not found: " + request.getParentId()));
+                    .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.category.parent.not.found", request.getParentId())));
             category.setParent(parent);
         }
 
@@ -92,7 +92,7 @@ public class CategoryServiceImpl implements CategoryService {
         log.info("Updating category: {}", id);
 
         Category category = categoryRepository.findByIdAndDeletedFalse(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Category not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.category.not.found", id)));
 
         String oldName = category.getName();
         category.setName(request.getName());
@@ -106,7 +106,7 @@ public class CategoryServiceImpl implements CategoryService {
                 throw new IllegalArgumentException(messageService.getMessage("error.category.cannotBeSelfParent"));
             }
             Category parent = categoryRepository.findByIdAndDeletedFalse(request.getParentId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Parent category not found: " + request.getParentId()));
+                    .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.category.parent.not.found", request.getParentId())));
             category.setParent(parent);
         } else {
             category.setParent(null);
@@ -127,7 +127,7 @@ public class CategoryServiceImpl implements CategoryService {
         log.info("Deleting category: {}", id);
 
         Category category = categoryRepository.findByIdAndDeletedFalse(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Category not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.category.not.found", id)));
 
         List<Category> children = categoryRepository.findByParentIdAndDeletedFalse(id);
         if (!children.isEmpty()) {
@@ -154,7 +154,7 @@ public class CategoryServiceImpl implements CategoryService {
     public List<CategoryDTO> getSubcategories(Long parentId) {
         log.info("Getting subcategories for parent: {}", parentId);
         categoryRepository.findByIdAndDeletedFalse(parentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Category not found: " + parentId));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.category.not.found", parentId)));
         return categoryRepository.findByParentIdAndDeletedFalse(parentId)
                 .stream()
                 .map(c -> mapToDTO(c, null))

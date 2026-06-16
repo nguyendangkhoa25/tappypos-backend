@@ -141,7 +141,7 @@ class CategoryServiceImplTest {
 
         assertThatThrownBy(() -> categoryService.getCategoryById(99L))
                 .isInstanceOf(ResourceNotFoundException.class)
-                .hasMessageContaining("99");
+                .hasMessageContaining("error.category.not.found");
     }
 
     // ── createCategory ────────────────────────────────────────────────────────
@@ -192,7 +192,7 @@ class CategoryServiceImplTest {
 
         assertThatThrownBy(() -> categoryService.createCategory(req))
                 .isInstanceOf(ResourceNotFoundException.class)
-                .hasMessageContaining("Parent category not found");
+                .hasMessageContaining("error.category.parent.not.found");
     }
 
     // ── updateCategory ────────────────────────────────────────────────────────
@@ -338,7 +338,7 @@ class CategoryServiceImplTest {
 
         assertThatThrownBy(() -> categoryService.getSubcategories(99L))
                 .isInstanceOf(ResourceNotFoundException.class)
-                .hasMessageContaining("99");
+                .hasMessageContaining("error.category.not.found");
     }
 
     // ── deleteCategory with gold price ────────────────────────────────────────

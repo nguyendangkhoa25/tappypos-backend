@@ -16,6 +16,7 @@ import com.tappy.pos.repository.auth.UserRepository;
 import com.tappy.pos.repository.feedback.FeedbackRepository;
 import com.tappy.pos.repository.tenant.AgentRepository;
 import com.tappy.pos.model.entity.notification.Notification;
+import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,6 +40,7 @@ public class FeedbackServiceImpl implements FeedbackService {
     private final AgentRepository agentRepository;
     private final UserRepository userRepository;
     private final ActivityLogService activityLogService;
+    private final MessageService messageService;
 
     @Override
     @Transactional
@@ -95,7 +97,7 @@ public class FeedbackServiceImpl implements FeedbackService {
     public FeedbackDTO updateStatus(Long id, UpdateFeedbackRequest request) {
         tenantContext.clear(); // force master DB
         UserFeedback feedback = feedbackRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Feedback not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("feedback.not.found", id)));
 
         feedback.setStatus(request.getStatus());
         feedback.setAdminNote(request.getAdminNote());
@@ -108,6 +110,20 @@ public class FeedbackServiceImpl implements FeedbackService {
                 ActivityAction.FEEDBACK_REVIEWED, "FEEDBACK", String.valueOf(id),
                 "Xử lý phản hồi #" + id + " → " + request.getStatus().getDisplayName(), null);
         return toDTO(saved);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countAllActive() {
+        tenantContext.clear(); // force master DB
+        return feedbackRepository.countAllActive();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countByStatus(FeedbackStatus status) {
+        tenantContext.clear(); // force master DB
+        return feedbackRepository.countByStatus(status);
     }
 
     // After tenantContext.clear() — we are in master context; notifications are saved with tenant_id=null

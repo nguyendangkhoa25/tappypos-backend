@@ -22,6 +22,26 @@ public interface RoleRepository extends JpaRepository<Role, Long> {
     List<Role> findByTenantId(String tenantId);
 
     /**
+     * Native existence check used during provisioning. The derived
+     * {@code existsByNameAndTenantId} is rewritten by the {@code tenantFilter}
+     * Hibernate @Filter on UnifiedTenantEntity and returns wrong results while
+     * seeding a brand-new tenant; this native query is immune to that filter.
+     */
+    @Query(value = "SELECT EXISTS(SELECT 1 FROM roles WHERE name = :name AND tenant_id = :tenantId)",
+           nativeQuery = true)
+    boolean nativeExistsByNameAndTenant(@Param("name") String name, @Param("tenantId") String tenantId);
+
+    /**
+     * Native lookup used during provisioning. Like the exists check, the derived
+     * {@code findByNameAndTenantId} is corrupted by the {@code tenantFilter} @Filter
+     * (it ignores the name predicate and returns every role for the tenant, causing
+     * NonUniqueResultException); this native query is immune to that filter.
+     */
+    @Query(value = "SELECT * FROM roles WHERE name = :name AND tenant_id = :tenantId LIMIT 1",
+           nativeQuery = true)
+    Optional<Role> nativeFindByNameAndTenant(@Param("name") String name, @Param("tenantId") String tenantId);
+
+    /**
      * Remove all user-role assignments for users that are being unlinked from a tenant.
      * Must be called BEFORE unlinkAllFromTenant so the join table is clean.
      */

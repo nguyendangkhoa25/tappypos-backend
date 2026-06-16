@@ -12,4 +12,7 @@ public interface GoldPriceService {
     void deletePrice(Long id);
     PriceBoardResponse getPriceBoard(String code);
     GoldPriceDTO getPriceForCategory(Long categoryId);
+
+    /** Look up the current price row by its code (e.g. "B925", "B950"). */
+    GoldPriceDTO getPriceByCode(String code);
 }

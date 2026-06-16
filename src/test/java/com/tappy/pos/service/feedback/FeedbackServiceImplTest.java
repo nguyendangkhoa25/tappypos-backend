@@ -48,6 +48,7 @@ class FeedbackServiceImplTest {
     @Mock private AgentRepository agentRepository;
     @Mock private UserRepository userRepository;
     @Mock private com.tappy.pos.service.audit.ActivityLogService activityLogService;
+    @Mock private com.tappy.pos.service.MessageService messageService;
 
     @InjectMocks
     private FeedbackServiceImpl feedbackService;

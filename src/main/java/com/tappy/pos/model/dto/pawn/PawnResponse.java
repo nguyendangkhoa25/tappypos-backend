@@ -18,8 +18,6 @@ public class PawnResponse {
     private String itemType;
     private String itemDescription;
     private BigDecimal itemValue;
-    private BigDecimal itemWeight;
-    private BigDecimal gemWeight;
     private LocalDateTime pawnDate;
     private LocalDateTime pawnDueDate;
     private BigDecimal pawnAmount;
@@ -51,4 +49,5 @@ public class PawnResponse {
     private PawnWatchDetail watchDetail;
     private PawnRealEstateDetail realEstateDetail;
     private PawnGeneralDetail generalDetail;
+    private PawnJewelryDetail jewelryDetail;
 }

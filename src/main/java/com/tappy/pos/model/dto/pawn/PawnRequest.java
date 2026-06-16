@@ -17,8 +17,6 @@ public class PawnRequest {
     private String itemName;
 
     private String itemDescription;
-    private BigDecimal itemWeight;
-    private BigDecimal gemWeight;
     private BigDecimal itemValue;
     private String itemType;
     private String itemBrand;
@@ -48,7 +46,7 @@ public class PawnRequest {
     private List<Long> deletedRequestIds;
     private String interestCalcMode;
     private String requestType = "";
-    private long heldDays;
+    private Long heldDays;
     private boolean visible = true;
     private String pawnCategory;
     private PawnElectronicsDetail electronicsDetail;
@@ -56,4 +54,5 @@ public class PawnRequest {
     private PawnWatchDetail watchDetail;
     private PawnRealEstateDetail realEstateDetail;
     private PawnGeneralDetail generalDetail;
+    private PawnJewelryDetail jewelryDetail;
 }

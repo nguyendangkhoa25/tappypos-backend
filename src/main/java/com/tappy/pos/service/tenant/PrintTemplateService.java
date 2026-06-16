@@ -8,8 +8,12 @@ import com.tappy.pos.model.dto.tenant.PrintTemplateDTO;
 import com.tappy.pos.model.dto.tenant.ReceiptTemplateConfig;
 import com.tappy.pos.model.dto.tenant.SavePrintTemplateRequest;
 import com.tappy.pos.model.dto.tenant.StampTemplateConfig;
+import com.tappy.pos.model.entity.finance.BankAccount;
 import com.tappy.pos.model.entity.tenant.PrintTemplate;
+import com.tappy.pos.model.entity.tenant.ShopInfo;
+import com.tappy.pos.repository.finance.BankAccountRepository;
 import com.tappy.pos.repository.tenant.PrintTemplateRepository;
+import com.tappy.pos.repository.tenant.ShopInfoRepository;
 import com.tappy.pos.service.MessageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -33,6 +38,8 @@ public class PrintTemplateService {
     private final ObjectMapper objectMapper;
     private final MessageService messageService;
     private final com.tappy.pos.multitenant.TenantContext tenantContext;
+    private final ShopInfoRepository shopInfoRepository;
+    private final BankAccountRepository bankAccountRepository;
 
     // ── queries ────────────────────────────────────────────────────────────
 
@@ -135,12 +142,25 @@ public class PrintTemplateService {
                 .orElseGet(() -> defaultJsonFor(type));
     }
 
+    // ── preview helpers ────────────────────────────────────────────────────
+
+    /** Returns the current tenant's ShopInfo, creating a blank record if none exists. */
+    public ShopInfo getShopInfoForPreview() {
+        return shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc()
+                .orElse(null);
+    }
+
+    /** Returns the default bank account for the current tenant, if any. */
+    public Optional<BankAccount> getDefaultBankAccount() {
+        return bankAccountRepository.findDefault();
+    }
+
     // ── helpers ────────────────────────────────────────────────────────────
 
     private PrintTemplate findActive(Long id) {
         return repo.findById(id)
                 .filter(t -> !t.isDeleted())
-                .orElseThrow(() -> new ResourceNotFoundException("Print template not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.printTemplate.not.found", id)));
     }
 
     private PrintTemplateDTO toDTO(PrintTemplate t) {

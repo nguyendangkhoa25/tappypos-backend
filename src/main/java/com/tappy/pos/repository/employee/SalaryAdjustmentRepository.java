@@ -17,7 +17,9 @@ public interface SalaryAdjustmentRepository extends JpaRepository<SalaryAdjustme
 
     Optional<SalaryAdjustment> findByIdAndSalaryId(Long id, Long salaryId);
 
-    @Query(value = "SELECT COALESCE(SUM(amount), 0) FROM salary_adjustment WHERE salary_id = :salaryId AND type = :type",
+    @Query(value = "SELECT COALESCE(SUM(amount), 0) FROM salary_adjustment " +
+            "WHERE salary_id = :salaryId AND type = :type " +
+            "AND tenant_id = current_setting('app.current_tenant', true)",
            nativeQuery = true)
     BigDecimal sumByType(@Param("salaryId") Long salaryId, @Param("type") String type);
 }

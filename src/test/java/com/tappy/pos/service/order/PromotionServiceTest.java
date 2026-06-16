@@ -215,7 +215,7 @@ class PromotionServiceTest {
 
         assertThatThrownBy(() -> promotionService.validatePromotion("SAVE10", new BigDecimal("50000")))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessageContaining("at least");
+                .hasMessageContaining("error.promotion.minOrder");
     }
 
     @Test
@@ -226,7 +226,7 @@ class PromotionServiceTest {
 
         assertThatThrownBy(() -> promotionService.validatePromotion("INVALID", new BigDecimal("100000")))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessageContaining("Invalid or expired");
+                .hasMessageContaining("error.promotion.invalid");
     }
 
     // ── applyAtCheckout ───────────────────────────────────────────────────────

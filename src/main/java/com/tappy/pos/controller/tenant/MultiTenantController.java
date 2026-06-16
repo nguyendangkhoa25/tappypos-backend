@@ -9,15 +9,14 @@ import com.tappy.pos.model.dto.tenant.TenantDTO;
 import com.tappy.pos.model.dto.tenant.TenantStatsDTO;
 import com.tappy.pos.model.dto.tenant.UpdateTenantRequest;
 import com.tappy.pos.model.entity.notification.Notification;
-import com.tappy.pos.model.entity.tenant.Agent;
 import com.tappy.pos.model.entity.tenant.Tenant;
 import com.tappy.pos.multitenant.TenantContext;
-import com.tappy.pos.repository.tenant.AgentRepository;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.audit.ActivityLogService;
 import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.service.auth.RoleFeatureService;
 import com.tappy.pos.service.notification.NotificationService;
+import com.tappy.pos.service.tenant.AgentService;
 import com.tappy.pos.service.tenant.ShopConfigService;
 import com.tappy.pos.service.tenant.ShopInfoService;
 import com.tappy.pos.service.tenant.TenantProvisioningService;
@@ -30,7 +29,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -56,7 +54,7 @@ public class MultiTenantController {
     private final TenantSeedService tenantSeedService;
     private final NotificationService notificationService;
     private final MessageService messageService;
-    private final AgentRepository agentRepository;
+    private final AgentService agentService;
     private final RoleFeatureService roleFeatureService;
     private final ActivityLogService activityLogService;
 
@@ -156,7 +154,7 @@ public class MultiTenantController {
 
         // Notify only the new shop's admin user directly — avoids cross-tenant fan-out
         String subscriptionType = tenantEntity.getSubscriptionType() != null ? tenantEntity.getSubscriptionType() : "Trial";
-        String supportInfo = buildSupportInfo(tenantEntity.getVendorId());
+        String supportInfo = agentService.getContactInfo(tenantEntity.getVendorId());
         String welcomeTitle = messageService.getMessage("notification.shop.welcome.title", vi);
         String welcomeMsg = messageService.getMessage("notification.shop.welcome.message", vi,
                 tenant.getName(), subscriptionType, supportInfo);
@@ -332,15 +330,5 @@ public class MultiTenantController {
         );
     }
 
-    private String buildSupportInfo(Long vendorId) {
-        if (vendorId == null) return "";
-        return agentRepository.findById(vendorId).map(agent -> {
-            List<String> parts = new ArrayList<>();
-            if (agent.getName() != null) parts.add(agent.getName());
-            if (agent.getContactPhone() != null) parts.add("☎ " + agent.getContactPhone());
-            if (agent.getContactEmail() != null) parts.add("✉ " + agent.getContactEmail());
-            return parts.isEmpty() ? "" : "Liên hệ hỗ trợ: " + String.join(" · ", parts);
-        }).orElse("");
-    }
 }
 

@@ -56,9 +56,11 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
                   AND o.order_type = 'SELL'
                   AND o.completed_at >= :fromDt
                   AND o.completed_at <  :toDt
+                  AND o.tenant_id = current_setting('app.current_tenant', true)
                 GROUP BY oi.product_id
             ) oi_rev                            ON oi_rev.product_id = p.id
             WHERE c.deleted = false
+              AND c.tenant_id = current_setting('app.current_tenant', true)
             GROUP BY c.id
             """, nativeQuery = true)
     List<Object[]> findAllCategoryStats(

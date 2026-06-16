@@ -47,7 +47,8 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
 
     // Analytics: new customers created within a date range (excludes walk-in phone)
     @Query(value = "SELECT COUNT(id) FROM customers WHERE deleted = false AND phone != '0000000000' " +
-                   "AND created_at BETWEEN :from AND :to", nativeQuery = true)
+                   "AND created_at BETWEEN :from AND :to " +
+                   "AND tenant_id = current_setting('app.current_tenant', true)", nativeQuery = true)
     long countNewInPeriod(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
     /**

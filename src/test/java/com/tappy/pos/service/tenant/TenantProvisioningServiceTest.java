@@ -68,7 +68,7 @@ class TenantProvisioningServiceTest {
 
         lenient().when(roleRepository.existsByNameAndTenantId(anyString(), anyString())).thenReturn(false);
         lenient().when(roleRepository.save(any(Role.class))).thenReturn(shopOwnerRole);
-        lenient().when(roleRepository.findByNameAndTenantId(RoleEnum.SHOP_OWNER.getCode(), "test-shop"))
+        lenient().when(roleRepository.nativeFindByNameAndTenant(RoleEnum.SHOP_OWNER.getCode(), "test-shop"))
                 .thenReturn(Optional.of(shopOwnerRole));
         lenient().when(shopInfoRepository.findFirstByTenantIdAndDeletedAtIsNullOrderByIdAsc("test-shop"))
                 .thenReturn(Optional.empty());
@@ -156,7 +156,7 @@ class TenantProvisioningServiceTest {
     @Test
     @DisplayName("provision throws when SHOP_OWNER role not found after seeding")
     void testProvision_ThrowsWhenShopOwnerRoleMissing() {
-        when(roleRepository.findByNameAndTenantId(RoleEnum.SHOP_OWNER.getCode(), "test-shop"))
+        when(roleRepository.nativeFindByNameAndTenant(RoleEnum.SHOP_OWNER.getCode(), "test-shop"))
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(() ->

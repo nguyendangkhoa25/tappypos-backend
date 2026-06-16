@@ -1,11 +1,10 @@
 package com.tappy.pos.controller.employee;
 
+import com.tappy.pos.annotation.RequiresFeature;
 import com.tappy.pos.model.dto.ApiResponse;
 import com.tappy.pos.model.dto.employee.CreateEmployeeRequest;
 import com.tappy.pos.model.dto.employee.EmployeeDTO;
 import com.tappy.pos.model.dto.employee.UpdateEmployeeRequest;
-import com.tappy.pos.repository.order.OrderItemRepository;
-import com.tappy.pos.repository.order.OrderRepository;
 import com.tappy.pos.service.employee.EmployeeService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -17,12 +16,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.*;
-import java.util.stream.Collectors;
-import com.tappy.pos.annotation.RequiresFeature;
+import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @RestController
@@ -32,8 +29,6 @@ import com.tappy.pos.annotation.RequiresFeature;
 public class EmployeeController {
 
     private final EmployeeService employeeService;
-    private final OrderRepository orderRepository;
-    private final OrderItemRepository orderItemRepository;
 
     @GetMapping
     public ResponseEntity<Page<EmployeeDTO>> getAll(
@@ -102,88 +97,8 @@ public class EmployeeController {
         LocalDateTime fromDt = LocalDate.parse(from).atStartOfDay();
         LocalDateTime toDt   = LocalDate.parse(to).atTime(23, 59, 59);
 
-        // ── Summary ──────────────────────────────────────────────────────────
-        BigDecimal totalRevenue   = orderRepository.sumRevenueByDateRange(fromDt, toDt);
-        if (totalRevenue == null) totalRevenue = BigDecimal.ZERO;
-
-        BigDecimal totalCommission = orderItemRepository.sumTeamCommissionByDateRange(fromDt, toDt);
-        if (totalCommission == null) totalCommission = BigDecimal.ZERO;
-
-        long activeEmployeeCount = orderRepository.countActiveEmployees(fromDt, toDt);
-        double avgRevenuePerEmployee = activeEmployeeCount > 0
-                ? totalRevenue.doubleValue() / activeEmployeeCount : 0.0;
-
-        Map<String, Object> summary = new LinkedHashMap<>();
-        summary.put("totalRevenue",          totalRevenue.doubleValue());
-        summary.put("totalCommission",        totalCommission.doubleValue());
-        summary.put("activeEmployeeCount",    activeEmployeeCount);
-        summary.put("avgRevenuePerEmployee",  avgRevenuePerEmployee);
-
-        // ── Revenue ranking ───────────────────────────────────────────────────
-        List<Object[]> revRows = orderRepository.getEmployeeRevenueRankingByDateRange(fromDt, toDt, Math.max(1, limit));
-        List<Map<String, Object>> rankingRevenue = revRows.stream().map(r -> {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("employeeName", r[0] != null ? r[0].toString() : "");
-            item.put("userId",       r[1] != null ? r[1].toString() : null);
-            item.put("orderCount",   r[2] != null ? ((Number) r[2]).longValue()   : 0);
-            item.put("revenue",      r[3] != null ? ((Number) r[3]).doubleValue() : 0);
-            return item;
-        }).collect(Collectors.toList());
-
-        // ── Commission ranking ────────────────────────────────────────────────
-        List<Object[]> commRows = orderItemRepository.getEmployeeCommissionRankingByDateRange(fromDt, toDt, Math.max(1, limit));
-        List<Map<String, Object>> rankingCommission = commRows.stream().map(r -> {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("employeeId",   r[0] != null ? r[0].toString() : null);
-            item.put("employeeName", r[1] != null ? r[1].toString() : "");
-            item.put("commission",   r[2] != null ? ((Number) r[2]).doubleValue() : 0);
-            item.put("orderCount",   r[3] != null ? ((Number) r[3]).longValue()   : 0);
-            item.put("revenue",      r[4] != null ? ((Number) r[4]).doubleValue() : 0);
-            return item;
-        }).collect(Collectors.toList());
-
-        // ── Trend (revenue + commission merged by label) ──────────────────────
-        List<Object[]> revTrend = switch (granularity) {
-            case "week"  -> orderRepository.getEmployeeRevenueTrendByWeek(fromDt, toDt);
-            case "month" -> orderRepository.getEmployeeRevenueTrendByMonth(fromDt, toDt);
-            default      -> orderRepository.getEmployeeRevenueTrendByDay(fromDt, toDt);
-        };
-        List<Object[]> commTrend = switch (granularity) {
-            case "week"  -> orderItemRepository.getTeamCommissionTrendByWeek(fromDt, toDt);
-            case "month" -> orderItemRepository.getTeamCommissionTrendByMonth(fromDt, toDt);
-            default      -> orderItemRepository.getTeamCommissionTrendByDay(fromDt, toDt);
-        };
-
-        // Merge by label (outer-join style)
-        Map<String, double[]> trendMap = new LinkedHashMap<>();
-        for (Object[] r : revTrend) {
-            String lbl = r[0] != null ? r[0].toString() : "";
-            trendMap.computeIfAbsent(lbl, k -> new double[]{0, 0})[0] =
-                    r[1] != null ? ((Number) r[1]).doubleValue() : 0;
-        }
-        for (Object[] r : commTrend) {
-            String lbl = r[0] != null ? r[0].toString() : "";
-            trendMap.computeIfAbsent(lbl, k -> new double[]{0, 0})[1] =
-                    r[1] != null ? ((Number) r[1]).doubleValue() : 0;
-        }
-        List<Map<String, Object>> trend = trendMap.entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .map(e -> {
-                    Map<String, Object> point = new LinkedHashMap<>();
-                    point.put("label",      e.getKey());
-                    point.put("revenue",    e.getValue()[0]);
-                    point.put("commission", e.getValue()[1]);
-                    return point;
-                })
-                .collect(Collectors.toList());
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("summary",            summary);
-        result.put("rankingRevenue",      rankingRevenue);
-        result.put("rankingCommission",   rankingCommission);
-        result.put("trend",               trend);
-
-        return ResponseEntity.ok(ApiResponse.success(result, "OK"));
+        return ResponseEntity.ok(ApiResponse.success(
+                employeeService.getAnalytics(fromDt, toDt, granularity, limit), "OK"));
     }
 
     // ── Avatar ────────────────────────────────────────────────────────────────

@@ -48,23 +48,30 @@ public class TenantRlsAspect {
         String tenantId = tenantContext.getCurrentTenantId();
         if (tenantId == null) return;
 
+        // Layer 2: enable Hibernate @Filter — isolated try-catch so a failure here
+        // does NOT prevent Layer 3 from running.
         try {
             Session session = entityManager.unwrap(Session.class);
-
-            // Layer 2: enable Hibernate filter (idempotent — skip if already armed)
             if (session.getEnabledFilter("tenantFilter") == null) {
-                session.enableFilter("tenantFilter").setParameter("tenantId", tenantId);
+                session.enableFilter("tenantFilter").setParameter("tenantFilterId", tenantId);
             }
+        } catch (Exception e) {
+            log.warn("[TenantRls] Layer 2 (Hibernate filter) failed for tenant '{}': {}",
+                    tenantId, e.getMessage());
+        }
 
-            // Layer 3: set PostgreSQL session variable (is_local=true → resets on
-            // commit/rollback, safe with HikariCP connection reuse)
+        // Layer 3: SET LOCAL app.current_tenant on the JDBC connection so that
+        // (a) RLS policies enforce isolation for raw JDBC, and
+        // (b) native @Query methods that use current_setting('app.current_tenant', true)
+        //     always get the correct value — regardless of whether Layer 2 succeeded.
+        // is_local=true → resets on commit/rollback, safe with HikariCP connection reuse.
+        try {
             entityManager
                     .createNativeQuery("SELECT set_config('app.current_tenant', :id, true)")
                     .setParameter("id", tenantId)
                     .getSingleResult();
-
         } catch (Exception e) {
-            log.warn("Failed to activate tenant filter/RLS for tenant '{}': {}",
+            log.warn("[TenantRls] Layer 3 (set_config) failed for tenant '{}': {}",
                     tenantId, e.getMessage());
         }
     }

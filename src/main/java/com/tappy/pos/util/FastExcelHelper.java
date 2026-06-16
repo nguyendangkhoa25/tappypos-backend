@@ -105,10 +105,10 @@ public class FastExcelHelper {
         writeData(worksheet, rowIndex, PAWN_EXCEL_MATRIX.get(CUSTOMER_NAME).getIndex(), customer.getName());
         writeData(worksheet, rowIndex, PAWN_EXCEL_MATRIX.get(CUSTOMER_PHONE).getIndex(), customer.getPhone());
         writeData(worksheet, rowIndex, PAWN_EXCEL_MATRIX.get(ITEM_NAME).getIndex(), pawnQuery.getItemName());
-        writeData(worksheet, rowIndex, PAWN_EXCEL_MATRIX.get(ITEM_WEIGHT).getIndex(), NumberUtil.weightToString(pawnQuery.getItemWeight()));
+        writeData(worksheet, rowIndex, PAWN_EXCEL_MATRIX.get(ITEM_WEIGHT).getIndex(), "");
         writeData(worksheet, rowIndex, PAWN_EXCEL_MATRIX.get(ITEM_TYPE).getIndex(), pawnQuery.getItemType());
         writeData(worksheet, rowIndex, PAWN_EXCEL_MATRIX.get(ITEM_BRAND).getIndex(), pawnQuery.getItemBrand());
-        writeData(worksheet, rowIndex, PAWN_EXCEL_MATRIX.get(GEM_WEIGHT).getIndex(), NumberUtil.weightToString(pawnQuery.getGemWeight()));
+        writeData(worksheet, rowIndex, PAWN_EXCEL_MATRIX.get(GEM_WEIGHT).getIndex(), "");
         writeData(worksheet, rowIndex, PAWN_EXCEL_MATRIX.get(PAWN_DATE).getIndex(), DateTimeUtil.localDateTimeToString(pawnQuery.getPawnDate()));
         writeData(worksheet, rowIndex, PAWN_EXCEL_MATRIX.get(PAWN_DUE_DATE).getIndex(), DateTimeUtil.localDateTimeToString(pawnQuery.getPawnDueDate()));
         writeData(worksheet, rowIndex, PAWN_EXCEL_MATRIX.get(PAWN_AMOUNT).getIndex(), NumberUtil.amountToString(pawnQuery.getPawnAmount()));

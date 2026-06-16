@@ -6,6 +6,8 @@ import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
+import java.util.UUID;
+
 @Entity
 @Table(name = "shop_table")
 @Getter
@@ -42,10 +44,15 @@ public class ShopTable extends TenantAwareEntity {
     @Column(name = "reserved_time", length = 10)
     private String reservedTime;
 
+    /** Random opaque token embedded in this table's QR code; used to resolve the table on the public ordering page. */
+    @Column(name = "qr_token", length = 64)
+    private String qrToken;
+
     @PrePersist
     protected void onTablePersist() {
         if (this.status == null) this.status = TableStatus.AVAILABLE;
         if (this.capacity == null) this.capacity = 4;
         if (this.displayOrder == null) this.displayOrder = 0;
+        if (this.qrToken == null) this.qrToken = UUID.randomUUID().toString();
     }
 }

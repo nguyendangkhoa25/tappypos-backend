@@ -13,21 +13,31 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+/**
+ * All queries here use nativeQuery = true, which bypasses the Hibernate @Filter
+ * defined on TenantAwareEntity. Tenant isolation must therefore be enforced
+ * explicitly via AND tenant_id = :tenantId in every WHERE clause.
+ *
+ * Do NOT rely on PostgreSQL RLS alone — the application connects as the DB owner
+ * (a PostgreSQL superuser) which bypasses RLS unconditionally.
+ */
 @Repository
 public interface ShopExpenseRepository extends JpaRepository<ShopExpense, Long> {
 
-    // CAST(:from AS date) tells PostgreSQL the type even when the value is NULL
     @Query(value = "SELECT * FROM shop_expense WHERE deleted = FALSE " +
+           "AND tenant_id = :tenantId " +
            "AND (CAST(:from AS date) IS NULL OR expense_date >= CAST(:from AS date)) " +
            "AND (CAST(:to AS date)   IS NULL OR expense_date <= CAST(:to AS date)) " +
            "AND (:category IS NULL OR category = :category) " +
            "ORDER BY expense_date DESC, id DESC",
            countQuery = "SELECT COUNT(*) FROM shop_expense WHERE deleted = FALSE " +
+           "AND tenant_id = :tenantId " +
            "AND (CAST(:from AS date) IS NULL OR expense_date >= CAST(:from AS date)) " +
            "AND (CAST(:to AS date)   IS NULL OR expense_date <= CAST(:to AS date)) " +
            "AND (:category IS NULL OR category = :category)",
            nativeQuery = true)
     Page<ShopExpense> search(
+            @Param("tenantId") String tenantId,
             @Param("from") LocalDate from,
             @Param("to") LocalDate to,
             @Param("category") String category,
@@ -35,78 +45,147 @@ public interface ShopExpenseRepository extends JpaRepository<ShopExpense, Long> 
 
     @Query(value = "SELECT COALESCE(SUM(amount), 0) FROM shop_expense " +
            "WHERE deleted = FALSE " +
+           "AND tenant_id = :tenantId " +
            "AND EXTRACT(YEAR FROM expense_date) = :year " +
            "AND EXTRACT(MONTH FROM expense_date) = :month",
            nativeQuery = true)
-    BigDecimal sumByMonth(@Param("year") int year, @Param("month") int month);
+    BigDecimal sumByMonth(
+            @Param("tenantId") String tenantId,
+            @Param("year") int year,
+            @Param("month") int month);
 
     @Query(value = "SELECT COALESCE(SUM(amount), 0) FROM shop_expense " +
-           "WHERE deleted = FALSE AND EXTRACT(YEAR FROM expense_date) = :year",
+           "WHERE deleted = FALSE AND tenant_id = :tenantId " +
+           "AND EXTRACT(YEAR FROM expense_date) = :year",
            nativeQuery = true)
-    BigDecimal sumByYear(@Param("year") int year);
+    BigDecimal sumByYear(
+            @Param("tenantId") String tenantId,
+            @Param("year") int year);
 
-    @Query(value = "SELECT COALESCE(SUM(amount), 0) FROM shop_expense WHERE deleted = FALSE",
+    @Query(value = "SELECT COALESCE(SUM(amount), 0) FROM shop_expense " +
+           "WHERE deleted = FALSE AND tenant_id = :tenantId",
            nativeQuery = true)
-    BigDecimal sumAll();
+    BigDecimal sumAll(@Param("tenantId") String tenantId);
+
+    /** Cash expenses (payment_method = CASH) on a single business day — cash drawer reconciliation. */
+    @Query(value = "SELECT COALESCE(SUM(amount), 0) FROM shop_expense " +
+           "WHERE deleted = FALSE AND tenant_id = :tenantId " +
+           "AND payment_method = 'CASH' AND expense_date = :date",
+           nativeQuery = true)
+    BigDecimal sumCashByDate(@Param("tenantId") String tenantId, @Param("date") java.time.LocalDate date);
 
     @Query(value = "SELECT EXTRACT(MONTH FROM expense_date), COALESCE(SUM(amount), 0) " +
-           "FROM shop_expense WHERE deleted = FALSE AND EXTRACT(YEAR FROM expense_date) = :year " +
+           "FROM shop_expense WHERE deleted = FALSE " +
+           "AND tenant_id = :tenantId " +
+           "AND EXTRACT(YEAR FROM expense_date) = :year " +
            "GROUP BY EXTRACT(MONTH FROM expense_date)",
            nativeQuery = true)
-    List<Object[]> sumGroupedByMonth(@Param("year") int year);
+    List<Object[]> sumGroupedByMonth(
+            @Param("tenantId") String tenantId,
+            @Param("year") int year);
 
     @Query(value = "SELECT EXTRACT(DAY FROM expense_date), COALESCE(SUM(amount), 0) " +
            "FROM shop_expense WHERE deleted = FALSE " +
+           "AND tenant_id = :tenantId " +
            "AND EXTRACT(YEAR FROM expense_date) = :year " +
            "AND EXTRACT(MONTH FROM expense_date) = :month " +
            "GROUP BY EXTRACT(DAY FROM expense_date)",
            nativeQuery = true)
-    List<Object[]> sumGroupedByDay(@Param("year") int year, @Param("month") int month);
+    List<Object[]> sumGroupedByDay(
+            @Param("tenantId") String tenantId,
+            @Param("year") int year,
+            @Param("month") int month);
 
     @Query(value = "SELECT category, COALESCE(SUM(amount), 0) " +
            "FROM shop_expense WHERE deleted = FALSE " +
+           "AND tenant_id = :tenantId " +
            "AND (:year IS NULL OR EXTRACT(YEAR FROM expense_date) = :year) " +
            "AND (:month IS NULL OR EXTRACT(MONTH FROM expense_date) = :month) " +
            "GROUP BY category ORDER BY SUM(amount) DESC",
            nativeQuery = true)
-    List<Object[]> sumGroupedByCategory(@Param("year") Integer year, @Param("month") Integer month);
+    List<Object[]> sumGroupedByCategory(
+            @Param("tenantId") String tenantId,
+            @Param("year") Integer year,
+            @Param("month") Integer month);
 
-    @Query(value = "SELECT COALESCE(SUM(amount), 0) FROM shop_expense WHERE deleted = FALSE AND expense_date >= :from AND expense_date <= :to", nativeQuery = true)
-    java.math.BigDecimal sumByDateRange(@Param("from") LocalDate from, @Param("to") LocalDate to);
+    @Query(value = "SELECT COALESCE(SUM(amount), 0) FROM shop_expense " +
+           "WHERE deleted = FALSE AND tenant_id = :tenantId " +
+           "AND expense_date >= :from AND expense_date <= :to",
+           nativeQuery = true)
+    BigDecimal sumByDateRange(
+            @Param("tenantId") String tenantId,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to);
 
     // Category breakdown by date range: [category, total]
     @Query(value = "SELECT category, COALESCE(SUM(amount), 0) " +
            "FROM shop_expense WHERE deleted = FALSE " +
+           "AND tenant_id = :tenantId " +
            "AND (CAST(:from AS date) IS NULL OR expense_date >= CAST(:from AS date)) " +
            "AND (CAST(:to   AS date) IS NULL OR expense_date <= CAST(:to   AS date)) " +
            "GROUP BY category ORDER BY SUM(amount) DESC",
            nativeQuery = true)
-    List<Object[]> sumGroupedByCategoryDateRange(@Param("from") LocalDate from, @Param("to") LocalDate to);
+    List<Object[]> sumGroupedByCategoryDateRange(
+            @Param("tenantId") String tenantId,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to);
 
-    @Query(value = "SELECT TO_CHAR(expense_date, 'YYYY-MM-DD') as label, COALESCE(SUM(amount),0) as value FROM shop_expense WHERE deleted = FALSE AND expense_date >= :from AND expense_date <= :to GROUP BY label ORDER BY label", nativeQuery = true)
-    List<Object[]> getDailyChart(@Param("from") LocalDate from, @Param("to") LocalDate to);
+    @Query(value = "SELECT TO_CHAR(expense_date, 'YYYY-MM-DD') as label, COALESCE(SUM(amount),0) as value " +
+           "FROM shop_expense WHERE deleted = FALSE AND tenant_id = :tenantId " +
+           "AND expense_date >= :from AND expense_date <= :to " +
+           "GROUP BY label ORDER BY label",
+           nativeQuery = true)
+    List<Object[]> getDailyChart(
+            @Param("tenantId") String tenantId,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to);
 
-    @Query(value = "SELECT TO_CHAR(DATE_TRUNC('week', expense_date), 'YYYY-MM-DD') as label, COALESCE(SUM(amount),0) as value FROM shop_expense WHERE deleted = FALSE AND expense_date >= :from AND expense_date <= :to GROUP BY label ORDER BY label", nativeQuery = true)
-    List<Object[]> getWeeklyChart(@Param("from") LocalDate from, @Param("to") LocalDate to);
+    @Query(value = "SELECT TO_CHAR(DATE_TRUNC('week', expense_date), 'YYYY-MM-DD') as label, COALESCE(SUM(amount),0) as value " +
+           "FROM shop_expense WHERE deleted = FALSE AND tenant_id = :tenantId " +
+           "AND expense_date >= :from AND expense_date <= :to " +
+           "GROUP BY label ORDER BY label",
+           nativeQuery = true)
+    List<Object[]> getWeeklyChart(
+            @Param("tenantId") String tenantId,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to);
 
-    @Query(value = "SELECT TO_CHAR(expense_date, 'YYYY-MM') as label, COALESCE(SUM(amount),0) as value FROM shop_expense WHERE deleted = FALSE AND expense_date >= :from AND expense_date <= :to GROUP BY label ORDER BY label", nativeQuery = true)
-    List<Object[]> getMonthlyChart(@Param("from") LocalDate from, @Param("to") LocalDate to);
+    @Query(value = "SELECT TO_CHAR(expense_date, 'YYYY-MM') as label, COALESCE(SUM(amount),0) as value " +
+           "FROM shop_expense WHERE deleted = FALSE AND tenant_id = :tenantId " +
+           "AND expense_date >= :from AND expense_date <= :to " +
+           "GROUP BY label ORDER BY label",
+           nativeQuery = true)
+    List<Object[]> getMonthlyChart(
+            @Param("tenantId") String tenantId,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to);
 
-    @Query(value = "SELECT TO_CHAR(expense_date, 'YYYY') as label, COALESCE(SUM(amount),0) as value FROM shop_expense WHERE deleted = FALSE AND expense_date >= :from AND expense_date <= :to GROUP BY label ORDER BY label", nativeQuery = true)
-    List<Object[]> getYearlyChart(@Param("from") LocalDate from, @Param("to") LocalDate to);
+    @Query(value = "SELECT TO_CHAR(expense_date, 'YYYY') as label, COALESCE(SUM(amount),0) as value " +
+           "FROM shop_expense WHERE deleted = FALSE AND tenant_id = :tenantId " +
+           "AND expense_date >= :from AND expense_date <= :to " +
+           "GROUP BY label ORDER BY label",
+           nativeQuery = true)
+    List<Object[]> getYearlyChart(
+            @Param("tenantId") String tenantId,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to);
 
     @Query(value = "SELECT COALESCE(SUM(amount), 0) FROM shop_expense WHERE deleted = FALSE " +
+           "AND tenant_id = :tenantId " +
            "AND expense_date >= :from AND expense_date <= :to AND category IN (:categories)",
            nativeQuery = true)
     BigDecimal sumByDateRangeAndCategories(
+            @Param("tenantId") String tenantId,
             @Param("from") LocalDate from,
             @Param("to") LocalDate to,
             @Param("categories") List<String> categories);
 
     @Query(value = "SELECT EXISTS (SELECT 1 FROM shop_expense WHERE deleted = FALSE " +
+           "AND tenant_id = :tenantId " +
            "AND description = :desc AND expense_date >= :from AND expense_date <= :to)",
            nativeQuery = true)
     boolean existsByDescriptionAndDateRange(
+            @Param("tenantId") String tenantId,
             @Param("desc") String description,
             @Param("from") LocalDate from,
             @Param("to") LocalDate to);

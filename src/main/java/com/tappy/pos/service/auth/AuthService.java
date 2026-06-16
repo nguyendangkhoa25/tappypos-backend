@@ -24,6 +24,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseCookie;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -59,6 +60,15 @@ public class AuthService {
     private final SessionRegistry sessionRegistry;
     private final ActivityLogService activityLogService;
     public static final String REFRESH_TOKEN_HEADER_KEY = "refresh-token";
+
+    /**
+     * Cookie domain for the refresh token. Empty (default) → host-only cookie
+     * (current behaviour). Set to ".pos.tappy.vn" to share the session across all
+     * tenant subdomains (needed for the subdomain routing model + master/agent
+     * shop-switching). Configured via app.cookie-domain / COOKIE_DOMAIN.
+     */
+    @Value("${app.cookie-domain:}")
+    private String cookieDomain;
     private static final int MAX_FAILED_ATTEMPTS = 5;
 
     /**
@@ -209,7 +219,7 @@ public class AuthService {
             log.info("Refresh token generated for user: {}", loginRequest.getUsername());
         }
 
-        return AuthResponse.of(
+        AuthResponse response = AuthResponse.of(
                 accessToken,
                 refreshToken,
                 jwtTokenProvider.getTokenExpirationMs(),
@@ -218,15 +228,21 @@ public class AuthService {
                 setupComplete,
                 tenantId
         );
+        response.setLang(user.getLang());
+        return response;
     }
 
     public ResponseCookie getRefreshTokenResponseCookie(String refreshToken) {
-        return ResponseCookie.from(REFRESH_TOKEN_HEADER_KEY, refreshToken)
+        ResponseCookie.ResponseCookieBuilder builder = ResponseCookie.from(REFRESH_TOKEN_HEADER_KEY, refreshToken)
                 .httpOnly(true)
                 .secure(true)
+                .sameSite("Lax")
                 .path("/")
-                .maxAge(jwtTokenProvider.getRefreshTokenExpirationMs() / 1000)
-                .build();
+                .maxAge(jwtTokenProvider.getRefreshTokenExpirationMs() / 1000);
+        if (cookieDomain != null && !cookieDomain.isBlank()) {
+            builder.domain(cookieDomain);
+        }
+        return builder.build();
     }
 
     public String getRefreshToken(HttpServletRequest request) {
@@ -394,16 +410,19 @@ public class AuthService {
     public void clearRefreshTokenCookie(jakarta.servlet.http.HttpServletResponse response) {
         log.info("Clearing refresh token cookie");
 
-        // Create an expired cookie to clear it from the browser
-        ResponseCookie cookie = ResponseCookie.from(REFRESH_TOKEN_HEADER_KEY, "")
+        // Create an expired cookie to clear it from the browser. Must carry the
+        // same domain as the cookie was set with, otherwise the browser keeps it.
+        ResponseCookie.ResponseCookieBuilder builder = ResponseCookie.from(REFRESH_TOKEN_HEADER_KEY, "")
                 .httpOnly(true)
                 .secure(false) // Set to true in production with HTTPS
                 .path("/")
                 .maxAge(0) // Expire immediately
-                .sameSite("Lax")
-                .build();
+                .sameSite("Lax");
+        if (cookieDomain != null && !cookieDomain.isBlank()) {
+            builder.domain(cookieDomain);
+        }
 
-        response.addHeader("Set-Cookie", cookie.toString());
+        response.addHeader("Set-Cookie", builder.build().toString());
     }
 
     /**
@@ -456,7 +475,9 @@ public class AuthService {
         String refreshToken = generateRefreshToken(user);
         boolean pinSetupComplete = !isMasterUser
                 && tenantContext.getCurrentTenant() != null && tenantContext.getCurrentTenant().isSetupComplete();
-        return AuthResponse.of(accessToken, refreshToken, jwtTokenProvider.getTokenExpirationMs(), user.getUsername(), null, pinSetupComplete, tenantId);
+        AuthResponse response = AuthResponse.of(accessToken, refreshToken, jwtTokenProvider.getTokenExpirationMs(), user.getUsername(), null, pinSetupComplete, tenantId);
+        response.setLang(user.getLang());
+        return response;
     }
 
     /**
@@ -499,7 +520,9 @@ public class AuthService {
         String accessToken = jwtTokenProvider.generateTokenWithRolesAndFeatures(user.getUsername(), roleNames, featureNames, isMasterUser, shopType, tenantId);
         String refreshToken = generateRefreshToken(user);
         // Registration creates a user with no shop yet; routing will direct them to the onboarding wizard.
-        return AuthResponse.of(accessToken, refreshToken, jwtTokenProvider.getTokenExpirationMs(), user.getUsername(), null, false, null);
+        AuthResponse response = AuthResponse.of(accessToken, refreshToken, jwtTokenProvider.getTokenExpirationMs(), user.getUsername(), null, false, null);
+        response.setLang(user.getLang());
+        return response;
     }
 
     /**

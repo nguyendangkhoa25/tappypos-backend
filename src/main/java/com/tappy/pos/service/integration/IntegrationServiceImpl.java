@@ -3,6 +3,7 @@ package com.tappy.pos.service.integration;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.integration.IntegrationProvider;
 import com.tappy.pos.model.dto.integration.IntegrationStatusDTO;
+import com.tappy.pos.service.MessageService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -16,22 +17,29 @@ import java.util.stream.Collectors;
 public class IntegrationServiceImpl implements IntegrationService {
 
     private final Map<String, IntegrationProvider> providers;
+    private final MessageService messageService;
 
     /** Spring injects all IntegrationProvider beans automatically. */
-    public IntegrationServiceImpl(List<IntegrationProvider> providerList) {
+    public IntegrationServiceImpl(List<IntegrationProvider> providerList, MessageService messageService) {
         this.providers = providerList.stream()
                 .collect(Collectors.toMap(IntegrationProvider::getType, Function.identity()));
+        this.messageService = messageService;
         log.info("Registered integration providers: {}", providers.keySet());
     }
 
     @Override
-    public String getAuthUrl(String integrationType, String tenantId) {
-        return getProvider(integrationType).buildAuthUrl(tenantId);
+    public String getAuthUrl(String integrationType, String tenantId, String origin) {
+        return getProvider(integrationType).buildAuthUrl(tenantId, origin);
     }
 
     @Override
     public IntegrationStatusDTO handleOAuthCallback(String code, String state, String integrationType) {
         return getProvider(integrationType).handleCallback(code, state);
+    }
+
+    @Override
+    public String peekOAuthOrigin(String integrationType, String state) {
+        return getProvider(integrationType).peekOAuthOrigin(state);
     }
 
     @Override
@@ -47,7 +55,7 @@ public class IntegrationServiceImpl implements IntegrationService {
     private IntegrationProvider getProvider(String type) {
         IntegrationProvider provider = providers.get(type.toUpperCase());
         if (provider == null) {
-            throw new ResourceNotFoundException("Unknown integration type: " + type);
+            throw new ResourceNotFoundException(messageService.getMessage("error.integration.unknown.type", type));
         }
         return provider;
     }

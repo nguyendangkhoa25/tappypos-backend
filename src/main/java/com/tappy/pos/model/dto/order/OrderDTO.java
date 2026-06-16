@@ -54,6 +54,12 @@ public class OrderDTO {
     private String tableLabel;
     private String source;
     private String orderType;
+
+    // Gold trading summary (BUY / EXCHANGE orders only; 0 for SELL)
+    private BigDecimal buyAmount;
+    private BigDecimal sellAmount;
+    private BigDecimal goldDiffWeight;
+    private BigDecimal goldDiffAmount;
     /** Pickup time for F&B takeaway orders (null for dine-in). */
     private LocalDateTime pickupTime;
 

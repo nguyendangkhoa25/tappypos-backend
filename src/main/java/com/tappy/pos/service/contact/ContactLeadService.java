@@ -11,4 +11,6 @@ public interface ContactLeadService {
     void submit(ContactLeadRequest request);
     Page<ContactLeadDTO> getAll(LeadStatus status, Pageable pageable);
     ContactLeadDTO updateStatus(Long id, UpdateLeadStatusRequest request);
+    long countAllActive();
+    long countByStatus(LeadStatus status);
 }
