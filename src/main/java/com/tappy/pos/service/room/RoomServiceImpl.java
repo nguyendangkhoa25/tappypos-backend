@@ -198,6 +198,19 @@ public class RoomServiceImpl implements RoomService {
         String billingMode = normalizeBillingMode(request.getBillingMode());
         BigDecimal rate = request.getRate() != null ? request.getRate() : rateForMode(room, billingMode);
 
+        // Guardrail: reject a reservation overlapping an existing one for the same room.
+        // Half-open intervals [checkin, checkout); a missing checkout defaults to checkin + 1 day.
+        LocalDateTime newStart = request.getReservedCheckin();
+        LocalDateTime newEnd = request.getExpectedCheckout() != null ? request.getExpectedCheckout() : newStart.plusDays(1);
+        for (RoomStayEntity existing : stayRepository.findByRoomIdAndStatusAndDeletedFalse(room.getId(), "RESERVED")) {
+            LocalDateTime exStart = existing.getReservedCheckin();
+            if (exStart == null) continue;
+            LocalDateTime exEnd = existing.getExpectedCheckout() != null ? existing.getExpectedCheckout() : exStart.plusDays(1);
+            if (newStart.isBefore(exEnd) && exStart.isBefore(newEnd)) {
+                throw new BadRequestException(messageService.getMessage("error.room.reservation.overlap", room.getRoomNumber()));
+            }
+        }
+
         RoomStayEntity stay = RoomStayEntity.builder()
                 .tenantId(tenantId)
                 .stayNumber(generateStayNumber())

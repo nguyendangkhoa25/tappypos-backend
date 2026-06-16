@@ -211,7 +211,7 @@ class NotificationServiceTest {
         Tenant tenant = new Tenant();
         tenant.setTenantId("shop-abc");
         when(tenantRepository.findByTenantId("shop-abc")).thenReturn(Optional.of(tenant));
-        when(userRepository.findUsernamesByRoleNames(anyList())).thenReturn(Collections.emptyList());
+        when(userRepository.findUsernamesByRoleNames(anyList(), any())).thenReturn(Collections.emptyList());
 
         notificationService.pushToRolesAsync(Notification.NotificationType.INFO, "T", "M",
                 null, null, List.of("SHOP_OWNER"), "shop-abc");
@@ -223,7 +223,7 @@ class NotificationServiceTest {
     @Test
     @DisplayName("pushToRolesAsync: skips context setup when tenantId is null")
     void pushToRolesAsync_withNullTenantId_noContextSetup() {
-        when(userRepository.findUsernamesByRoleNames(anyList())).thenReturn(Collections.emptyList());
+        when(userRepository.findUsernamesByRoleNames(anyList(), any())).thenReturn(Collections.emptyList());
 
         notificationService.pushToRolesAsync(Notification.NotificationType.INFO, "T", "M",
                 null, null, List.of("MASTER_TENANT"), null);
@@ -236,7 +236,7 @@ class NotificationServiceTest {
     @DisplayName("pushToRolesAsync: swallows exception and clears context")
     void pushToRolesAsync_exceptionSwallowed() {
         when(tenantRepository.findByTenantId("shop-err")).thenReturn(Optional.empty());
-        when(userRepository.findUsernamesByRoleNames(anyList())).thenThrow(new RuntimeException("DB error"));
+        when(userRepository.findUsernamesByRoleNames(anyList(), any())).thenThrow(new RuntimeException("DB error"));
 
         notificationService.pushToRolesAsync(Notification.NotificationType.INFO, "T", "M",
                 null, null, List.of("SHOP_OWNER"), "shop-err");
@@ -329,7 +329,7 @@ class NotificationServiceTest {
         when(preferenceRepository.findByUserIdIn(List.of("user1", "user2", "user3")))
                 .thenReturn(List.of(pref));
         // user1 and user3 have no pref row; stub feature check so they are not filtered out
-        when(userRepository.findUsernamesWithFeature(anyList(), eq("ORDER")))
+        when(userRepository.findUsernamesWithFeature(anyList(), eq("ORDER"), any()))
                 .thenReturn(Set.of("user1", "user3"));
         when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
 
@@ -367,7 +367,7 @@ class NotificationServiceTest {
         tenant.setName("Shop One");
         tenant.setExpirationDate(LocalDate.now().plusDays(3));
 
-        when(userRepository.findUsernamesByRoleNames(List.of("SHOP_OWNER"))).thenReturn(List.of("owner1", "owner2"));
+        when(userRepository.findUsernamesByRoleNames(eq(List.of("SHOP_OWNER")), any())).thenReturn(List.of("owner1", "owner2"));
         when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
 
         notificationService.pushExpiryWarning(tenant, 3);
@@ -386,7 +386,7 @@ class NotificationServiceTest {
         tenant.setTenantId("shop1");
         tenant.setExpirationDate(LocalDate.now().plusDays(1));
 
-        when(userRepository.findUsernamesByRoleNames(List.of("SHOP_OWNER"))).thenReturn(Collections.emptyList());
+        when(userRepository.findUsernamesByRoleNames(eq(List.of("SHOP_OWNER")), any())).thenReturn(Collections.emptyList());
 
         notificationService.pushExpiryWarning(tenant, 1);
 
@@ -401,7 +401,7 @@ class NotificationServiceTest {
         tenant.setName("Shop One");
         tenant.setExpirationDate(LocalDate.now().plusDays(7));
 
-        when(userRepository.findUsernamesByRoleNames(List.of("SHOP_OWNER"))).thenReturn(List.of("owner1", "owner2"));
+        when(userRepository.findUsernamesByRoleNames(eq(List.of("SHOP_OWNER")), any())).thenReturn(List.of("owner1", "owner2"));
         NotificationPreference pref = NotificationPreference.builder()
                 .userId("owner2").enabledTypes("ORDER,SYSTEM").build();
         when(preferenceRepository.findByUserIdIn(List.of("owner1", "owner2"))).thenReturn(List.of(pref));
@@ -421,7 +421,7 @@ class NotificationServiceTest {
     @Test
     @DisplayName("pushToMasterUsersAsync: sends notification and catches exceptions silently")
     void pushToMasterUsersAsync_callsDelegate() {
-        when(userRepository.findUsernamesByRoleNames(List.of("MASTER_TENANT"))).thenReturn(List.of("admin1"));
+        when(userRepository.findUsernamesByRoleNames(eq(List.of("MASTER_TENANT")), any())).thenReturn(List.of("admin1"));
         when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
 
         notificationService.pushToMasterUsersAsync("T", "M", "TENANT", 1L);
@@ -432,7 +432,7 @@ class NotificationServiceTest {
     @Test
     @DisplayName("pushToMasterUsersAsync: swallows exceptions without propagating")
     void pushToMasterUsersAsync_swallowsException() {
-        when(userRepository.findUsernamesByRoleNames(anyList())).thenThrow(new RuntimeException("db error"));
+        when(userRepository.findUsernamesByRoleNames(anyList(), any())).thenThrow(new RuntimeException("db error"));
 
         // must not throw
         notificationService.pushToMasterUsersAsync("T", "M", "TENANT", 1L);
@@ -515,7 +515,7 @@ class NotificationServiceTest {
     @Test
     @DisplayName("pushToRoles: saves notifications for all matching role users")
     void pushToRoles_success() {
-        when(userRepository.findUsernamesByRoleNames(List.of("SHOP_OWNER"))).thenReturn(List.of("owner1", "owner2"));
+        when(userRepository.findUsernamesByRoleNames(eq(List.of("SHOP_OWNER")), any())).thenReturn(List.of("owner1", "owner2"));
         when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
 
         notificationService.pushToRoles(Notification.NotificationType.INFO, "Title", "Msg",
@@ -531,7 +531,7 @@ class NotificationServiceTest {
     @Test
     @DisplayName("pushToRoles: skips save when no users hold the role")
     void pushToRoles_noUsers() {
-        when(userRepository.findUsernamesByRoleNames(List.of("CASHIER"))).thenReturn(Collections.emptyList());
+        when(userRepository.findUsernamesByRoleNames(eq(List.of("CASHIER")), any())).thenReturn(Collections.emptyList());
 
         notificationService.pushToRoles(Notification.NotificationType.INFO, "T", "M",
                 null, null, List.of("CASHIER"));
@@ -561,7 +561,7 @@ class NotificationServiceTest {
     @Test
     @DisplayName("pushToMasterUsers: broadcasts SYSTEM notification to all master users")
     void pushToMasterUsers_success() {
-        when(userRepository.findUsernamesByRoleNames(List.of("MASTER_TENANT"))).thenReturn(List.of("admin1", "admin2"));
+        when(userRepository.findUsernamesByRoleNames(eq(List.of("MASTER_TENANT")), any())).thenReturn(List.of("admin1", "admin2"));
         when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
 
         notificationService.pushToMasterUsers("Title", "Msg", "TENANT", 1L);
@@ -576,7 +576,7 @@ class NotificationServiceTest {
     @Test
     @DisplayName("pushToMasterUsers: skips when no master users found")
     void pushToMasterUsers_noUsers() {
-        when(userRepository.findUsernamesByRoleNames(List.of("MASTER_TENANT"))).thenReturn(Collections.emptyList());
+        when(userRepository.findUsernamesByRoleNames(eq(List.of("MASTER_TENANT")), any())).thenReturn(Collections.emptyList());
 
         notificationService.pushToMasterUsers("Title", "Msg", "TENANT", 1L);
 
@@ -586,7 +586,7 @@ class NotificationServiceTest {
     @Test
     @DisplayName("pushToMasterUsers: excludes master user who opted out of SYSTEM")
     void pushToMasterUsers_respectsPreference() {
-        when(userRepository.findUsernamesByRoleNames(List.of("MASTER_TENANT"))).thenReturn(List.of("admin1", "admin2"));
+        when(userRepository.findUsernamesByRoleNames(eq(List.of("MASTER_TENANT")), any())).thenReturn(List.of("admin1", "admin2"));
         NotificationPreference pref = NotificationPreference.builder()
                 .userId("admin2").enabledTypes("BILLING,ORDER").build();
         when(preferenceRepository.findByUserIdIn(List.of("admin1", "admin2"))).thenReturn(List.of(pref));

@@ -156,7 +156,7 @@ public class NotificationService {
                 : userRepository.findAllActiveUsernames();
 
         String tenantId = tenantContext.getCurrentTenantId();
-        Set<String> optedOut = optedOutUsers(targets, type);
+        Set<String> optedOut = optedOutUsers(targets, type, tenantId);
         List<Notification> created = targets.stream()
                 .filter(userId -> !optedOut.contains(userId))
                 .map(userId -> Notification.builder()
@@ -195,13 +195,15 @@ public class NotificationService {
     public void pushToRoles(Notification.NotificationType type, String title, String message,
                              String referenceType, Long referenceId, List<String> roleNames,
                              String excludeUsername) {
-        List<String> targets = userRepository.findUsernamesByRoleNames(roleNames);
+        // Explicit tenantId (from the ThreadLocal) — not current_tenant_id() — because async
+        // callers run with no transaction, so app.current_tenant is never set on the connection.
+        String tenantId = tenantContext.getCurrentTenantId();
+        List<String> targets = userRepository.findUsernamesByRoleNames(roleNames, tenantId);
         if (targets.isEmpty()) {
-            log.warn("pushToRoles: no active users found for roles {}", roleNames);
+            log.warn("pushToRoles: no active users found for roles {} (tenant={})", roleNames, tenantId);
             return;
         }
-        String tenantId = tenantContext.getCurrentTenantId();
-        Set<String> optedOut = optedOutUsers(targets, type);
+        Set<String> optedOut = optedOutUsers(targets, type, tenantId);
         List<Notification> notifications = targets.stream()
                 .filter(userId -> !optedOut.contains(userId))
                 .filter(userId -> excludeUsername == null || !excludeUsername.equals(userId))
@@ -319,7 +321,7 @@ public class NotificationService {
     @Transactional
     public void pushSystem(String userId, Notification.NotificationType type, String title, String message,
                            String referenceType, Long referenceId) {
-        Set<String> optedOut = optedOutUsers(List.of(userId), type);
+        Set<String> optedOut = optedOutUsers(List.of(userId), type, tenantContext.getCurrentTenantId());
         if (optedOut.contains(userId)) {
             log.debug("pushSystem: skipped — user {} opted out of type {}", userId, type);
             return;
@@ -369,7 +371,7 @@ public class NotificationService {
      *   1. Explicit pref row — type is not in the user's enabled list.
      *   2. No pref row + feature-gated type — user's roles don't grant the required feature.
      */
-    private Set<String> optedOutUsers(List<String> userIds, Notification.NotificationType type) {
+    private Set<String> optedOutUsers(List<String> userIds, Notification.NotificationType type, String tenantId) {
         List<NotificationPreference> prefs = preferenceRepository.findByUserIdIn(userIds);
         Map<String, NotificationPreference> prefMap = prefs.stream()
                 .collect(Collectors.toMap(NotificationPreference::getUserId, p -> p));
@@ -390,7 +392,7 @@ public class NotificationService {
                     .filter(id -> !prefMap.containsKey(id))
                     .collect(Collectors.toList());
             if (!usersWithoutPref.isEmpty()) {
-                Set<String> usersWithFeature = userRepository.findUsernamesWithFeature(usersWithoutPref, requiredFeature);
+                Set<String> usersWithFeature = userRepository.findUsernamesWithFeature(usersWithoutPref, requiredFeature, tenantId);
                 usersWithoutPref.stream()
                         .filter(id -> !usersWithFeature.contains(id))
                         .forEach(optedOut::add);
