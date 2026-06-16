@@ -6,6 +6,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 /** Tenant-scoped via PostgreSQL RLS (app.current_tenant). */
@@ -22,4 +24,12 @@ public interface RoomStayRepository extends JpaRepository<RoomStayEntity, Long> 
     Page<RoomStayEntity> findByStatusAndDeletedFalseOrderByCreatedAtDesc(String status, Pageable pageable);
 
     long countByStatusAndDeletedFalse(String status);
+
+    /** Reservations whose planned arrival falls within [from, to] — the calendar feed. */
+    List<RoomStayEntity> findByStatusAndReservedCheckinBetweenAndDeletedFalseOrderByReservedCheckinAsc(
+            String status, LocalDateTime from, LocalDateTime to);
+
+    /** Upcoming reservations from a point onward (agenda list). */
+    List<RoomStayEntity> findByStatusAndReservedCheckinGreaterThanEqualAndDeletedFalseOrderByReservedCheckinAsc(
+            String status, LocalDateTime from);
 }

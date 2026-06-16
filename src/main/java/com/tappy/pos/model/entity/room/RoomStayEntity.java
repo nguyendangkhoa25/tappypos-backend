@@ -54,7 +54,12 @@ public class RoomStayEntity extends TenantAwareEntity {
     @Column(name = "rate", nullable = false, precision = 15, scale = 2)
     private BigDecimal rate = BigDecimal.ZERO;
 
-    @Column(name = "checkin_at", nullable = false)
+    /** Planned arrival for a RESERVED stay; null until check-in is done. */
+    @Column(name = "reserved_checkin")
+    private LocalDateTime reservedCheckin;
+
+    /** Actual check-in time; null while RESERVED. */
+    @Column(name = "checkin_at")
     private LocalDateTime checkinAt;
 
     @Column(name = "expected_checkout")

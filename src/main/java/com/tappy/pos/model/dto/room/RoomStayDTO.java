@@ -25,6 +25,7 @@ public class RoomStayDTO {
     private Integer adults;
     private String billingMode;     // NIGHTLY | HOURLY | OVERNIGHT
     private BigDecimal rate;
+    private LocalDateTime reservedCheckin;
     private LocalDateTime checkinAt;
     private LocalDateTime expectedCheckout;
     private LocalDateTime checkoutAt;

@@ -188,6 +188,98 @@ public class RoomServiceImpl implements RoomService {
         return mapRequest(requestRepository.save(req));
     }
 
+    // ── Reservations ─────────────────────────────────────────────────────────────
+
+    @Override
+    @Transactional
+    public RoomStayDTO createReservation(CreateReservationRequest request) {
+        String tenantId = tenantContext.getCurrentTenantId();
+        RoomEntity room = findRoomOrThrow(request.getRoomId());
+        String billingMode = normalizeBillingMode(request.getBillingMode());
+        BigDecimal rate = request.getRate() != null ? request.getRate() : rateForMode(room, billingMode);
+
+        RoomStayEntity stay = RoomStayEntity.builder()
+                .tenantId(tenantId)
+                .stayNumber(generateStayNumber())
+                .roomId(room.getId())
+                .roomNumber(room.getRoomNumber())
+                .guestName(request.getGuestName())
+                .guestPhone(request.getGuestPhone())
+                .guestIdNumber(request.getGuestIdNumber())
+                .customerId(request.getCustomerId())
+                .adults(request.getAdults() != null ? request.getAdults() : 1)
+                .billingMode(billingMode)
+                .rate(rate)
+                .reservedCheckin(request.getReservedCheckin())
+                .expectedCheckout(request.getExpectedCheckout())
+                .deposit(orZero(request.getDeposit()))
+                .status("RESERVED")
+                .note(request.getNote())
+                .createdBy(currentUsername())
+                .build();
+        RoomStayEntity saved = stayRepository.save(stay);
+        log.info("Reservation created: stay={} room={} arrival={}", saved.getStayNumber(), room.getRoomNumber(), request.getReservedCheckin());
+        return mapStay(saved, false);
+    }
+
+    @Override
+    public List<RoomStayDTO> listReservations(LocalDate from, LocalDate to) {
+        LocalDateTime fromDt = (from != null ? from : LocalDate.now()).atStartOfDay();
+        List<RoomStayEntity> stays = (to != null)
+                ? stayRepository.findByStatusAndReservedCheckinBetweenAndDeletedFalseOrderByReservedCheckinAsc("RESERVED", fromDt, to.atTime(23, 59, 59))
+                : stayRepository.findByStatusAndReservedCheckinGreaterThanEqualAndDeletedFalseOrderByReservedCheckinAsc("RESERVED", fromDt);
+        return stays.stream().map(s -> mapStay(s, false)).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public RoomStayDTO checkInReservation(Long stayId) {
+        RoomStayEntity stay = findStayOrThrow(stayId);
+        assertReserved(stay);
+        RoomEntity room = findRoomOrThrow(stay.getRoomId());
+        if ("OCCUPIED".equals(room.getStatus())) {
+            throw new BadRequestException(messageService.getMessage("error.room.not.available", room.getRoomNumber()));
+        }
+        stay.setStatus("IN_HOUSE");
+        stay.setCheckinAt(LocalDateTime.now());
+        RoomStayEntity saved = stayRepository.save(stay);
+
+        room.setStatus("OCCUPIED");
+        roomRepository.save(room);
+
+        activityLogService.logAsync(stay.getTenantId(), currentUsername(), null, ActivityAction.ROOM_CHECKIN,
+                "ROOM_STAY", String.valueOf(saved.getId()),
+                messageService.getMessage("activity.room.checkin", room.getRoomNumber()), null);
+        log.info("Reservation checked in: stay={} room={}", saved.getStayNumber(), room.getRoomNumber());
+        return mapStay(saved, true);
+    }
+
+    @Override
+    @Transactional
+    public RoomStayDTO cancelReservation(Long stayId) {
+        RoomStayEntity stay = findStayOrThrow(stayId);
+        assertReserved(stay);
+        stay.setStatus("CANCELLED");
+        stay.setCheckoutAt(LocalDateTime.now());
+        return mapStay(stayRepository.save(stay), false);
+    }
+
+    @Override
+    @Transactional
+    public RoomStayDTO markNoShow(Long stayId) {
+        RoomStayEntity stay = findStayOrThrow(stayId);
+        assertReserved(stay);
+        stay.setStatus("NO_SHOW");
+        stay.setCheckoutAt(LocalDateTime.now());
+        return mapStay(stayRepository.save(stay), false);
+    }
+
+    private void assertReserved(RoomStayEntity stay) {
+        if (!"RESERVED".equals(stay.getStatus())) {
+            throw new BadRequestException(messageService.getMessage("error.room.reservation.not.reserved", stay.getStatus()));
+        }
+    }
+
     // ── Stays ──────────────────────────────────────────────────────────────────
 
     @Override
@@ -522,6 +614,7 @@ public class RoomServiceImpl implements RoomService {
                 .adults(s.getAdults())
                 .billingMode(s.getBillingMode())
                 .rate(s.getRate())
+                .reservedCheckin(s.getReservedCheckin())
                 .checkinAt(s.getCheckinAt())
                 .expectedCheckout(s.getExpectedCheckout())
                 .checkoutAt(s.getCheckoutAt())

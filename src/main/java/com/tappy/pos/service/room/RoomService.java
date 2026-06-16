@@ -34,6 +34,22 @@ public interface RoomService {
     /** Housekeeping / front-desk status change (e.g. DIRTY → AVAILABLE, → OOO). */
     RoomDTO setRoomStatus(Long id, String status);
 
+    // ── Reservations (advance bookings) ─────────────────────────────────────────
+    /** Create a RESERVED stay for a future arrival (room is not occupied yet). */
+    RoomStayDTO createReservation(CreateReservationRequest request);
+
+    /** Reservations with planned arrival in [from, to] (to optional) — calendar / agenda feed. */
+    List<RoomStayDTO> listReservations(java.time.LocalDate from, java.time.LocalDate to);
+
+    /** Convert a reservation into an active stay (RESERVED → IN_HOUSE, room → OCCUPIED). */
+    RoomStayDTO checkInReservation(Long stayId);
+
+    /** Cancel a reservation (RESERVED → CANCELLED); no charge, room unaffected. */
+    RoomStayDTO cancelReservation(Long stayId);
+
+    /** Mark a reservation as a no-show (RESERVED → NO_SHOW). */
+    RoomStayDTO markNoShow(Long stayId);
+
     // ── Stays ─────────────────────────────────────────────────────────────────
     /** Walk-in check-in: occupy a room and open a stay. */
     RoomStayDTO checkIn(CheckInRequest request);

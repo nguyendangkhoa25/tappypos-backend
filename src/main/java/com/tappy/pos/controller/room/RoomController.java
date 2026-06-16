@@ -9,9 +9,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -91,6 +93,39 @@ public class RoomController {
         log.info("PUT /rooms/requests/{}/status - {}", requestId, body.get("status"));
         return ResponseEntity.ok(ApiResponse.success(
                 roomService.updateRequestStatus(requestId, body.get("status")), "Đã cập nhật yêu cầu"));
+    }
+
+    // ── Reservations (advance bookings) ───────────────────────────────────────
+
+    @PostMapping("/reservations")
+    public ResponseEntity<ApiResponse<RoomStayDTO>> createReservation(@Valid @RequestBody CreateReservationRequest request) {
+        log.info("POST /rooms/reservations - room={} arrival={}", request.getRoomId(), request.getReservedCheckin());
+        return ResponseEntity.ok(ApiResponse.success(roomService.createReservation(request), "Đã tạo đặt phòng"));
+    }
+
+    @GetMapping("/reservations")
+    public ResponseEntity<ApiResponse<List<RoomStayDTO>>> listReservations(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ResponseEntity.ok(ApiResponse.success(roomService.listReservations(from, to), "Danh sách đặt phòng"));
+    }
+
+    @PostMapping("/reservations/{stayId}/check-in")
+    public ResponseEntity<ApiResponse<RoomStayDTO>> checkInReservation(@PathVariable Long stayId) {
+        log.info("POST /rooms/reservations/{}/check-in", stayId);
+        return ResponseEntity.ok(ApiResponse.success(roomService.checkInReservation(stayId), "Đã nhận phòng"));
+    }
+
+    @PostMapping("/reservations/{stayId}/cancel")
+    public ResponseEntity<ApiResponse<RoomStayDTO>> cancelReservation(@PathVariable Long stayId) {
+        log.info("POST /rooms/reservations/{}/cancel", stayId);
+        return ResponseEntity.ok(ApiResponse.success(roomService.cancelReservation(stayId), "Đã huỷ đặt phòng"));
+    }
+
+    @PostMapping("/reservations/{stayId}/no-show")
+    public ResponseEntity<ApiResponse<RoomStayDTO>> markNoShow(@PathVariable Long stayId) {
+        log.info("POST /rooms/reservations/{}/no-show", stayId);
+        return ResponseEntity.ok(ApiResponse.success(roomService.markNoShow(stayId), "Đã đánh dấu không đến"));
     }
 
     // ── Stays ───────────────────────────────────────────────────────────────────
