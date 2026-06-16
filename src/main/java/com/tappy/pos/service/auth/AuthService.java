@@ -219,7 +219,7 @@ public class AuthService {
             log.info("Refresh token generated for user: {}", loginRequest.getUsername());
         }
 
-        return AuthResponse.of(
+        AuthResponse response = AuthResponse.of(
                 accessToken,
                 refreshToken,
                 jwtTokenProvider.getTokenExpirationMs(),
@@ -228,6 +228,8 @@ public class AuthService {
                 setupComplete,
                 tenantId
         );
+        response.setLang(user.getLang());
+        return response;
     }
 
     public ResponseCookie getRefreshTokenResponseCookie(String refreshToken) {
@@ -473,7 +475,9 @@ public class AuthService {
         String refreshToken = generateRefreshToken(user);
         boolean pinSetupComplete = !isMasterUser
                 && tenantContext.getCurrentTenant() != null && tenantContext.getCurrentTenant().isSetupComplete();
-        return AuthResponse.of(accessToken, refreshToken, jwtTokenProvider.getTokenExpirationMs(), user.getUsername(), null, pinSetupComplete, tenantId);
+        AuthResponse response = AuthResponse.of(accessToken, refreshToken, jwtTokenProvider.getTokenExpirationMs(), user.getUsername(), null, pinSetupComplete, tenantId);
+        response.setLang(user.getLang());
+        return response;
     }
 
     /**
@@ -516,7 +520,9 @@ public class AuthService {
         String accessToken = jwtTokenProvider.generateTokenWithRolesAndFeatures(user.getUsername(), roleNames, featureNames, isMasterUser, shopType, tenantId);
         String refreshToken = generateRefreshToken(user);
         // Registration creates a user with no shop yet; routing will direct them to the onboarding wizard.
-        return AuthResponse.of(accessToken, refreshToken, jwtTokenProvider.getTokenExpirationMs(), user.getUsername(), null, false, null);
+        AuthResponse response = AuthResponse.of(accessToken, refreshToken, jwtTokenProvider.getTokenExpirationMs(), user.getUsername(), null, false, null);
+        response.setLang(user.getLang());
+        return response;
     }
 
     /**

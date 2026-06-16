@@ -17,6 +17,7 @@ import com.tappy.pos.repository.order.OrderRepository;
 import com.tappy.pos.service.MessageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -43,6 +44,8 @@ public class BookingServiceImpl implements BookingService {
 
     private static final DateTimeFormatter ORDER_DATE_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final BigDecimal MINUTES_PER_HOUR = new BigDecimal(60);
+    private static final int SECONDS_PER_DAY = 24 * 60 * 60;
+    private static final int DEFAULT_SLOT_SECONDS = 60 * 60;   // open-ended reservation defaults to 1h
 
     private final BookingRepository bookingRepository;
     private final BookingResourceRepository resourceRepository;
@@ -155,7 +158,10 @@ public class BookingServiceImpl implements BookingService {
                     .scheduledEndTime(request.getScheduledEndTime());
         }
 
-        Booking saved = bookingRepository.save(builder.build());
+        // The findActiveByResource / overlap pre-checks above can't prevent a race between
+        // two concurrent creates — the DB unique indexes are the real guard. Translate their
+        // violations into the same friendly messages instead of a generic 409/500.
+        Booking saved = persistDetectingConflicts(builder.build());
         log.info("Booking created: {} resource={} type={}", saved.getBookingNumber(), resource.getName(), saved.getBookingType());
         return mapBooking(saved);
     }
@@ -172,7 +178,9 @@ public class BookingServiceImpl implements BookingService {
         });
         booking.setStatus("IN_PROGRESS");
         booking.setStartedAt(LocalDateTime.now());
-        return mapBooking(bookingRepository.save(booking));
+        // Concurrent check-in (or a walk-in) on the same resource races past the pre-check;
+        // the one-active-per-resource index catches it → friendly "busy" instead of a 409/500.
+        return mapBooking(persistDetectingConflicts(booking));
     }
 
     @Override
@@ -275,17 +283,32 @@ public class BookingServiceImpl implements BookingService {
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private void assertNoReservationOverlap(String tenantId, Long resourceId, CreateBookingRequest req, long excludeId) {
-        LocalTime newStart = req.getScheduledStartTime();
-        LocalTime newEnd = req.getScheduledEndTime() != null ? req.getScheduledEndTime() : newStart.plusHours(1);
+        int[] slot = slotSeconds(req.getScheduledStartTime(), req.getScheduledEndTime());
         for (Booking existing : bookingRepository.findReservationsByResourceAndDate(
                 tenantId, resourceId, req.getScheduledDate(), excludeId)) {
-            LocalTime exStart = existing.getScheduledStartTime();
-            LocalTime exEnd = existing.getScheduledEndTime() != null ? existing.getScheduledEndTime() : exStart.plusHours(1);
-            boolean overlaps = newStart.isBefore(exEnd) && exStart.isBefore(newEnd);
+            int[] ex = slotSeconds(existing.getScheduledStartTime(), existing.getScheduledEndTime());
+            boolean overlaps = slot[0] < ex[1] && ex[0] < slot[1];   // half-open [start, end) intervals
             if (overlaps) {
                 throw new BadRequestException(messageService.getMessage("error.booking.reservation.overlap"));
             }
         }
+    }
+
+    /**
+     * The reservation's half-open occupancy window as [startSec, endSec) within the day.
+     * An open-ended slot defaults to a 1-hour duration; the end is computed in seconds-of-day
+     * and clamped to end-of-day so it never wraps past midnight (e.g. a 23:30 start becomes
+     * [84600, 86400), not [84600, 1800)) — the old LocalTime.plusHours(1) wrap silently broke
+     * overlap detection for late-night slots. A degenerate explicit end (≤ start) is treated as
+     * running to end-of-day so overlap detection stays conservative rather than missing conflicts.
+     */
+    private static int[] slotSeconds(LocalTime start, LocalTime end) {
+        int startSec = start.toSecondOfDay();
+        int endSec = (end != null) ? end.toSecondOfDay() : Math.min(startSec + DEFAULT_SLOT_SECONDS, SECONDS_PER_DAY);
+        if (endSec <= startSec) {
+            endSec = SECONDS_PER_DAY;
+        }
+        return new int[]{startSec, endSec};
     }
 
     private BookingResource findResourceOrThrow(Long id) {
@@ -306,6 +329,35 @@ public class BookingServiceImpl implements BookingService {
         String dateStr = LocalDate.now().format(ORDER_DATE_FMT);
         long seq = bookingRepository.countTodayByTenantId(tenantId, LocalDate.now());
         return String.format("BKG-%s-%03d", dateStr, seq);
+    }
+
+    /**
+     * Saves a booking and flushes immediately so any unique-index violation surfaces here
+     * (rather than at commit, after this method returns) and can be turned into a friendly,
+     * specific message. Two races the in-Java pre-checks can't close:
+     *  - idx_bookings_one_active_per_resource → two staff started the same table at once.
+     *  - idx_bookings_number → two creates picked the same daily number; transient, retryable.
+     * Any other integrity violation is rethrown for the generic handler.
+     */
+    private Booking persistDetectingConflicts(Booking booking) {
+        try {
+            return bookingRepository.saveAndFlush(booking);
+        } catch (DataIntegrityViolationException ex) {
+            if (mentionsConstraint(ex, "idx_bookings_one_active_per_resource")) {
+                throw new BadRequestException(messageService.getMessage("error.booking.resource.busy"));
+            }
+            if (mentionsConstraint(ex, "idx_bookings_number")) {
+                throw new BadRequestException(messageService.getMessage("error.booking.conflict.retry"));
+            }
+            throw ex;
+        }
+    }
+
+    /** True when the Postgres error names the given unique index/constraint. */
+    private boolean mentionsConstraint(DataIntegrityViolationException ex, String name) {
+        Throwable cause = ex.getMostSpecificCause();
+        String msg = cause != null ? cause.getMessage() : ex.getMessage();
+        return msg != null && msg.contains(name);
     }
 
     private static String orDefault(String value, String fallback) {

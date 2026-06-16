@@ -72,7 +72,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
      * Scoped to SELL so it matches sumRevenueByDateRange (the gold-sold ₫); the weight is read
      * from the item metadata JSONB. One scan returns both count and weight.
      */
-    @Query(value = "SELECT COUNT(*), COALESCE(SUM((oi.metadata->>'goldWeight')::numeric), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND o.order_type = 'SELL' AND o.completed_at >= :from AND o.completed_at <= :to AND oi.item_type = 'GOLD_OUT'",
+    @Query(value = "SELECT COUNT(*), COALESCE(SUM(CASE WHEN oi.metadata->>'goldWeight' ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN (oi.metadata->>'goldWeight')::numeric ELSE 0 END), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND o.order_type = 'SELL' AND o.completed_at >= :from AND o.completed_at <= :to AND oi.item_type = 'GOLD_OUT'",
            nativeQuery = true)
     List<Object[]> goldSoldSummary(@Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
 
@@ -80,7 +80,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
      * [count, total weight (chỉ)] of gold-IN items in completed BUY/EXCHANGE orders in the range.
      * Scoped to BUY/EXCHANGE so it matches sumBuyAmountByDateRange (the gold-bought ₫).
      */
-    @Query(value = "SELECT COUNT(*), COALESCE(SUM((oi.metadata->>'goldWeight')::numeric), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND o.order_type IN ('BUY','EXCHANGE') AND o.completed_at >= :from AND o.completed_at <= :to AND oi.item_type = 'GOLD_IN'",
+    @Query(value = "SELECT COUNT(*), COALESCE(SUM(CASE WHEN oi.metadata->>'goldWeight' ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN (oi.metadata->>'goldWeight')::numeric ELSE 0 END), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND o.order_type IN ('BUY','EXCHANGE') AND o.completed_at >= :from AND o.completed_at <= :to AND oi.item_type = 'GOLD_IN'",
            nativeQuery = true)
     List<Object[]> goldBoughtSummary(@Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
 

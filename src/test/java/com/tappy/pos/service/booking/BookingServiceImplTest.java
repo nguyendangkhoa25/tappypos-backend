@@ -19,6 +19,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -90,6 +91,44 @@ class BookingServiceImplTest {
     }
 
     @Test
+    @DisplayName("Walk-in losing the resource-busy race (unique index) maps to a friendly 'busy', not a raw conflict")
+    void walkIn_resourceBusyRace_mappedToFriendlyError() {
+        when(resourceRepository.findByIdAndTenantIdAndDeletedFalse(10L, TENANT))
+                .thenReturn(Optional.of(resource(new BigDecimal("50000"))));
+        when(bookingRepository.findActiveByResource(TENANT, 10L)).thenReturn(Optional.empty());
+        when(bookingRepository.saveAndFlush(any(Booking.class)))
+                .thenThrow(new DataIntegrityViolationException(
+                        "duplicate key value violates unique constraint \"idx_bookings_one_active_per_resource\""));
+
+        CreateBookingRequest req = new CreateBookingRequest();
+        req.setResourceId(10L);
+        req.setBookingType("WALK_IN");
+
+        assertThatThrownBy(() -> service.create(req))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("error.booking.resource.busy");
+    }
+
+    @Test
+    @DisplayName("Concurrent same-day booking-number clash (unique index) maps to a friendly retry message")
+    void create_bookingNumberRace_mappedToRetryError() {
+        when(resourceRepository.findByIdAndTenantIdAndDeletedFalse(10L, TENANT))
+                .thenReturn(Optional.of(resource(new BigDecimal("50000"))));
+        when(bookingRepository.findActiveByResource(TENANT, 10L)).thenReturn(Optional.empty());
+        when(bookingRepository.saveAndFlush(any(Booking.class)))
+                .thenThrow(new DataIntegrityViolationException(
+                        "duplicate key value violates unique constraint \"idx_bookings_number\""));
+
+        CreateBookingRequest req = new CreateBookingRequest();
+        req.setResourceId(10L);
+        req.setBookingType("WALK_IN");
+
+        assertThatThrownBy(() -> service.create(req))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("error.booking.conflict.retry");
+    }
+
+    @Test
     @DisplayName("Reservation overlapping an existing one on the same resource is rejected")
     void reservation_overlap_rejected() {
         when(resourceRepository.findByIdAndTenantIdAndDeletedFalse(10L, TENANT))
@@ -115,6 +154,62 @@ class BookingServiceImplTest {
                 .hasMessageContaining("error.booking.reservation.overlap");
 
         verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Late-night open-ended reservations overlap correctly (no midnight wrap)")
+    void reservation_lateNightOpenEnded_overlapDetected() {
+        when(resourceRepository.findByIdAndTenantIdAndDeletedFalse(10L, TENANT))
+                .thenReturn(Optional.of(resource(new BigDecimal("50000"))));
+        // Existing open-ended reservation at 23:45 (default end would wrap to 00:45).
+        Booking existing = Booking.builder()
+                .tenantId(TENANT).resourceId(10L).bookingType("RESERVATION").status("RESERVED")
+                .scheduledDate(LocalDate.of(2026, 6, 20))
+                .scheduledStartTime(LocalTime.of(23, 45))
+                .build();
+        when(bookingRepository.findReservationsByResourceAndDate(eq(TENANT), eq(10L), any(), anyLong()))
+                .thenReturn(List.of(existing));
+
+        CreateBookingRequest req = new CreateBookingRequest();
+        req.setResourceId(10L);
+        req.setBookingType("RESERVATION");
+        req.setScheduledDate(LocalDate.of(2026, 6, 20));
+        req.setScheduledStartTime(LocalTime.of(23, 30));   // open-ended; clamps to 24:00, overlaps 23:45+
+        // no end time
+
+        assertThatThrownBy(() -> service.create(req))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("error.booking.reservation.overlap");
+
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Non-overlapping reservations earlier the same day are accepted")
+    void reservation_nonOverlapping_accepted() {
+        when(resourceRepository.findByIdAndTenantIdAndDeletedFalse(10L, TENANT))
+                .thenReturn(Optional.of(resource(new BigDecimal("50000"))));
+        Booking existing = Booking.builder()
+                .tenantId(TENANT).resourceId(10L).bookingType("RESERVATION").status("RESERVED")
+                .scheduledDate(LocalDate.of(2026, 6, 20))
+                .scheduledStartTime(LocalTime.of(10, 0))
+                .scheduledEndTime(LocalTime.of(11, 0))
+                .build();
+        when(bookingRepository.findReservationsByResourceAndDate(eq(TENANT), eq(10L), any(), anyLong()))
+                .thenReturn(List.of(existing));
+        when(bookingRepository.saveAndFlush(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        CreateBookingRequest req = new CreateBookingRequest();
+        req.setResourceId(10L);
+        req.setBookingType("RESERVATION");
+        req.setScheduledDate(LocalDate.of(2026, 6, 20));
+        req.setScheduledStartTime(LocalTime.of(11, 0));    // starts exactly when the other ends → no overlap
+        req.setScheduledEndTime(LocalTime.of(12, 0));
+
+        BookingDTO result = service.create(req);
+
+        assertThat(result.getStatus()).isEqualTo("RESERVED");
+        verify(bookingRepository).saveAndFlush(any(Booking.class));
     }
 
     @Test

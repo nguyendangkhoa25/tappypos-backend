@@ -255,6 +255,40 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             @Param("employeeId") Long employeeId,
             org.springframework.data.domain.Pageable pageable);
 
+    /**
+     * All-staff oversight board: PENDING + IN_PROGRESS items assigned to ANY employee
+     * in the tenant (not just the caller). Backs the Staff Queue board, which groups
+     * these by employee. Access is gated by ORDER_VIEW_ALL at the controller.
+     */
+    @Query(value = """
+            SELECT oi.id, o.id AS order_id, o.order_number, c.name AS customer_name,
+                   oi.product_id, oi.product_name, oi.quantity, oi.unit_price, oi.amount,
+                   COALESCE(p.duration_minutes, 0) AS duration_minutes,
+                   oi.status, oi.completed_at, oi.assigned_employee_id, oi.assigned_employee_name,
+                   o.created_at AS order_created_at,
+                   NULL::numeric AS commission_rate, NULL::numeric AS commission_amount,
+                   oi.note
+            FROM order_items oi
+            JOIN orders o ON o.id = oi.order_id
+            LEFT JOIN customers c ON c.id = o.customer_id
+            LEFT JOIN product p ON p.id = oi.product_id
+            WHERE oi.assigned_employee_id IS NOT NULL
+              AND oi.status IN ('PENDING', 'IN_PROGRESS')
+              AND o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
+            ORDER BY o.created_at ASC
+            """, nativeQuery = true,
+         countQuery = """
+            SELECT COUNT(*) FROM order_items oi
+            JOIN orders o ON o.id = oi.order_id
+            WHERE oi.assigned_employee_id IS NOT NULL
+              AND oi.status IN ('PENDING', 'IN_PROGRESS')
+              AND o.deleted = false
+              AND o.tenant_id = current_setting('app.current_tenant', true)
+            """)
+    org.springframework.data.domain.Page<Object[]> findAllPendingWorkItems(
+            org.springframework.data.domain.Pageable pageable);
+
     @Query("SELECT oi FROM OrderItem oi WHERE oi.id = :itemId AND oi.assignedEmployeeId = :employeeId")
     java.util.Optional<OrderItem> findByIdAndAssignedEmployeeId(
             @Param("itemId") Long itemId,

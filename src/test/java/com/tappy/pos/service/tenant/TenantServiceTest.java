@@ -356,6 +356,26 @@ class TenantServiceTest {
     }
 
     @Test
+    @DisplayName("Should reject 'register' and 'onboarding' — reserved public route slugs")
+    void testCreateTenant_ReservedOnboardingRouteIds() {
+        // These mirror the frontend RESERVED_PATHS (/register, /onboarding); a shop with
+        // either ID would be permanently shadowed by those public routes.
+        for (String reservedId : List.of("register", "onboarding")) {
+            CreateTenantRequest reservedRequest = CreateTenantRequest.builder()
+                    .tenantId(reservedId).name("Collision Shop").dbName("collision_db")
+                    .expirationDate(LocalDate.now().plusYears(1)).maxUsers(50)
+                    .features(List.of("DASHBOARD")).subscriptionType("STANDARD").build();
+
+            assertThatThrownBy(() -> tenantService.createTenant(reservedRequest))
+                    .as("tenant ID '%s' must be rejected as reserved", reservedId)
+                    .isInstanceOf(BadRequestException.class)
+                    .hasMessageContaining("error.tenant.reserved.id");
+        }
+
+        verify(tenantRepository, never()).save(any(Tenant.class));
+    }
+
+    @Test
     @DisplayName("Should use system username when getCurrentUsername returns null")
     void testCreateTenant_SystemUser() {
         when(authContext.getCurrentUsername()).thenReturn(null);

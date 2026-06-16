@@ -162,6 +162,21 @@ public class OrderController {
     }
 
     /**
+     * GET /api/orders/work-items/all-pending
+     * All-staff oversight board: PENDING + IN_PROGRESS items assigned to ANY employee in the
+     * tenant (not just the caller). Backs the Staff Queue board. Gated by ORDER_VIEW_ALL.
+     */
+    @GetMapping("/work-items/all-pending")
+    @RequiresFeature("ORDER_VIEW_ALL")
+    public ResponseEntity<ApiResponse<Page<WorkItemDTO>>> getAllPendingWorkItems(
+            @RequestParam(defaultValue = "0")  int page,
+            @RequestParam(defaultValue = "20") int size) {
+        log.info("Endpoint: GET /orders/work-items/all-pending - page: {}, size: {}", page, size);
+        Page<WorkItemDTO> items = orderService.getAllPendingWorkItems(PageRequest.of(page, size));
+        return ResponseEntity.ok(ApiResponse.success(items, "All pending work items retrieved successfully"));
+    }
+
+    /**
      * PUT /api/orders/work-items/{itemId}/start
      * Transition item PENDING → IN_PROGRESS.
      */

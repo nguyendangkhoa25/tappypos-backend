@@ -653,6 +653,13 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    public Page<WorkItemDTO> getAllPendingWorkItems(Pageable pageable) {
+        log.info("Request: Get all-staff pending work items (oversight board)");
+        Page<Object[]> rows = orderItemRepository.findAllPendingWorkItems(pageable);
+        return rows.map(this::mapRowToWorkItemDTO);
+    }
+
+    @Override
     @Transactional
     public WorkItemDTO startWorkItem(Long itemId) {
         Long employeeId = resolveCurrentEmployeeId();

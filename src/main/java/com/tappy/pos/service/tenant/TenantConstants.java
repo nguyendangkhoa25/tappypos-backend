@@ -31,6 +31,8 @@ public final class TenantConstants {
             "access-denied",
             "tenant-expired",
             "tenant-not-found",
+            "register",
+            "onboarding",
             // Per-shop-type marketing landing page slugs
             "pos-quan-cafe",
             "pos-nha-hang",

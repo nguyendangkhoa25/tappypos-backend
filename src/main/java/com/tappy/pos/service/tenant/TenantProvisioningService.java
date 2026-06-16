@@ -107,7 +107,7 @@ public class TenantProvisioningService {
             "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "PROMOTION",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "CUSTOMER", "LOYALTY",
             "INVOICE", "ACCOUNTING", "REVENUE", "EXPENSE",
-            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "POS",
+            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "STOCK_TAKE", "POS",
             "TABLE_SERVICE", "ACTIVITY_LOG", "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
             "COMMISSION", "COMMISSION_VIEW_ALL", "GOOGLE_DRIVE", "NOTIFICATION", "FEEDBACK", "APPOINTMENT", "BOOKING"
         ));
@@ -115,7 +115,7 @@ public class TenantProvisioningService {
             "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "PROMOTION",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "CUSTOMER", "LOYALTY",
             "INVOICE", "ACCOUNTING", "REVENUE", "EXPENSE",
-            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "POS",
+            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "STOCK_TAKE", "POS",
             "TABLE_SERVICE", "ACTIVITY_LOG", "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
             "COMMISSION", "COMMISSION_VIEW_ALL", "NOTIFICATION", "FEEDBACK", "BOOKING"
         ));
@@ -129,7 +129,7 @@ public class TenantProvisioningService {
             "NOTIFICATION", "FEEDBACK"
         ));
         m.put(RoleEnum.WAREHOUSE_STAFF.getCode(), Arrays.asList(
-            "DASHBOARD", "MY_WORK", "INVENTORY", "PRODUCT", "VENDOR",
+            "DASHBOARD", "MY_WORK", "INVENTORY", "STOCK_TAKE", "PRODUCT", "VENDOR",
             "NOTIFICATION", "FEEDBACK"
         ));
         m.put(RoleEnum.PAWN_OFFICER.getCode(), Arrays.asList(

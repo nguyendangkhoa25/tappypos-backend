@@ -89,6 +89,9 @@ public interface OrderService {
 
     Page<WorkItemDTO> getMyPendingWorkItems(Pageable pageable);
 
+    /** All-staff oversight board: PENDING + IN_PROGRESS items assigned to any employee (ORDER_VIEW_ALL). */
+    Page<WorkItemDTO> getAllPendingWorkItems(Pageable pageable);
+
     Page<WorkItemDTO> getAvailableWorkItems(Pageable pageable);
 
     WorkItemDTO pickupWorkItem(Long itemId);

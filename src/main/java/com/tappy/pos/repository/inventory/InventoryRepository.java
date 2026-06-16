@@ -126,6 +126,20 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
     Optional<Inventory> findProductLevelInventory(@Param("productId") Long productId);
 
     /**
+     * All product-level (variant IS NULL) active inventory — used by stocktake to list
+     * every product that should be counted.
+     */
+    @Query("SELECT i FROM Inventory i WHERE i.deleted = false AND i.variant IS NULL AND i.status = 'ACTIVE' ORDER BY i.product.name")
+    List<Inventory> findAllProductLevelActive();
+
+    /**
+     * Product-level active inventory excluding the given product ids — the stocktake
+     * "uncounted" list (products with stock that have not been counted in the session).
+     */
+    @Query("SELECT i FROM Inventory i WHERE i.deleted = false AND i.variant IS NULL AND i.status = 'ACTIVE' AND i.product.id NOT IN :excludedProductIds ORDER BY i.product.name")
+    List<Inventory> findProductLevelActiveExcluding(@Param("excludedProductIds") List<Long> excludedProductIds);
+
+    /**
      * Locate products by name, SKU, batch, or any shelf location field
      */
     @Query("SELECT i FROM Inventory i WHERE i.deleted = false AND i.status = 'ACTIVE' AND " +
