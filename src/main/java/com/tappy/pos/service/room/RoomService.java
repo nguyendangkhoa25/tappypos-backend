@@ -8,6 +8,19 @@ import java.util.List;
 
 public interface RoomService {
 
+    // ── QR + reception inbox ────────────────────────────────────────────────────
+    /** Ensure the room has a QR token (generate + persist if absent); returns it + the guest path. */
+    RoomQrDTO ensureQrToken(Long roomId);
+
+    /** Reception inbox: guest requests, newest first; optional status filter. */
+    Page<RoomRequestDTO> listRequests(String status, Pageable pageable);
+
+    /** Count of unhandled (NEW) requests — for the inbox badge. */
+    long countNewRequests();
+
+    RoomRequestDTO updateRequestStatus(Long requestId, String status);
+
+
     // ── Rooms / board ─────────────────────────────────────────────────────────
     /** All rooms with their live in-house stay attached (the board). */
     List<RoomDTO> getBoard();

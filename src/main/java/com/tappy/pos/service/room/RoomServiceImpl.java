@@ -7,6 +7,7 @@ import com.tappy.pos.model.entity.order.Order;
 import com.tappy.pos.model.entity.order.OrderItem;
 import com.tappy.pos.model.entity.product.Product;
 import com.tappy.pos.model.entity.room.RoomEntity;
+import com.tappy.pos.model.entity.room.RoomRequestEntity;
 import com.tappy.pos.model.entity.room.RoomStayEntity;
 import com.tappy.pos.model.entity.room.RoomStayItemEntity;
 import com.tappy.pos.model.enums.ActivityAction;
@@ -14,6 +15,7 @@ import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.order.OrderRepository;
 import com.tappy.pos.repository.product.ProductRepository;
 import com.tappy.pos.repository.room.RoomRepository;
+import com.tappy.pos.repository.room.RoomRequestRepository;
 import com.tappy.pos.repository.room.RoomStayItemRepository;
 import com.tappy.pos.repository.room.RoomStayRepository;
 import com.tappy.pos.service.MessageService;
@@ -46,10 +48,12 @@ public class RoomServiceImpl implements RoomService {
     private static final DateTimeFormatter ORDER_DATE_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final Set<String> BILLING_MODES = Set.of("NIGHTLY", "HOURLY", "OVERNIGHT");
     private static final Set<String> ROOM_STATUSES = Set.of("AVAILABLE", "OCCUPIED", "RESERVED", "DIRTY", "OOO");
+    private static final Set<String> ROOM_REQUEST_STATUSES = Set.of("NEW", "IN_PROGRESS", "DONE", "CANCELLED");
 
     private final RoomRepository roomRepository;
     private final RoomStayRepository stayRepository;
     private final RoomStayItemRepository itemRepository;
+    private final RoomRequestRepository requestRepository;
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
     private final TenantContext tenantContext;
@@ -134,6 +138,54 @@ public class RoomServiceImpl implements RoomService {
         }
         room.setStatus(next);
         return mapRoom(roomRepository.save(room), null);
+    }
+
+    // ── QR + reception inbox ─────────────────────────────────────────────────────
+
+    @Override
+    @Transactional
+    public RoomQrDTO ensureQrToken(Long roomId) {
+        RoomEntity room = findRoomOrThrow(roomId);
+        if (room.getQrToken() == null || room.getQrToken().isBlank()) {
+            room.setQrToken(java.util.UUID.randomUUID().toString());
+            room = roomRepository.save(room);
+        }
+        return RoomQrDTO.builder()
+                .roomId(room.getId())
+                .roomNumber(room.getRoomNumber())
+                .qrToken(room.getQrToken())
+                .guestPath("/qr-room/" + tenantContext.getCurrentTenantId() + "/" + room.getQrToken())
+                .build();
+    }
+
+    @Override
+    public Page<RoomRequestDTO> listRequests(String status, Pageable pageable) {
+        Page<RoomRequestEntity> page = (status != null && !status.isBlank())
+                ? requestRepository.findByStatusAndDeletedFalseOrderByCreatedAtDesc(status, pageable)
+                : requestRepository.findByDeletedFalseOrderByCreatedAtDesc(pageable);
+        return page.map(this::mapRequest);
+    }
+
+    @Override
+    public long countNewRequests() {
+        return requestRepository.countByStatusAndDeletedFalse("NEW");
+    }
+
+    @Override
+    @Transactional
+    public RoomRequestDTO updateRequestStatus(Long requestId, String status) {
+        RoomRequestEntity req = requestRepository.findByIdAndDeletedFalse(requestId)
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.room.request.not.found", requestId)));
+        String next = status != null ? status.toUpperCase() : "";
+        if (!ROOM_REQUEST_STATUSES.contains(next)) {
+            throw new BadRequestException(messageService.getMessage("error.room.request.status.invalid", status));
+        }
+        req.setStatus(next);
+        if ("DONE".equals(next) || "IN_PROGRESS".equals(next)) {
+            req.setHandledBy(currentUsername());
+            if ("DONE".equals(next)) req.setHandledAt(LocalDateTime.now());
+        }
+        return mapRequest(requestRepository.save(req));
     }
 
     // ── Stays ──────────────────────────────────────────────────────────────────
@@ -497,6 +549,21 @@ public class RoomServiceImpl implements RoomService {
                     .balanceDue(grandTotal.subtract(orZero(s.getDeposit())));
         }
         return b.build();
+    }
+
+    private RoomRequestDTO mapRequest(RoomRequestEntity r) {
+        return RoomRequestDTO.builder()
+                .id(r.getId())
+                .roomId(r.getRoomId())
+                .roomNumber(r.getRoomNumber())
+                .stayId(r.getStayId())
+                .requestType(r.getRequestType())
+                .message(r.getMessage())
+                .status(r.getStatus())
+                .handledBy(r.getHandledBy())
+                .handledAt(r.getHandledAt())
+                .createdAt(r.getCreatedAt())
+                .build();
     }
 
     private RoomStayItemDTO mapItem(RoomStayItemEntity i) {

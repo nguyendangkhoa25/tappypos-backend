@@ -63,6 +63,36 @@ public class RoomController {
         return ResponseEntity.ok(ApiResponse.success(roomService.setRoomStatus(id, body.get("status")), "Đã cập nhật trạng thái phòng"));
     }
 
+    /** Ensure + return the room's guest QR token (used by the "show QR" / print action). */
+    @PostMapping("/{id}/qr")
+    public ResponseEntity<ApiResponse<RoomQrDTO>> ensureQr(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(roomService.ensureQrToken(id), "Mã QR phòng"));
+    }
+
+    // ── Reception inbox (guest requests) ──────────────────────────────────────
+
+    @GetMapping("/requests")
+    public ResponseEntity<ApiResponse<Page<RoomRequestDTO>>> listRequests(
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "30") int size) {
+        return ResponseEntity.ok(ApiResponse.success(
+                roomService.listRequests(status, PageRequest.of(page, size)), "Yêu cầu từ phòng"));
+    }
+
+    @GetMapping("/requests/count-new")
+    public ResponseEntity<ApiResponse<Long>> countNewRequests() {
+        return ResponseEntity.ok(ApiResponse.success(roomService.countNewRequests(), "Số yêu cầu mới"));
+    }
+
+    @PutMapping("/requests/{requestId}/status")
+    public ResponseEntity<ApiResponse<RoomRequestDTO>> updateRequestStatus(@PathVariable Long requestId,
+                                                                           @RequestBody Map<String, String> body) {
+        log.info("PUT /rooms/requests/{}/status - {}", requestId, body.get("status"));
+        return ResponseEntity.ok(ApiResponse.success(
+                roomService.updateRequestStatus(requestId, body.get("status")), "Đã cập nhật yêu cầu"));
+    }
+
     // ── Stays ───────────────────────────────────────────────────────────────────
 
     @PostMapping("/check-in")

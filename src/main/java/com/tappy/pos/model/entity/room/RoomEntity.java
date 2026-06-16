@@ -59,4 +59,10 @@ public class RoomEntity extends TenantAwareEntity {
 
     @Column(name = "legacy_id", length = 50)
     private String legacyId;
+
+    /** Auto-assign a QR token for guest in-room ordering when a room is first created. */
+    @PrePersist
+    protected void onRoomPersist() {
+        if (this.qrToken == null) this.qrToken = java.util.UUID.randomUUID().toString();
+    }
 }
