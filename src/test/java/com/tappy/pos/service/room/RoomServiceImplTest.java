@@ -8,6 +8,7 @@ import com.tappy.pos.model.dto.room.RoomStayDTO;
 import com.tappy.pos.model.entity.order.Order;
 import com.tappy.pos.model.entity.room.RoomEntity;
 import com.tappy.pos.model.entity.room.RoomStayEntity;
+import com.tappy.pos.model.enums.ShopConfigKey;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.order.OrderRepository;
 import com.tappy.pos.repository.product.ProductRepository;
@@ -17,6 +18,7 @@ import com.tappy.pos.repository.room.RoomStayItemRepository;
 import com.tappy.pos.repository.room.RoomStayRepository;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.service.tenant.ShopConfigService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -59,6 +61,7 @@ class RoomServiceImplTest {
     @Mock TenantContext tenantContext;
     @Mock MessageService messageService;
     @Mock ActivityLogService activityLogService;
+    @Mock ShopConfigService shopConfigService;
 
     @InjectMocks RoomServiceImpl service;
 
@@ -74,6 +77,9 @@ class RoomServiceImplTest {
         when(roomRepository.save(any(RoomEntity.class))).thenAnswer(i -> i.getArgument(0));
         when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
         when(itemRepository.findByStayIdAndDeletedFalseOrderByCreatedAtAsc(any())).thenReturn(Collections.emptyList());
+        // Shop applies the default 10% VAT on checkout (mirrors CartServiceImpl).
+        when(shopConfigService.getBoolean(eq(ShopConfigKey.TAX_AUTO_APPLY), any())).thenReturn(true);
+        when(shopConfigService.getDouble(eq(ShopConfigKey.DEFAULT_TAX_RATE), any())).thenReturn(0.10);
     }
 
     @AfterEach
@@ -159,7 +165,11 @@ class RoomServiceImplTest {
         assertThat(order.getSource()).isEqualTo("ROOM");
         assertThat(order.getRoomStayId()).isEqualTo(10L);
         assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.COMPLETED);
-        assertThat(order.getTotalAmount()).isEqualByComparingTo("300000");
+        // 300000 room charge + 10% VAT → 330000 total, 30000 tax, 10.00%.
+        assertThat(order.getTotalAmount()).isEqualByComparingTo("330000");
+        assertThat(order.getTaxAmount()).isEqualByComparingTo("30000");
+        assertThat(order.getTaxPercentage()).isEqualByComparingTo("10.00");
+        assertThat(order.getAmountPaid()).isEqualByComparingTo("330000");
 
         // Room is flagged for cleaning after checkout.
         ArgumentCaptor<RoomEntity> roomCap = ArgumentCaptor.forClass(RoomEntity.class);

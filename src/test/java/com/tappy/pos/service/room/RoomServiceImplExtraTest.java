@@ -16,6 +16,7 @@ import com.tappy.pos.model.entity.room.RoomEntity;
 import com.tappy.pos.model.entity.room.RoomRequestEntity;
 import com.tappy.pos.model.entity.room.RoomStayEntity;
 import com.tappy.pos.model.entity.room.RoomStayItemEntity;
+import com.tappy.pos.model.enums.ShopConfigKey;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.order.OrderRepository;
 import com.tappy.pos.repository.product.ProductRepository;
@@ -25,6 +26,7 @@ import com.tappy.pos.repository.room.RoomStayItemRepository;
 import com.tappy.pos.repository.room.RoomStayRepository;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.service.tenant.ShopConfigService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -72,6 +74,7 @@ class RoomServiceImplExtraTest {
     @Mock TenantContext tenantContext;
     @Mock MessageService messageService;
     @Mock ActivityLogService activityLogService;
+    @Mock ShopConfigService shopConfigService;
 
     @InjectMocks RoomServiceImpl service;
 
@@ -91,6 +94,8 @@ class RoomServiceImplExtraTest {
         });
         when(itemRepository.save(any(RoomStayItemEntity.class))).thenAnswer(i -> i.getArgument(0));
         when(itemRepository.findByStayIdAndDeletedFalseOrderByCreatedAtAsc(any())).thenReturn(Collections.emptyList());
+        when(shopConfigService.getBoolean(eq(ShopConfigKey.TAX_AUTO_APPLY), any())).thenReturn(true);
+        when(shopConfigService.getDouble(eq(ShopConfigKey.DEFAULT_TAX_RATE), any())).thenReturn(0.10);
     }
 
     @AfterEach

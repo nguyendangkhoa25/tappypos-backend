@@ -11,6 +11,7 @@ import com.tappy.pos.model.entity.room.RoomRequestEntity;
 import com.tappy.pos.model.entity.room.RoomStayEntity;
 import com.tappy.pos.model.entity.room.RoomStayItemEntity;
 import com.tappy.pos.model.enums.ActivityAction;
+import com.tappy.pos.model.enums.ShopConfigKey;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.order.OrderRepository;
 import com.tappy.pos.repository.product.ProductRepository;
@@ -20,6 +21,7 @@ import com.tappy.pos.repository.room.RoomStayItemRepository;
 import com.tappy.pos.repository.room.RoomStayRepository;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.service.tenant.ShopConfigService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -29,6 +31,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -60,6 +63,7 @@ public class RoomServiceImpl implements RoomService {
     private final TenantContext tenantContext;
     private final MessageService messageService;
     private final ActivityLogService activityLogService;
+    private final ShopConfigService shopConfigService;
 
     // ── Rooms / board ──────────────────────────────────────────────────────────
 
@@ -501,18 +505,28 @@ public class RoomServiceImpl implements RoomService {
         String tenantId = stay.getTenantId();
         String actor = currentUsername();
 
+        // Apply VAT on checkout, mirroring CartServiceImpl: grandTotal (room charge + folio
+        // items) is the taxable subtotal; tax is added on top when the shop auto-applies VAT.
+        boolean autoApply = shopConfigService.getBoolean(ShopConfigKey.TAX_AUTO_APPLY, true);
+        double configuredRate = shopConfigService.getDouble(ShopConfigKey.DEFAULT_TAX_RATE, 0.10);
+        BigDecimal taxRate = autoApply
+                ? BigDecimal.valueOf(configuredRate).setScale(4, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+        BigDecimal taxAmount = grandTotal.multiply(taxRate).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal totalWithTax = grandTotal.add(taxAmount);
+
         Order order = new Order();
         order.setTenantId(tenantId);
         order.setOrderNumber(generateOrderNumber());
         order.setStatus(Order.OrderStatus.COMPLETED);
-        order.setTotalAmount(grandTotal);
+        order.setTotalAmount(totalWithTax);
         order.setDiscountAmount(BigDecimal.ZERO);
-        order.setTaxPercentage(BigDecimal.ZERO);
-        order.setTaxAmount(BigDecimal.ZERO);
+        order.setTaxPercentage(taxRate.multiply(BigDecimal.valueOf(100)).setScale(2, RoundingMode.HALF_UP));
+        order.setTaxAmount(taxAmount);
         order.setSource("ROOM");
         order.setRoomStayId(stay.getId());
         order.setPaymentMethod(paymentMethod != null && !paymentMethod.isBlank() ? paymentMethod : "CASH");
-        order.setAmountPaid(grandTotal);
+        order.setAmountPaid(totalWithTax);
         order.setCreatedBy(actor);
         order.setCompletedBy(actor);
         order.setCompletedAt(LocalDateTime.now());
