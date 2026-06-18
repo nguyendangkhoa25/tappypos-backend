@@ -72,6 +72,15 @@ class TenantSeedServiceTest {
     }
 
     @Test
+    @DisplayName("seed: executes all statements from fashion.sql")
+    void seed_fashion() throws Exception {
+        tenantSeedService.seed(ShopType.FASHION);
+
+        verify(mockSession).doWork(any(Work.class));
+        verify(mockStatement, atLeastOnce()).execute(anyString());
+    }
+
+    @Test
     @DisplayName("seed: uses general.sql for unknown shop types")
     void seed_general() throws Exception {
         tenantSeedService.seed(ShopType.OTHER);

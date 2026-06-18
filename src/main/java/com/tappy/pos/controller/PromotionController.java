@@ -31,6 +31,12 @@ public class PromotionController {
         return ResponseEntity.ok(ApiResponse.success(promotionService.getAll(pageable), "Promotions retrieved"));
     }
 
+    @GetMapping("/active")
+    public ResponseEntity<ApiResponse<java.util.List<PromotionDTO>>> getActive() {
+        return ResponseEntity.ok(ApiResponse.success(
+                promotionService.getActivePromotions(), "Active promotions retrieved"));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<PromotionDTO>> getById(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(promotionService.getById(id), "Promotion retrieved"));

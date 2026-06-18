@@ -165,6 +165,14 @@ public class PawnController {
         );
     }
 
+    @PostMapping("/customer-kpi")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getCustomerPawnKpi(
+            @Valid @RequestBody DateFilterRequest dateFilter) {
+        log.info("Request: Get customer pawn KPI rankings");
+        return ResponseEntity.ok(ApiResponse.success(
+                pawnService.getCustomerPawnKpi(dateFilter), "Customer pawn KPIs retrieved successfully"));
+    }
+
     @PostMapping("/export")
     public ResponseEntity<FileSystemResource> exportPawns(@Valid @RequestBody SearchPawnRequest searchRequest) throws IOException {
         log.info("Request: Export pawns");

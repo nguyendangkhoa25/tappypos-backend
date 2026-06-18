@@ -992,6 +992,39 @@ public class PawnServiceImpl implements PawnService {
         return result;
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Object> getCustomerPawnKpi(DateFilterRequest filter) {
+        boolean visibleItemFlag = shopInfoService.getExcludeVisibleItemFlag();
+        LocalDateTime fromDate = Instant.ofEpochMilli(filter.getFromDate()).atZone(ZoneId.systemDefault()).toLocalDateTime();
+        LocalDateTime toDate = Instant.ofEpochMilli(filter.getToDate()).atZone(ZoneId.systemDefault()).toLocalDateTime();
+        Pageable top = org.springframework.data.domain.PageRequest.of(0, 5);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("topPawnedAmount", mapCustomerKpiRows(pawnRepository.findTopCustomersByPawnAmount(fromDate, toDate, visibleItemFlag, top)));
+        result.put("topPawnedCount", mapCustomerKpiRows(pawnRepository.findTopCustomersByPawnCount(fromDate, toDate, visibleItemFlag, top)));
+        result.put("topCompletedPawnAmount", mapCustomerKpiRows(pawnRepository.findTopCustomersByCompletedAmount(fromDate, toDate, visibleItemFlag, top)));
+        result.put("topCompletedPawnCount", mapCustomerKpiRows(pawnRepository.findTopCustomersByCompletedCount(fromDate, toDate, visibleItemFlag, top)));
+        result.put("topInterestAmount", mapCustomerKpiRows(pawnRepository.findTopCustomersByInterestAmount(fromDate, toDate, visibleItemFlag, top)));
+        return result;
+    }
+
+    /** Maps a grouped-by-customer KPI row [customerId, customerName, count, pawnAmount, interestAmount]
+     *  to the field names the customer pawn-KPI widget renders. */
+    private List<Map<String, Object>> mapCustomerKpiRows(List<Object[]> rows) {
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (Object[] row : rows) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("customerId", row[0]);
+            m.put("name", row[1] != null ? row[1].toString() : "Khách vãng lai");
+            m.put("pawnCount", row[2] != null ? ((Number) row[2]).intValue() : 0);
+            m.put("pawnAmount", row[3] != null ? ((Number) row[3]).longValue() : 0L);
+            m.put("interestAmount", row[4] != null ? ((Number) row[4]).longValue() : 0L);
+            list.add(m);
+        }
+        return list;
+    }
+
     @Transactional(readOnly = true)
     public Map<String, Object> getCustomerPawnSummary(Long customerId) {
         boolean visibleItemFlag = shopInfoService.getExcludeVisibleItemFlag();

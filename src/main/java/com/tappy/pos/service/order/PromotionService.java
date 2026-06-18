@@ -35,6 +35,15 @@ public class PromotionService {
         return promotionRepository.findAllActive(pageable).map(this::mapToDTO);
     }
 
+    /**
+     * Returns all currently-valid promotions (active, within their date window, under usage limit).
+     * Used by the POS checkout screen to surface auto-apply promotions without a code.
+     */
+    public java.util.List<PromotionDTO> getActivePromotions() {
+        return promotionRepository.findAllValid(LocalDateTime.now())
+                .stream().map(this::mapToDTO).toList();
+    }
+
     public PromotionDTO getById(Long id) {
         return promotionRepository.findById(id)
                 .filter(p -> !p.isDeleted())

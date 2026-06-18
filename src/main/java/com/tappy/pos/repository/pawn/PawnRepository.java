@@ -227,6 +227,70 @@ public interface PawnRepository extends JpaRepository<PawnEntity, Long> {
             @Param("excludeVisible") boolean excludeVisible,
             Pageable pageable);
 
+    @Query("SELECT p.customerId, p.customerName, " +
+            "COUNT(DISTINCT p.pawnId), " +
+            "COALESCE(SUM(p.pawnAmount), 0), " +
+            "COALESCE(SUM(p.interestAmount), 0) " +
+            "FROM PawnEntity p " +
+            "WHERE p.pawnStatus = 'PAWNED' " +
+            "AND (:excludeVisible = false OR p.visible IS NULL OR p.visible = true) " +
+            "AND p.pawnDate BETWEEN :fromDate AND :toDate " +
+            "GROUP BY p.customerId, p.customerName " +
+            "ORDER BY COUNT(DISTINCT p.pawnId) DESC")
+    List<Object[]> findTopCustomersByPawnCount(
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            @Param("excludeVisible") boolean excludeVisible,
+            Pageable pageable);
+
+    @Query("SELECT p.customerId, p.customerName, " +
+            "COUNT(DISTINCT p.pawnId), " +
+            "COALESCE(SUM(p.pawnAmount), 0), " +
+            "COALESCE(SUM(p.interestAmount), 0) " +
+            "FROM PawnEntity p " +
+            "WHERE p.pawnStatus = 'REDEEMED' " +
+            "AND (:excludeVisible = false OR p.visible IS NULL OR p.visible = true) " +
+            "AND p.redeemDate BETWEEN :fromDate AND :toDate " +
+            "GROUP BY p.customerId, p.customerName " +
+            "ORDER BY COALESCE(SUM(p.pawnAmount), 0) DESC")
+    List<Object[]> findTopCustomersByCompletedAmount(
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            @Param("excludeVisible") boolean excludeVisible,
+            Pageable pageable);
+
+    @Query("SELECT p.customerId, p.customerName, " +
+            "COUNT(DISTINCT p.pawnId), " +
+            "COALESCE(SUM(p.pawnAmount), 0), " +
+            "COALESCE(SUM(p.interestAmount), 0) " +
+            "FROM PawnEntity p " +
+            "WHERE p.pawnStatus = 'REDEEMED' " +
+            "AND (:excludeVisible = false OR p.visible IS NULL OR p.visible = true) " +
+            "AND p.redeemDate BETWEEN :fromDate AND :toDate " +
+            "GROUP BY p.customerId, p.customerName " +
+            "ORDER BY COUNT(DISTINCT p.pawnId) DESC")
+    List<Object[]> findTopCustomersByCompletedCount(
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            @Param("excludeVisible") boolean excludeVisible,
+            Pageable pageable);
+
+    @Query("SELECT p.customerId, p.customerName, " +
+            "COUNT(DISTINCT p.pawnId), " +
+            "COALESCE(SUM(p.pawnAmount), 0), " +
+            "COALESCE(SUM(p.interestAmount), 0) " +
+            "FROM PawnEntity p " +
+            "WHERE p.pawnStatus = 'REDEEMED' " +
+            "AND (:excludeVisible = false OR p.visible IS NULL OR p.visible = true) " +
+            "AND p.redeemDate BETWEEN :fromDate AND :toDate " +
+            "GROUP BY p.customerId, p.customerName " +
+            "ORDER BY COALESCE(SUM(p.interestAmount), 0) DESC")
+    List<Object[]> findTopCustomersByInterestAmount(
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            @Param("excludeVisible") boolean excludeVisible,
+            Pageable pageable);
+
     @Query("SELECT COALESCE(SUM(p.pawnAmount), 0) as amount, COUNT(DISTINCT p.pawnId) as totalCount FROM PawnEntity p WHERE p.pawnStatus = :pawnStatus AND (:excludeVisibleItem = false OR p.visible IS NULL OR p.visible = true) AND p.updatedAt BETWEEN :fromDate AND :toDate")
     List<Object[]> sumByPawnStatusAndUpdatedAtBetween(@Param("pawnStatus") PawnStatus pawnStatus, @Param("fromDate") LocalDateTime fromDate, @Param("toDate") LocalDateTime toDate, @Param("excludeVisibleItem") boolean excludeVisibleItem);
 

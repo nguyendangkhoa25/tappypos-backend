@@ -638,6 +638,69 @@ class PawnServiceImplTest {
         assertThat(result.getContent()).isEmpty();
     }
 
+    // ── getCustomerPawnKpi ──────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getCustomerPawnKpi: returns five customer rankings mapped to widget fields")
+    void getCustomerPawnKpi_returnsFiveRankings() {
+        when(shopInfoService.getExcludeVisibleItemFlag()).thenReturn(false);
+        Object[] row = new Object[]{ 7L, "Nguyễn Văn A", 3L, 5_000_000L, 250_000L };
+        when(pawnRepository.findTopCustomersByPawnAmount(any(), any(), eq(false), any()))
+                .thenReturn(java.util.Collections.singletonList(row));
+        when(pawnRepository.findTopCustomersByPawnCount(any(), any(), eq(false), any()))
+                .thenReturn(java.util.Collections.singletonList(row));
+        when(pawnRepository.findTopCustomersByCompletedAmount(any(), any(), eq(false), any()))
+                .thenReturn(java.util.Collections.singletonList(row));
+        when(pawnRepository.findTopCustomersByCompletedCount(any(), any(), eq(false), any()))
+                .thenReturn(java.util.Collections.singletonList(row));
+        when(pawnRepository.findTopCustomersByInterestAmount(any(), any(), eq(false), any()))
+                .thenReturn(java.util.Collections.singletonList(row));
+
+        com.tappy.pos.model.dto.pawn.DateFilterRequest filter =
+                com.tappy.pos.model.dto.pawn.DateFilterRequest.builder()
+                        .fromDate(System.currentTimeMillis() - 86_400_000L)
+                        .toDate(System.currentTimeMillis())
+                        .build();
+
+        java.util.Map<String, Object> result = pawnService.getCustomerPawnKpi(filter);
+
+        assertThat(result).containsOnlyKeys("topPawnedAmount", "topPawnedCount",
+                "topCompletedPawnAmount", "topCompletedPawnCount", "topInterestAmount");
+        @SuppressWarnings("unchecked")
+        List<java.util.Map<String, Object>> pawnedAmount =
+                (List<java.util.Map<String, Object>>) result.get("topPawnedAmount");
+        assertThat(pawnedAmount).hasSize(1);
+        assertThat(pawnedAmount.get(0))
+                .containsEntry("customerId", 7L)
+                .containsEntry("name", "Nguyễn Văn A")
+                .containsEntry("pawnCount", 3)
+                .containsEntry("pawnAmount", 5_000_000L)
+                .containsEntry("interestAmount", 250_000L);
+    }
+
+    @Test
+    @DisplayName("getCustomerPawnKpi: maps a null customer name to walk-in label")
+    void getCustomerPawnKpi_nullName() {
+        when(shopInfoService.getExcludeVisibleItemFlag()).thenReturn(true);
+        Object[] row = new Object[]{ null, null, 0L, 0L, 0L };
+        when(pawnRepository.findTopCustomersByPawnAmount(any(), any(), eq(true), any()))
+                .thenReturn(java.util.Collections.singletonList(row));
+        when(pawnRepository.findTopCustomersByPawnCount(any(), any(), eq(true), any())).thenReturn(List.of());
+        when(pawnRepository.findTopCustomersByCompletedAmount(any(), any(), eq(true), any())).thenReturn(List.of());
+        when(pawnRepository.findTopCustomersByCompletedCount(any(), any(), eq(true), any())).thenReturn(List.of());
+        when(pawnRepository.findTopCustomersByInterestAmount(any(), any(), eq(true), any())).thenReturn(List.of());
+
+        com.tappy.pos.model.dto.pawn.DateFilterRequest filter =
+                com.tappy.pos.model.dto.pawn.DateFilterRequest.builder().fromDate(0L).toDate(1L).build();
+
+        java.util.Map<String, Object> result = pawnService.getCustomerPawnKpi(filter);
+
+        @SuppressWarnings("unchecked")
+        List<java.util.Map<String, Object>> rows =
+                (List<java.util.Map<String, Object>>) result.get("topPawnedAmount");
+        assertThat(rows.get(0)).containsEntry("name", "Khách vãng lai");
+    }
+
     // ── updatePawn ────────────────────────────────────────────────────────────
 
     @Test

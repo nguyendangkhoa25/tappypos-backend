@@ -579,14 +579,14 @@ CREATE TABLE IF NOT EXISTS orders (
     customer_id             BIGINT         DEFAULT NULL,
     status                  VARCHAR(20)    NOT NULL DEFAULT 'PENDING',
     payment_method          VARCHAR(50)    DEFAULT NULL,
-    amount_paid             DECIMAL(10,2)  DEFAULT NULL,
-    change_amount           DECIMAL(10,2)  DEFAULT NULL,
-    total_amount            DECIMAL(10,2)  NOT NULL DEFAULT 0.00,
-    discount_amount         DECIMAL(10,2)  DEFAULT 0.00,
+    amount_paid             DECIMAL(15,2)  DEFAULT NULL,
+    change_amount           DECIMAL(15,2)  DEFAULT NULL,
+    total_amount            DECIMAL(15,2)  NOT NULL DEFAULT 0.00,
+    discount_amount         DECIMAL(15,2)  DEFAULT 0.00,
     tax_percentage          DECIMAL(5,2)   DEFAULT 0.00,
-    tax_amount              DECIMAL(10,2)  DEFAULT 0.00,
-    commission_amount       DECIMAL(10,2)  DEFAULT 0.00,
-    tip_amount              DECIMAL(10,2)  NOT NULL DEFAULT 0,
+    tax_amount              DECIMAL(15,2)  DEFAULT 0.00,
+    commission_amount       DECIMAL(15,2)  DEFAULT 0.00,
+    tip_amount              DECIMAL(15,2)  NOT NULL DEFAULT 0,
     invoice_id              BIGINT         DEFAULT NULL,
     notes                   TEXT           DEFAULT NULL,
     created_by              VARCHAR(100)   DEFAULT NULL,
@@ -599,9 +599,9 @@ CREATE TABLE IF NOT EXISTS orders (
     void_reason             VARCHAR(500)   DEFAULT NULL,
     voided_by               VARCHAR(100)   DEFAULT NULL,
     promotion_code          VARCHAR(50)    DEFAULT NULL,
-    promotion_discount      DECIMAL(10,2)  NOT NULL DEFAULT 0.00,
+    promotion_discount      DECIMAL(15,2)  NOT NULL DEFAULT 0.00,
     loyalty_points_redeemed INT            NOT NULL DEFAULT 0,
-    loyalty_discount        DECIMAL(10,2)  NOT NULL DEFAULT 0.00,
+    loyalty_discount        DECIMAL(15,2)  NOT NULL DEFAULT 0.00,
     table_label             VARCHAR(100)   DEFAULT NULL,
     source                  VARCHAR(20)    NOT NULL DEFAULT 'POS',
     legacy_id               VARCHAR(50)    DEFAULT NULL,
@@ -622,6 +622,7 @@ CREATE TABLE IF NOT EXISTS orders (
     sell_amount             DECIMAL(15,2)  NOT NULL DEFAULT 0,  -- Sum of GOLD_OUT + STANDARD item amounts (shop sells to customer)
     gold_diff_weight        DECIMAL(10,3)  NOT NULL DEFAULT 0,  -- Surplus/deficit weight in chỉ for EXCHANGE orders
     gold_diff_amount        DECIMAL(15,2)  NOT NULL DEFAULT 0,  -- Monetary value of surplus/deficit weight
+    room_stay_id            BIGINT         DEFAULT NULL,         -- folded from V007 (lodging link; nullable, no FK; appended last to match ALTER order)
     CONSTRAINT uq_orders_number_tenant  UNIQUE (order_number, tenant_id),
     CONSTRAINT chk_orders_status        CHECK  (status IN ('SUBMITTED','PENDING','IN_PROGRESS','COMPLETED','CANCELLED','VOIDED')),
     CONSTRAINT chk_orders_order_type    CHECK  (order_type IN ('SELL', 'BUY', 'EXCHANGE')),
@@ -636,14 +637,14 @@ CREATE TABLE IF NOT EXISTS order_items (
     product_id            BIGINT         DEFAULT NULL,
     product_name          VARCHAR(255)   DEFAULT NULL,
     quantity              INT            NOT NULL DEFAULT 1,
-    unit_price            DECIMAL(10,2)  NOT NULL,
-    amount                DECIMAL(10,2)  NOT NULL,
+    unit_price            DECIMAL(15,2)  NOT NULL,
+    amount                DECIMAL(15,2)  NOT NULL,
     status                VARCHAR(20)    NOT NULL DEFAULT 'PENDING',
     tax_percentage        DECIMAL(5,2)   DEFAULT 0.00,
-    tax_amount            DECIMAL(10,2)  DEFAULT 0.00,
+    tax_amount            DECIMAL(15,2)  DEFAULT 0.00,
     commission_rate       DECIMAL(5,2)   DEFAULT 0.00,
-    commission_amount     DECIMAL(10,2)  DEFAULT 0.00,
-    amount_before_tax     DECIMAL(10,2)  DEFAULT 0.00,
+    commission_amount     DECIMAL(15,2)  DEFAULT 0.00,
+    amount_before_tax     DECIMAL(15,2)  DEFAULT 0.00,
     assigned_employee_id   BIGINT         DEFAULT NULL,
     assigned_employee_name VARCHAR(255)   DEFAULT NULL,
     unit_cost              DECIMAL(15,2)  NOT NULL DEFAULT 0.00,
@@ -4695,6 +4696,190 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_one_active_per_resource
     WHERE status = 'IN_PROGRESS' AND deleted = FALSE;
 
 
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Stocktake tables (folded from V005)
+-- ══════════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS stocktake_session (
+    id           BIGSERIAL     PRIMARY KEY,
+    tenant_id    VARCHAR(100)  NOT NULL,
+    name         VARCHAR(255)  DEFAULT NULL,
+    status       VARCHAR(30)   NOT NULL DEFAULT 'IN_PROGRESS',  -- IN_PROGRESS | COMPLETED | CANCELLED
+    note         TEXT          DEFAULT NULL,
+    started_by   VARCHAR(100)  DEFAULT NULL,
+    started_at   TIMESTAMP     DEFAULT NULL,
+    completed_by VARCHAR(100)  DEFAULT NULL,
+    completed_at TIMESTAMP     DEFAULT NULL,
+    legacy_id    VARCHAR(50)   DEFAULT NULL,
+    created_at   TIMESTAMP     DEFAULT NOW(),
+    updated_at   TIMESTAMP     DEFAULT NOW(),
+    deleted      BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at   TIMESTAMP     DEFAULT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_stocktake_session_tenant_status
+    ON stocktake_session (tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_stocktake_session_legacy_id
+    ON stocktake_session (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+
+ALTER TABLE stocktake_session ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stocktake_session FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON stocktake_session
+    USING (tenant_id = current_setting('app.current_tenant', true));
+
+CREATE TABLE IF NOT EXISTS stocktake_count (
+    id           BIGSERIAL     PRIMARY KEY,
+    tenant_id    VARCHAR(100)  NOT NULL,
+    session_id   BIGINT        NOT NULL,
+    product_id   BIGINT        NOT NULL,
+    inventory_id BIGINT        DEFAULT NULL,
+    expected_qty BIGINT        NOT NULL DEFAULT 0,   -- system stock snapshot at first count
+    counted_qty  BIGINT        NOT NULL DEFAULT 0,   -- real physical quantity entered
+    difference   BIGINT        NOT NULL DEFAULT 0,   -- counted - expected
+    counted_by   VARCHAR(100)  DEFAULT NULL,
+    counted_at   TIMESTAMP     DEFAULT NULL,
+    applied      BOOLEAN       NOT NULL DEFAULT FALSE,
+    note         VARCHAR(500)  DEFAULT NULL,
+    legacy_id    VARCHAR(50)   DEFAULT NULL,
+    created_at   TIMESTAMP     DEFAULT NOW(),
+    updated_at   TIMESTAMP     DEFAULT NOW(),
+    deleted      BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at   TIMESTAMP     DEFAULT NULL,
+    CONSTRAINT fk_stocktake_count_session FOREIGN KEY (session_id)
+        REFERENCES stocktake_session (id) ON DELETE CASCADE,
+    CONSTRAINT uq_stocktake_count_session_product UNIQUE (session_id, product_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_stocktake_count_session   ON stocktake_count (session_id);
+CREATE INDEX IF NOT EXISTS idx_stocktake_count_legacy_id ON stocktake_count (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+
+ALTER TABLE stocktake_count ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stocktake_count FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON stocktake_count
+    USING (tenant_id = current_setting('app.current_tenant', true));
+
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Lodging tables (folded from V007; room_stay also includes V009/V010 columns)
+-- ══════════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS room (
+    id             BIGSERIAL     PRIMARY KEY,
+    tenant_id      VARCHAR(100)  NOT NULL,
+    room_number    VARCHAR(50)   NOT NULL,
+    room_type      VARCHAR(100)  DEFAULT NULL,
+    floor          VARCHAR(30)   DEFAULT NULL,
+    nightly_rate   DECIMAL(15,2) NOT NULL DEFAULT 0,
+    hourly_rate    DECIMAL(15,2) DEFAULT NULL,
+    overnight_rate DECIMAL(15,2) DEFAULT NULL,
+    max_occupancy  INT           NOT NULL DEFAULT 2,
+    status         VARCHAR(20)   NOT NULL DEFAULT 'AVAILABLE',  -- AVAILABLE | OCCUPIED | RESERVED | DIRTY | OOO
+    qr_token       VARCHAR(64)   DEFAULT NULL,
+    note           TEXT          DEFAULT NULL,
+    sort_order     INT           NOT NULL DEFAULT 0,
+    legacy_id      VARCHAR(50)   DEFAULT NULL,
+    created_at     TIMESTAMP     DEFAULT NOW(),
+    updated_at     TIMESTAMP     DEFAULT NOW(),
+    deleted        BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at     TIMESTAMP     DEFAULT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_room_tenant_status ON room (tenant_id, status);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_room_qr_token ON room (qr_token) WHERE qr_token IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_room_legacy_id ON room (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+ALTER TABLE room ENABLE ROW LEVEL SECURITY;
+ALTER TABLE room FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON room
+    USING (tenant_id = current_setting('app.current_tenant', true));
+
+CREATE TABLE IF NOT EXISTS room_stay (
+    id                BIGSERIAL     PRIMARY KEY,
+    tenant_id         VARCHAR(100)  NOT NULL,
+    stay_number       VARCHAR(20)   NOT NULL,
+    room_id           BIGINT        NOT NULL,
+    room_number       VARCHAR(50)   NOT NULL,             -- snapshot
+    guest_name        VARCHAR(255)  DEFAULT NULL,
+    guest_phone       VARCHAR(20)   DEFAULT NULL,
+    guest_id_number   VARCHAR(50)   DEFAULT NULL,         -- CCCD / passport
+    customer_id       BIGINT        DEFAULT NULL,
+    adults            INT           NOT NULL DEFAULT 1,
+    billing_mode      VARCHAR(20)   NOT NULL DEFAULT 'NIGHTLY',  -- NIGHTLY | HOURLY | OVERNIGHT
+    rate              DECIMAL(15,2) NOT NULL DEFAULT 0,    -- snapshot of unit rate at check-in
+    checkin_at        TIMESTAMP     DEFAULT NULL,           -- folded from V009: nullable to allow reservations
+    expected_checkout TIMESTAMP     DEFAULT NULL,
+    checkout_at       TIMESTAMP     DEFAULT NULL,
+    units             INT           NOT NULL DEFAULT 1,    -- nights or hours billed
+    room_charge       DECIMAL(15,2) NOT NULL DEFAULT 0,
+    deposit           DECIMAL(15,2) NOT NULL DEFAULT 0,
+    status            VARCHAR(20)   NOT NULL DEFAULT 'IN_HOUSE',  -- IN_HOUSE | CHECKED_OUT | CANCELLED
+    linked_order_id   BIGINT        DEFAULT NULL,
+    note              TEXT          DEFAULT NULL,
+    legacy_id         VARCHAR(50)   DEFAULT NULL,
+    created_by        VARCHAR(255)  DEFAULT NULL,
+    created_at        TIMESTAMP     DEFAULT NOW(),
+    updated_at        TIMESTAMP     DEFAULT NOW(),
+    deleted           BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at        TIMESTAMP     DEFAULT NULL,
+    reserved_checkin  TIMESTAMP     DEFAULT NULL,           -- folded from V009 (appended last to match ALTER order)
+    version           BIGINT        NOT NULL DEFAULT 0,     -- folded from V010 (optimistic-lock; appended last to match ALTER order)
+    CONSTRAINT fk_room_stay_room FOREIGN KEY (room_id) REFERENCES room (id)
+);
+CREATE INDEX IF NOT EXISTS idx_room_stay_tenant_status ON room_stay (tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_room_stay_room ON room_stay (room_id);
+CREATE INDEX IF NOT EXISTS idx_room_stay_legacy_id ON room_stay (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_room_stay_reserved ON room_stay (tenant_id, status, reserved_checkin);  -- folded from V009
+ALTER TABLE room_stay ENABLE ROW LEVEL SECURITY;
+ALTER TABLE room_stay FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON room_stay
+    USING (tenant_id = current_setting('app.current_tenant', true));
+
+CREATE TABLE IF NOT EXISTS room_stay_item (
+    id           BIGSERIAL     PRIMARY KEY,
+    tenant_id    VARCHAR(100)  NOT NULL,
+    stay_id      BIGINT        NOT NULL,
+    product_id   BIGINT        DEFAULT NULL,
+    product_name VARCHAR(255)  NOT NULL,
+    quantity     INT           NOT NULL DEFAULT 1,
+    unit_price   DECIMAL(15,2) NOT NULL DEFAULT 0,
+    source       VARCHAR(20)   NOT NULL DEFAULT 'STAFF',  -- STAFF | QR
+    note         VARCHAR(500)  DEFAULT NULL,
+    created_by   VARCHAR(255)  DEFAULT NULL,
+    created_at   TIMESTAMP     DEFAULT NOW(),
+    updated_at   TIMESTAMP     DEFAULT NOW(),
+    deleted      BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at   TIMESTAMP     DEFAULT NULL,
+    CONSTRAINT fk_room_stay_item_stay FOREIGN KEY (stay_id) REFERENCES room_stay (id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_room_stay_item_stay ON room_stay_item (stay_id);
+ALTER TABLE room_stay_item ENABLE ROW LEVEL SECURITY;
+ALTER TABLE room_stay_item FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON room_stay_item
+    USING (tenant_id = current_setting('app.current_tenant', true));
+
+-- room_request — guest QR requests / reception inbox (folded from V008)
+CREATE TABLE IF NOT EXISTS room_request (
+    id            BIGSERIAL     PRIMARY KEY,
+    tenant_id     VARCHAR(100)  NOT NULL,
+    room_id       BIGINT        NOT NULL,
+    room_number   VARCHAR(50)   NOT NULL,
+    stay_id       BIGINT        DEFAULT NULL,
+    request_type  VARCHAR(30)   NOT NULL,                       -- SERVICE | CLEANING | SUPPLIES | CHECKOUT | OTHER
+    message       TEXT          DEFAULT NULL,
+    status        VARCHAR(20)   NOT NULL DEFAULT 'NEW',         -- NEW | IN_PROGRESS | DONE | CANCELLED
+    handled_by    VARCHAR(255)  DEFAULT NULL,
+    handled_at    TIMESTAMP     DEFAULT NULL,
+    legacy_id     VARCHAR(50)   DEFAULT NULL,
+    created_at    TIMESTAMP     DEFAULT NOW(),
+    updated_at    TIMESTAMP     DEFAULT NOW(),
+    deleted       BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at    TIMESTAMP     DEFAULT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_room_request_status ON room_request (tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_room_request_room ON room_request (room_id);
+CREATE INDEX IF NOT EXISTS idx_room_request_legacy_id ON room_request (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+ALTER TABLE room_request ENABLE ROW LEVEL SECURITY;
+ALTER TABLE room_request FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON room_request
+    USING (tenant_id = current_setting('app.current_tenant', true));
+
+
 -- ----- BOOKING + UTILITIES feature rows (were V004/V005/V006) -----
 INSERT INTO features (name, display_name, description, active, deleted)
 VALUES ('BOOKING', 'Đặt Bàn / Đặt Sân',
@@ -4705,5 +4890,19 @@ ON CONFLICT (name) DO NOTHING;
 INSERT INTO features (name, display_name, description, active, deleted)
 VALUES ('UTILITIES', 'Tiện Ích',
         'Bộ công cụ tính toán: tính lãi, khoản vay, thuế, ngân sách, đổi tiền, giá vàng thị trường, chia hóa đơn, điểm hòa vốn',
+        TRUE, FALSE)
+ON CONFLICT (name) DO NOTHING;
+
+-- STOCK_TAKE feature (folded from V004) — serial id, idempotent on name.
+INSERT INTO features (name, display_name, description, active, deleted)
+VALUES ('STOCK_TAKE', 'Kiểm Kho',
+        'Kiểm kê tồn kho thực tế bằng cách quét mã, đối chiếu và điều chỉnh chênh lệch so với hệ thống',
+        TRUE, FALSE)
+ON CONFLICT (name) DO NOTHING;
+
+-- ROOM feature (folded from V006) — serial id, idempotent on name.
+INSERT INTO features (name, display_name, description, active, deleted)
+VALUES ('ROOM', 'Quản Lý Phòng',
+        'Quản lý phòng khách sạn / nhà nghỉ / homestay: sơ đồ phòng, nhận phòng, trả phòng, ghi nợ dịch vụ trong phòng',
         TRUE, FALSE)
 ON CONFLICT (name) DO NOTHING;

@@ -51,4 +51,11 @@ public interface PawnService {
     PawnResponse lookupByCode(String code);
 
     Map<String, Object> getCustomerPawnSummary(Long customerId);
+
+    /**
+     * Per-customer pawn KPI rankings for the given date range. Returns a map with five lists —
+     * topPawnedAmount, topPawnedCount, topCompletedPawnAmount, topCompletedPawnCount, topInterestAmount —
+     * each a ranking of customers used by the customer pawn-KPI dashboard widget.
+     */
+    Map<String, Object> getCustomerPawnKpi(DateFilterRequest filter);
 }

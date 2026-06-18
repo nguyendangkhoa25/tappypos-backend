@@ -91,6 +91,25 @@ class PromotionServiceTest {
     }
 
     @Test
+    @DisplayName("getActivePromotions: maps currently-valid promotions to DTOs")
+    void getActivePromotions_returnsList() {
+        when(promotionRepository.findAllValid(any(LocalDateTime.class)))
+                .thenReturn(List.of(percentagePromo, amountPromo));
+
+        List<PromotionDTO> result = promotionService.getActivePromotions();
+
+        assertThat(result).hasSize(2);
+        assertThat(result).extracting(PromotionDTO::getCode).containsExactly("SAVE10", "FLAT50K");
+    }
+
+    @Test
+    @DisplayName("getActivePromotions: returns empty list when none valid")
+    void getActivePromotions_empty() {
+        when(promotionRepository.findAllValid(any(LocalDateTime.class))).thenReturn(List.of());
+        assertThat(promotionService.getActivePromotions()).isEmpty();
+    }
+
+    @Test
     @DisplayName("getById: returns DTO for existing active promotion")
     void getById_found() {
         percentagePromo.setId(1L);
