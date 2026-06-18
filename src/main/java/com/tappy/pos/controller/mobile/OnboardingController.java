@@ -114,6 +114,15 @@ public class OnboardingController {
                 "NOTIFICATION", "FEEDBACK", "ACTIVITY_LOG", "SHOP_INFO",
                 "PRINT_TEMPLATE", "BANK_ACCOUNT", "INVOICE", "ACCOUNTING"
         ));
+        // Bakery (tiệm bánh): retail counter + back office + APPOINTMENT (cake pre-orders)
+        // + GOOGLE_DRIVE (custom cake design photos). Mirrors the BAKERY feature profile.
+        m.put(ShopType.BAKERY, List.of(
+                "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "PRODUCT", "POS", "INVENTORY",
+                "CUSTOMER", "LOYALTY", "APPOINTMENT", "EMPLOYEE", "EXPENSE", "REVENUE",
+                "USER", "VENDOR", "PROMOTION", "NOTIFICATION", "FEEDBACK", "ACTIVITY_LOG",
+                "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "INVOICE", "ACCOUNTING",
+                "GOOGLE_DRIVE"
+        ));
         List<String> pawnBase = List.of(
                 "DASHBOARD", "PAWN", "ORDER", "ORDER_VIEW_ALL", "POS", "PRODUCT", "CUSTOMER",
                 "EMPLOYEE", "EXPENSE", "REVENUE", "USER",
@@ -128,6 +137,7 @@ public class OnboardingController {
     private static final Map<String, ShopType> SHOP_TYPE_MAP = Map.ofEntries(
             Map.entry("CONVENIENCE_STORE",  ShopType.CONVENIENCE_STORE),
             Map.entry("FOOD_BEVERAGE",      ShopType.FOOD_BEVERAGE),
+            Map.entry("BAKERY",             ShopType.BAKERY),
             Map.entry("RESTAURANT",         ShopType.RESTAURANT),
             Map.entry("FASHION",            ShopType.FASHION),
             Map.entry("ELECTRONICS",        ShopType.ELECTRONICS),
@@ -157,6 +167,7 @@ public class OnboardingController {
         Map<ShopType, String> m = new EnumMap<>(ShopType.class);
         m.put(ShopType.CONVENIENCE_STORE, "gen");
         m.put(ShopType.FOOD_BEVERAGE, "food");
+        m.put(ShopType.BAKERY, "bake");
         m.put(ShopType.RESTAURANT, "res");
         m.put(ShopType.FASHION, "fsh");
         m.put(ShopType.ELECTRONICS, "elec");
@@ -187,6 +198,7 @@ public class OnboardingController {
         List<Map<String, Object>> types = Arrays.asList(
                 shopEntry("CONVENIENCE_STORE", "Cửa hàng tổng hợp"),
                 shopEntry("FOOD_BEVERAGE", "Thực phẩm / Đồ uống"),
+                shopEntry("BAKERY", "Tiệm bánh"),
                 shopEntry("RESTAURANT", "Quán ăn / Nhà hàng"),
                 shopEntry("COFFEE_SHOP", "Quán cà phê"),
                 shopEntry("PUB",         "Quán nhậu"),

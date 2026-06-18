@@ -81,6 +81,15 @@ class TenantSeedServiceTest {
     }
 
     @Test
+    @DisplayName("seed: executes all statements from bakery.sql")
+    void seed_bakery() throws Exception {
+        tenantSeedService.seed(ShopType.BAKERY);
+
+        verify(mockSession).doWork(any(Work.class));
+        verify(mockStatement, atLeastOnce()).execute(anyString());
+    }
+
+    @Test
     @DisplayName("seed: uses general.sql for unknown shop types")
     void seed_general() throws Exception {
         tenantSeedService.seed(ShopType.OTHER);
@@ -174,6 +183,14 @@ class TenantSeedServiceTest {
 
         verify(mockSession).doWork(any(Work.class));
         verify(mockStatement).execute(argThat(sql -> sql.contains("Phiếu bảo hành")));
+    }
+
+    @Test
+    @DisplayName("seedShopTypeTemplates: BAKERY (plain retail) returns early without DB call")
+    void seedShopTypeTemplates_bakery_noTemplate() throws Exception {
+        tenantSeedService.seedShopTypeTemplates(ShopType.BAKERY);
+
+        verify(mockSession, never()).doWork(any(Work.class));
     }
 
     @Test

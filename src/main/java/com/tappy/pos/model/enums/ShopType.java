@@ -10,6 +10,7 @@ public enum ShopType {
     PHARMACY("Nhà thuốc / Dược phẩm",       "Pharmacy / Drugstore"),
     ELECTRONICS("Điện tử / Điện máy",       "Electronics"),
     FOOD_BEVERAGE("Thực phẩm / Đồ uống",    "Food & Beverage"),
+    BAKERY("Tiệm bánh",                     "Bakery"),
     FASHION("Thời trang / May mặc",         "Fashion / Clothing"),
     BARBER_SHOP("Tiệm cắt tóc / Salon",     "Barber Shop / Salon"),
     BARBER_SHOP_MEN("Tiệm tóc nam / Barber",         "Men's Barber Shop"),

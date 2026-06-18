@@ -68,6 +68,7 @@ public class TenantProvisioningService {
         m.put(ShopType.PHARMACY,           "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS");
         m.put(ShopType.ELECTRONICS,        "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.FOOD_BEVERAGE,      "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS");
+        m.put(ShopType.BAKERY,             "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.FASHION,            "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.BARBER_SHOP,        "ORDERS,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.NAIL_SHOP,          "ORDERS,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");
@@ -87,6 +88,7 @@ public class TenantProvisioningService {
         m.put(ShopType.PHARMACY,           "home,pos,orders,customers,dashboard,users");
         m.put(ShopType.ELECTRONICS,        "home,pos,orders,customers,dashboard,users");
         m.put(ShopType.FOOD_BEVERAGE,      "home,orders,pos,customers,dashboard,users");
+        m.put(ShopType.BAKERY,             "home,pos,orders,customers,dashboard,users");
         m.put(ShopType.FASHION,            "home,pos,orders,customers,dashboard,users");
         m.put(ShopType.BARBER_SHOP,        "home,orders,customers,dashboard,users");
         m.put(ShopType.NAIL_SHOP,          "home,orders,customers,dashboard,users");
@@ -224,6 +226,20 @@ public class TenantProvisioningService {
             "NOTIFICATION", "FEEDBACK"
         ));
 
+        // Bakery (tiệm bánh): retail back office + STOCK_TAKE (ingredient stock) + GOOGLE_DRIVE
+        // (photos of custom cake designs). Matches the frontend PROFILE_RETAIL set (which already
+        // carries STOCK_TAKE) plus GOOGLE_DRIVE. APPOINTMENT covers cake pre-orders by pickup date.
+        m.put("BAKERY", Arrays.asList(
+            "DASHBOARD", "MY_WORK",
+            "ORDER", "ORDER_VIEW_ALL", "POS",
+            "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION",
+            "CUSTOMER", "LOYALTY", "APPOINTMENT",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
+            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
+            "NOTIFICATION", "FEEDBACK", "GOOGLE_DRIVE"
+        ));
+
         m.put("SERVICE", Arrays.asList(
             "DASHBOARD", "MY_WORK",
             "ORDER", "ORDER_VIEW_ALL", "POS",
@@ -301,6 +317,7 @@ public class TenantProvisioningService {
         m.put(ShopType.SPA_SHOP,           "BEAUTY");
         m.put(ShopType.BEAUTY_CLINIC,      "BEAUTY");
         m.put(ShopType.FOOD_BEVERAGE,      "FNB");
+        m.put(ShopType.BAKERY,             "BAKERY");
         m.put(ShopType.COFFEE_SHOP,        "FNB");
         m.put(ShopType.RESTAURANT,         "FNB");
         m.put(ShopType.PUB,                "FNB");
