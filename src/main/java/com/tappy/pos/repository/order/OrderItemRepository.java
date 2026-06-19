@@ -18,6 +18,12 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
     @Query("SELECT COALESCE(SUM(oi.costAmount), 0) FROM OrderItem oi JOIN oi.order o WHERE o.deleted = false AND o.status = 'COMPLETED'")
     BigDecimal sumTotalCost();
 
+    /** Qty sold per variant over a window (completed orders). Rows: [variantId, qtySold]. */
+    @Query("SELECT oi.variantId, SUM(oi.quantity) FROM OrderItem oi JOIN oi.order o " +
+           "WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.completedAt >= :since AND oi.variantId IS NOT NULL " +
+           "GROUP BY oi.variantId")
+    List<Object[]> sumQtySoldByVariantSince(@Param("since") java.time.LocalDateTime since);
+
     @Query(value = "SELECT COALESCE(SUM(oi.cost_amount), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.deleted = false AND o.tenant_id = current_setting('app.current_tenant', true) AND o.status = 'COMPLETED' AND EXTRACT(YEAR FROM o.completed_at) = :year AND EXTRACT(MONTH FROM o.completed_at) = :month",
            nativeQuery = true)
     BigDecimal sumCostByMonth(@Param("year") int year, @Param("month") int month);

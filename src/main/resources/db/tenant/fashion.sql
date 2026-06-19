@@ -172,6 +172,16 @@ JOIN attribute_group ag ON ag.product_type_id = pt.id AND ag.code = 'basic_info'
 WHERE pt.code = 'CLOTHING' AND pt.tenant_id = current_setting('app.current_tenant', true)
 ON CONFLICT (code, product_type_id) DO UPDATE SET name = EXCLUDED.name;
 
+-- Bộ sưu tập (collection) — searchable + filterable so styles can be grouped by drop/collection.
+INSERT INTO attribute_definition
+    (tenant_id, product_type_id, attribute_group_id, code, name, data_type,
+     required, searchable, filterable, display_order)
+SELECT current_setting('app.current_tenant', true), pt.id, ag.id, 'collection', 'Bộ sưu tập', 'STRING', FALSE, TRUE, TRUE, 8
+FROM product_type pt
+JOIN attribute_group ag ON ag.product_type_id = pt.id AND ag.code = 'basic_info'
+WHERE pt.code = 'CLOTHING' AND pt.tenant_id = current_setting('app.current_tenant', true)
+ON CONFLICT (code, product_type_id) DO UPDATE SET name = EXCLUDED.name;
+
 INSERT INTO attribute_definition
     (tenant_id, product_type_id, attribute_group_id, code, name, data_type,
      required, searchable, filterable, display_order)
