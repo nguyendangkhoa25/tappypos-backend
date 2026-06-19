@@ -4,6 +4,7 @@ import com.tappy.pos.model.dto.ApiResponse;
 import com.tappy.pos.model.dto.tenant.ReceiptPreviewRequest;
 import com.tappy.pos.model.dto.order.AddOrderItemRequest;
 import com.tappy.pos.model.dto.order.CancelOrderRequest;
+import com.tappy.pos.model.dto.order.SettlePreOrderRequest;
 import com.tappy.pos.model.dto.order.MyWorkStatsDTO;
 import com.tappy.pos.model.dto.order.OrderDTO;
 import com.tappy.pos.model.dto.order.OrderItemDTO;
@@ -380,6 +381,50 @@ public class OrderController {
         if (request == null) request = new CancelOrderRequest();
         OrderDTO order = orderService.cancelOrder(id, request);
         return ResponseEntity.ok(ApiResponse.success(order, "Order cancelled successfully"));
+    }
+
+    // ── Pre-order / deposit (đặt hàng + tiền cọc) — Phase 2 ─────────────────────
+    // Capability is a MODE of ORDER — no new feature flag (class-level @RequiresFeature("ORDER")).
+
+    /**
+     * GET /api/orders/preorders?status&from&to
+     * Pickup queue: pre-orders sorted by pickup time. Defaults to PENDING when status omitted.
+     * Scoped own-vs-all by ORDER_VIEW_ALL.
+     */
+    @GetMapping("/preorders")
+    public ResponseEntity<ApiResponse<Page<OrderDTO>>> getPreOrders(
+            @RequestParam(required = false, defaultValue = "PENDING") String status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        log.info("Endpoint: GET /orders/preorders status={} from={} to={}", status, from, to);
+        Page<OrderDTO> result = orderService.getPreOrders(status, from, to, PageRequest.of(page, size));
+        return ResponseEntity.ok(ApiResponse.success(result, "Pre-orders retrieved successfully"));
+    }
+
+    /**
+     * GET /api/orders/preorders/summary
+     * Dashboard summary: deposits held + upcoming pickup counts.
+     */
+    @GetMapping("/preorders/summary")
+    public ResponseEntity<ApiResponse<com.tappy.pos.model.dto.order.PreOrderSummaryDTO>> getPreOrderSummary() {
+        return ResponseEntity.ok(ApiResponse.success(orderService.getPreOrderSummary(), "Pre-order summary retrieved"));
+    }
+
+    /**
+     * POST /api/orders/preorders/{id}/settle
+     * Collect the remaining balance (còn lại) on a PENDING pre-order at pickup and complete it.
+     * Body: { paymentMethod, amountReceived }
+     */
+    @PostMapping("/preorders/{id}/settle")
+    public ResponseEntity<ApiResponse<OrderDTO>> settlePreOrder(
+            @PathVariable Long id,
+            @RequestBody(required = false) SettlePreOrderRequest request) {
+        log.info("Endpoint: POST /orders/preorders/{}/settle", id);
+        if (request == null) request = new SettlePreOrderRequest();
+        OrderDTO order = orderService.settlePreOrder(id, request);
+        return ResponseEntity.ok(ApiResponse.success(order, "Pre-order settled successfully"));
     }
 
     /**

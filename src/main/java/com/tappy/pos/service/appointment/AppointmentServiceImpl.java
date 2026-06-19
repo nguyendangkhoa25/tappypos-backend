@@ -110,6 +110,33 @@ public class AppointmentServiceImpl implements AppointmentService {
 
     @Override
     @Transactional
+    public void createPickupReminder(Long orderId, Long customerId, String customerName,
+                                     String customerPhone, java.time.LocalDateTime pickupTime) {
+        if (pickupTime == null) return;
+        String tenantId = tenantContext.getCurrentTenantId();
+        Appointment appointment = Appointment.builder()
+                .tenantId(tenantId)
+                .appointmentNumber(generateNumber(tenantId))
+                .customerId(customerId)
+                .customerName(customerName != null && !customerName.isBlank()
+                        ? customerName.trim() : messageService.getMessage("appointment.preorder.default.customer"))
+                .customerPhone(customerPhone)
+                .scheduledDate(pickupTime.toLocalDate())
+                .scheduledStartTime(pickupTime.toLocalTime())
+                .durationMinutes(30)
+                .status("PENDING")
+                .note(messageService.getMessage("appointment.preorder.pickup.note"))
+                .linkedOrderId(orderId)
+                .createdBy(currentUsername())
+                .reminderSent(false)
+                .services(new ArrayList<>())
+                .build();
+        appointmentRepository.save(appointment);
+        log.info("Created pickup-reminder appointment {} linked to pre-order {}", appointment.getAppointmentNumber(), orderId);
+    }
+
+    @Override
+    @Transactional
     public AppointmentDTO update(Long id, UpdateAppointmentRequest request) {
         Appointment appointment = findOrThrow(id);
         assertEditable(appointment);

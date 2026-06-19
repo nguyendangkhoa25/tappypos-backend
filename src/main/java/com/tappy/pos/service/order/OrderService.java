@@ -7,6 +7,7 @@ import com.tappy.pos.model.dto.order.MyWorkStatsDTO;
 import com.tappy.pos.model.dto.order.OrderDTO;
 import com.tappy.pos.model.dto.order.OrderItemDTO;
 import com.tappy.pos.model.dto.order.PayAndCompleteRequest;
+import com.tappy.pos.model.dto.order.SettlePreOrderRequest;
 import com.tappy.pos.model.dto.order.UpdateOrderMetaRequest;
 import com.tappy.pos.model.dto.order.VoidOrderRequest;
 import com.tappy.pos.model.dto.order.WorkItemDTO;
@@ -33,6 +34,16 @@ public interface OrderService {
     OrderDTO completeOrder(Long id);
 
     OrderDTO cancelOrder(Long id, CancelOrderRequest request);
+
+    // ── Pre-order / deposit (đặt hàng + tiền cọc) — Phase 2 ─────────────────────
+    /** Pickup queue: pre-orders (optionally by status / pickup window), sorted by pickup time. */
+    Page<OrderDTO> getPreOrders(String status, LocalDate from, LocalDate to, Pageable pageable);
+
+    /** Collect the remaining balance on a PENDING pre-order at pickup, deduct stock, complete it. */
+    OrderDTO settlePreOrder(Long id, SettlePreOrderRequest request);
+
+    /** Dashboard summary: deposits held + upcoming pickup counts (đơn đặt). */
+    com.tappy.pos.model.dto.order.PreOrderSummaryDTO getPreOrderSummary();
 
     OrderDTO voidOrder(Long id, VoidOrderRequest request);
 

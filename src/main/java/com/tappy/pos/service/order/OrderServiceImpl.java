@@ -12,7 +12,10 @@ import com.tappy.pos.model.dto.order.MyWorkStatsDTO;
 import com.tappy.pos.model.dto.order.OrderDTO;
 import com.tappy.pos.model.dto.order.OrderItemDTO;
 import com.tappy.pos.model.dto.order.PayAndCompleteRequest;
+import com.tappy.pos.model.dto.order.SettlePreOrderRequest;
 import com.tappy.pos.model.dto.order.UpdateOrderMetaRequest;
+import com.tappy.pos.model.dto.product.ProductDTO;
+import java.text.NumberFormat;
 import com.tappy.pos.model.dto.order.VoidOrderRequest;
 import com.tappy.pos.model.dto.order.WorkItemDTO;
 import com.tappy.pos.model.dto.order.WorkItemSummaryDTO;
@@ -200,12 +203,22 @@ public class OrderServiceImpl implements OrderService {
                 .loyaltyDiscount(order.getLoyaltyDiscount())
                 .tableLabel(order.getTableLabel())
                 .pickupTime(order.getPickupTime())
+                .preorder(order.isPreorder())
+                .depositAmount(order.getDepositAmount())
+                .balanceDue(computeBalanceDue(order))
                 .buyAmount(order.getBuyAmount())
                 .sellAmount(order.getSellAmount())
                 .goldDiffWeight(order.getGoldDiffWeight())
                 .goldDiffAmount(order.getGoldDiffAmount())
                 .items(items)
                 .build();
+    }
+
+    /** Balance still owed: totalAmount - amountPaid, floored at 0. Derived, never stored. */
+    private BigDecimal computeBalanceDue(Order order) {
+        BigDecimal total = order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO;
+        BigDecimal paid  = order.getAmountPaid()  != null ? order.getAmountPaid()  : BigDecimal.ZERO;
+        return total.subtract(paid).max(BigDecimal.ZERO);
     }
 
     @Override
@@ -285,9 +298,13 @@ public class OrderServiceImpl implements OrderService {
         releaseTableForOrder(saved);
 
         String tenantId = tenantContext.getCurrentTenantId();
+        // Pre-orders log their own action so the Activity Log "Hủy đơn đặt" filter works.
+        ActivityAction cancelAction = saved.isPreorder()
+                ? ActivityAction.PREORDER_CANCELLED : ActivityAction.ORDER_CANCELLED;
+        String cancelLabel = saved.isPreorder() ? "Hủy đơn đặt #" : "Hủy đơn #";
         activityLogService.logAsync(tenantId, cancelledBy, null,
-                ActivityAction.ORDER_CANCELLED, "ORDER", saved.getOrderNumber(),
-                "Cancelled order #" + saved.getOrderNumber() + " — " + request.getReason(), null);
+                cancelAction, "ORDER", saved.getOrderNumber(),
+                cancelLabel + saved.getOrderNumber() + " — " + request.getReason(), null);
 
         try {
             Locale vi = new Locale("vi");
@@ -306,6 +323,138 @@ public class OrderServiceImpl implements OrderService {
         }
 
         return mapToDTO(saved);
+    }
+
+    // ── Pre-order / deposit (đặt hàng + tiền cọc) — Phase 2 ─────────────────────
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<OrderDTO> getPreOrders(String status, LocalDate from, LocalDate to, Pageable pageable) {
+        Order.OrderStatus st = null;
+        if (status != null && !status.isBlank()) {
+            try { st = Order.OrderStatus.valueOf(status.trim().toUpperCase()); }
+            catch (IllegalArgumentException e) {
+                throw new BadRequestException(messageService.getMessage("error.order.invalid.status"));
+            }
+        }
+        // Wide sentinels when unbounded — Postgres can't type a null-only timestamp param.
+        LocalDateTime fromDt = from != null ? from.atStartOfDay() : LocalDateTime.of(1970, 1, 1, 0, 0);
+        LocalDateTime toDt   = to   != null ? to.atTime(23, 59, 59) : LocalDateTime.of(9999, 12, 31, 23, 59, 59);
+
+        // ORDER_VIEW_ALL gates own-vs-all, mirroring the rest of the order module.
+        Page<Order> page;
+        if (featureContext.hasFeature("ORDER_VIEW_ALL")) {
+            page = orderRepository.findPreorders(st, fromDt, toDt, pageable);
+        } else {
+            String me = SecurityContextHolder.getContext().getAuthentication().getName();
+            page = orderRepository.findPreordersByCreatedBy(st, fromDt, toDt, me, pageable);
+        }
+        return page.map(this::mapToDTO);
+    }
+
+    @Override
+    @Transactional
+    public OrderDTO settlePreOrder(Long id, SettlePreOrderRequest request) {
+        log.info("Request: Settle pre-order id: {}", id);
+        Order order = findActiveOrder(id);
+
+        if (!order.isPreorder()) {
+            throw new BadRequestException(messageService.getMessage("error.preorder.not.preorder"));
+        }
+        if (order.getStatus() != Order.OrderStatus.PENDING) {
+            throw new BadRequestException(messageService.getMessage("error.preorder.not.pending"));
+        }
+
+        BigDecimal total = order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO;
+        BigDecimal balanceDue = computeBalanceDue(order);
+        BigDecimal received = request != null && request.getAmountReceived() != null
+                ? request.getAmountReceived() : balanceDue;
+        if (received.compareTo(balanceDue) < 0) {
+            // No underpayment: owner must use discountAmount to forgive a balance.
+            throw new BadRequestException(messageService.getMessage("error.preorder.underpaid"));
+        }
+
+        // Option A — deduct finished-goods stock now (at pickup), not at creation.
+        deductStockForOrder(order);
+
+        if (request != null && request.getPaymentMethod() != null && !request.getPaymentMethod().isBlank()) {
+            order.setPaymentMethod(request.getPaymentMethod());
+        }
+        order.setAmountPaid(total);
+        order.setChangeAmount(received.subtract(balanceDue).max(BigDecimal.ZERO));
+
+        String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+        order.complete(actor);
+        Order saved = orderRepository.save(order);
+        releaseTableForOrder(saved);
+        log.info("Pre-order {} settled & completed by {} (balance {} collected)",
+                saved.getOrderNumber(), actor, balanceDue);
+
+        NumberFormat vnd = NumberFormat.getNumberInstance(new Locale("vi", "VN"));
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.PREORDER_SETTLED, "ORDER", saved.getOrderNumber(),
+                "Hoàn tất đơn đặt #" + saved.getOrderNumber()
+                        + " — thu nốt " + vnd.format(balanceDue.longValue()) + " ₫", null);
+
+        if (saved.getCustomer() != null) {
+            try {
+                loyaltyService.awardPointsForOrder(saved.getCustomer().getId(), saved.getId(), saved.getTotalAmount());
+            } catch (Exception e) {
+                log.warn("Failed to award loyalty points for settled pre-order {}: {}", saved.getId(), e.getMessage());
+            }
+        }
+        return mapToDTO(saved);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.tappy.pos.model.dto.order.PreOrderSummaryDTO getPreOrderSummary() {
+        BigDecimal deposits = orderRepository.sumDepositsHeld();
+        // All PENDING pre-orders (shop-wide) — small set; compute today's pickups in memory.
+        // Wide sentinels: Postgres can't type a null-only timestamp bind param.
+        var page = orderRepository.findPreorders(Order.OrderStatus.PENDING,
+                LocalDateTime.of(1970, 1, 1, 0, 0), LocalDateTime.of(9999, 12, 31, 23, 59, 59),
+                org.springframework.data.domain.PageRequest.of(0, 1000));
+        LocalDateTime todayStart = LocalDate.now().atStartOfDay();
+        LocalDateTime todayEnd = LocalDate.now().atTime(23, 59, 59);
+        long today = page.getContent().stream()
+                .filter(o -> o.getPickupTime() != null
+                        && !o.getPickupTime().isBefore(todayStart) && !o.getPickupTime().isAfter(todayEnd))
+                .count();
+        return com.tappy.pos.model.dto.order.PreOrderSummaryDTO.builder()
+                .depositsHeld(deposits != null ? deposits : BigDecimal.ZERO)
+                .pendingCount(page.getTotalElements())
+                .todayCount(today)
+                .build();
+    }
+
+    /**
+     * Deducts stock for an order's STANDARD items (TRACKED → decrement, UNIQUE → mark sold),
+     * mirroring the checkout deduction. Fire-and-forget per item — never aborts the settle.
+     */
+    private void deductStockForOrder(Order order) {
+        for (OrderItem item : order.getOrderItems()) {
+            if (item.getItemType() != OrderItem.ItemType.STANDARD || item.getProductId() == null) continue;
+            try {
+                ProductDTO product = productService.getProductById(item.getProductId());
+                String mode = product.getInventoryMode();
+                if ("TRACKED".equals(mode)) {
+                    var pageable = PageRequest.of(0, 1);
+                    var inv = item.getVariantId() != null
+                            ? inventoryService.getInventoryByProductIdAndVariantId(item.getProductId(), item.getVariantId(), pageable)
+                            : inventoryService.getInventoryByProductId(item.getProductId(), pageable);
+                    if (!inv.isEmpty()) {
+                        inventoryService.removeStock(inv.getContent().get(0).getId(), (long) item.getQuantity());
+                    } else {
+                        log.warn("No inventory for product {} — stock not deducted at settle", item.getProductId());
+                    }
+                } else if ("UNIQUE".equals(mode)) {
+                    productService.markAsSold(item.getProductId());
+                }
+            } catch (Exception e) {
+                log.warn("Settle stock deduction failed for product {}: {}", item.getProductId(), e.getMessage());
+            }
+        }
     }
 
     @Override

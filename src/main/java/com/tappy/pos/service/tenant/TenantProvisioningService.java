@@ -106,7 +106,7 @@ public class TenantProvisioningService {
     static {
         Map<String, List<String>> m = new LinkedHashMap<>();
         m.put(RoleEnum.SHOP_OWNER.getCode(), Arrays.asList(
-            "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "PROMOTION",
+            "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "PROMOTION", "RECIPE",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "CUSTOMER", "LOYALTY",
             "INVOICE", "ACCOUNTING", "REVENUE", "EXPENSE",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "STOCK_TAKE", "POS",
@@ -114,7 +114,7 @@ public class TenantProvisioningService {
             "COMMISSION", "COMMISSION_VIEW_ALL", "GOOGLE_DRIVE", "NOTIFICATION", "FEEDBACK", "APPOINTMENT", "BOOKING", "ROOM"
         ));
         m.put(RoleEnum.MANAGER.getCode(), Arrays.asList(
-            "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "PROMOTION",
+            "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "PROMOTION", "RECIPE",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "CUSTOMER", "LOYALTY",
             "INVOICE", "ACCOUNTING", "REVENUE", "EXPENSE",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "STOCK_TAKE", "POS",
@@ -131,7 +131,7 @@ public class TenantProvisioningService {
             "NOTIFICATION", "FEEDBACK"
         ));
         m.put(RoleEnum.WAREHOUSE_STAFF.getCode(), Arrays.asList(
-            "DASHBOARD", "MY_WORK", "INVENTORY", "STOCK_TAKE", "PRODUCT", "VENDOR",
+            "DASHBOARD", "MY_WORK", "INVENTORY", "STOCK_TAKE", "PRODUCT", "VENDOR", "RECIPE",
             "NOTIFICATION", "FEEDBACK"
         ));
         m.put(RoleEnum.PAWN_OFFICER.getCode(), Arrays.asList(
@@ -232,7 +232,7 @@ public class TenantProvisioningService {
         m.put("BAKERY", Arrays.asList(
             "DASHBOARD", "MY_WORK",
             "ORDER", "ORDER_VIEW_ALL", "POS",
-            "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION",
+            "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION", "RECIPE",
             "CUSTOMER", "LOYALTY", "APPOINTMENT",
             "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",

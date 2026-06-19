@@ -33,6 +33,8 @@ public class ProductDTO {
     private String vendorName;
     private String shelfLocation;
     private String status;
+    /** FINISHED (default, sellable) | INGREDIENT | BOTH — Phase 3 two-stage inventory. */
+    private String productKind;
     private Set<Long> categoryIds;
     private Set<String> categoryNames;
     private Map<String, Object> attributes;

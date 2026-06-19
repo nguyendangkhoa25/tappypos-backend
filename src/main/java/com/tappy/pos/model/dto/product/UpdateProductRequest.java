@@ -48,6 +48,9 @@ public class UpdateProductRequest {
     @Size(max = 20, message = "Unit must not exceed 20 characters")
     private String unit;
 
+    /** FINISHED (default) | INGREDIENT | BOTH — Phase 3 two-stage inventory. */
+    private String productKind;
+
     private Long vendorId;
 
     @Size(max = 100, message = "Shelf location must not exceed 100 characters")

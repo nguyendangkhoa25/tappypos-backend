@@ -132,6 +132,36 @@ CROSS JOIN (
 ) pt
 ON CONFLICT (sku, tenant_id) DO NOTHING;
 
+-- ── 6. Product → category links ──────────────────────────────
+-- Assign each sample product to a parent category so the POS category tabs and
+-- category filtering work. Ingredients (BAKERY-INGR-*) are intentionally left uncategorised.
+INSERT INTO product_category (tenant_id, product_id, category_id)
+SELECT current_setting('app.current_tenant', true), p.id, c.id
+FROM (VALUES
+    ('BAKERY-DEMO-001', 'Bánh mì'),
+    ('BAKERY-DEMO-002', 'Bánh mì'),
+    ('BAKERY-DEMO-003', 'Bánh mì'),
+    ('BAKERY-DEMO-004', 'Bánh ngọt'),
+    ('BAKERY-DEMO-005', 'Bánh ngọt'),
+    ('BAKERY-DEMO-006', 'Bánh ngọt'),
+    ('BAKERY-DEMO-007', 'Bánh ngọt'),
+    ('BAKERY-DEMO-008', 'Bánh ngọt'),
+    ('BAKERY-DEMO-009', 'Bánh quy & Đồ khô'),
+    ('BAKERY-DEMO-010', 'Bánh trung thu & Mùa vụ'),
+    ('BAKERY-DEMO-011', 'Đồ uống'),
+    ('BAKERY-DEMO-012', 'Đồ uống'),
+    ('BAKERY-DEMO-101', 'Bánh kem & Bánh đặt'),
+    ('BAKERY-DEMO-102', 'Bánh kem & Bánh đặt'),
+    ('BAKERY-DEMO-103', 'Bánh kem & Bánh đặt'),
+    ('BAKERY-DEMO-104', 'Bánh kem & Bánh đặt'),
+    ('BAKERY-DEMO-105', 'Bánh kem & Bánh đặt'),
+    ('BAKERY-DEMO-106', 'Bánh kem & Bánh đặt')
+) AS m(sku, cat)
+JOIN product p ON p.sku = m.sku AND p.tenant_id = current_setting('app.current_tenant', true)
+JOIN category c ON c.name = m.cat AND c.parent_id IS NULL
+    AND c.tenant_id = current_setting('app.current_tenant', true)
+ON CONFLICT (product_id, category_id) DO NOTHING;
+
 -- ── 7. Inventory for sample products ──────────────────────────
 INSERT INTO inventory
     (tenant_id, product_id, quantity_in_stock, reorder_level, reorder_quantity,
@@ -145,11 +175,15 @@ WHERE p.sku LIKE 'BAKERY-DEMO-%'
 ON CONFLICT (product_id) WHERE variant_id IS NULL AND deleted = false DO NOTHING;
 
 -- ── 8. Loyalty program ────────────────────────────────────────
+-- No unique constraint on (tenant_id); guard with WHERE NOT EXISTS so a re-run is idempotent.
 INSERT INTO loyalty_programs
     (tenant_id, points_per_amount, amount_per_points, redemption_points_per_discount,
      redemption_discount_amount, min_redemption_points, is_active)
-VALUES
-    (current_setting('app.current_tenant', true), 1, 10000, 100, 10000.00, 100, TRUE);
+SELECT current_setting('app.current_tenant', true), 1, 10000, 100, 10000.00, 100, TRUE
+WHERE NOT EXISTS (
+    SELECT 1 FROM loyalty_programs lp
+    WHERE lp.tenant_id = current_setting('app.current_tenant', true)
+);
 
 -- ── 9. Loyalty tiers ──────────────────────────────────────────
 INSERT INTO loyalty_tiers
@@ -339,3 +373,67 @@ ON CONFLICT (code, product_type_id) DO UPDATE SET name = EXCLUDED.name;
 INSERT INTO shop_config (tenant_id, config_key, config_value, config_group, encrypted) VALUES
     (current_setting('app.current_tenant', true), 'cash_denominations', '1000,2000,5000,10000,20000,50000,100000,200000,500000', 'POS', FALSE)
 ON CONFLICT (config_key, tenant_id) DO NOTHING;
+
+-- ── 13. Ingredients (nguyên liệu) — Phase 3 two-stage inventory ────────────────
+-- Raw materials: product_kind = 'INGREDIENT' so they never appear on POS, only feed recipes.
+-- price = 0 (not sold); cost_price is the per-unit buy cost used for true cost-per-cake.
+INSERT INTO product
+    (tenant_id, sku, name, description, price, cost_price, unit, product_type_id, status, product_kind)
+SELECT
+    current_setting('app.current_tenant', true),
+    v.sku, v.name, v.descr, 0, v.cost, v.unit, pt.id, 'ACTIVE', 'INGREDIENT'
+FROM (VALUES
+    ('BAKERY-INGR-001', 'Bột mì',    'Bột mì làm bánh',            25000,  'kg'),
+    ('BAKERY-INGR-002', 'Đường',     'Đường trắng',                20000,  'kg'),
+    ('BAKERY-INGR-003', 'Trứng gà',  'Trứng gà tươi',               3500,  'quả'),
+    ('BAKERY-INGR-004', 'Kem tươi',  'Kem tươi (whipping cream)',  90000,  'kg'),
+    ('BAKERY-INGR-005', 'Bơ lạt',    'Bơ lạt làm bánh',           120000,  'kg')
+) AS v(sku, name, descr, cost, unit)
+CROSS JOIN (
+    SELECT id FROM product_type
+    WHERE code = 'FOOD' AND tenant_id = current_setting('app.current_tenant', true)
+    LIMIT 1
+) pt
+ON CONFLICT (sku, tenant_id) DO NOTHING;
+
+-- ── 14. Ingredient inventory (kho nguyên liệu) ────────────────────────────────
+INSERT INTO inventory
+    (tenant_id, product_id, quantity_in_stock, reorder_level, reorder_quantity,
+     unit_cost, warehouse_location, deleted)
+SELECT
+    p.tenant_id, p.id, 50, 10, 50, p.cost_price, 'Kho nguyên liệu', FALSE
+FROM product p
+WHERE p.sku LIKE 'BAKERY-INGR-%'
+  AND p.tenant_id = current_setting('app.current_tenant', true)
+ON CONFLICT (product_id) WHERE variant_id IS NULL AND deleted = false DO NOTHING;
+
+-- ── 15. Sample recipe (định lượng mẫu) for "Bánh kem sinh nhật 20cm" ───────────
+-- Yields 1 cake; labor 20k + overhead 10k. Ingredient cost ≈ 73.5k → cost/cái ≈ 103.5k.
+INSERT INTO recipe (tenant_id, finished_product_id, yield_quantity, labor_cost, overhead_cost, notes)
+SELECT current_setting('app.current_tenant', true), p.id, 1, 20000, 10000,
+       'Định lượng mẫu — bánh kem sinh nhật 20cm'
+FROM product p
+WHERE p.sku = 'BAKERY-DEMO-102'
+  AND p.tenant_id = current_setting('app.current_tenant', true)
+ON CONFLICT (finished_product_id, tenant_id) DO NOTHING;
+
+INSERT INTO recipe_item (tenant_id, recipe_id, ingredient_product_id, quantity, unit)
+SELECT current_setting('app.current_tenant', true), r.id, ing.id, v.qty, v.unit
+FROM (VALUES
+    ('BAKERY-INGR-001', 0.3, 'kg'),
+    ('BAKERY-INGR-002', 0.2, 'kg'),
+    ('BAKERY-INGR-003', 4,   'quả'),
+    ('BAKERY-INGR-004', 0.4, 'kg'),
+    ('BAKERY-INGR-005', 0.1, 'kg')
+) AS v(ing_sku, qty, unit)
+JOIN product ing ON ing.sku = v.ing_sku
+    AND ing.tenant_id = current_setting('app.current_tenant', true)
+JOIN product fp ON fp.sku = 'BAKERY-DEMO-102'
+    AND fp.tenant_id = current_setting('app.current_tenant', true)
+JOIN recipe r ON r.finished_product_id = fp.id
+    AND r.tenant_id = current_setting('app.current_tenant', true)
+    AND r.deleted = false
+WHERE NOT EXISTS (
+    SELECT 1 FROM recipe_item ri
+    WHERE ri.recipe_id = r.id AND ri.ingredient_product_id = ing.id AND ri.deleted = false
+);

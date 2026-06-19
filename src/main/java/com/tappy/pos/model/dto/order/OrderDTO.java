@@ -63,6 +63,14 @@ public class OrderDTO {
     /** Pickup time for F&B takeaway orders (null for dine-in). */
     private LocalDateTime pickupTime;
 
+    // ── Pre-order / deposit (đặt hàng + tiền cọc) ──────────────────────────────
+    /** True when this is a pre-order created with a deposit and a future pickup time. */
+    private boolean preorder;
+    /** Deposit taken at creation (tiền cọc). */
+    private BigDecimal depositAmount;
+    /** Derived balance still owed at pickup: totalAmount - amountPaid (còn lại). */
+    private BigDecimal balanceDue;
+
     private List<OrderItemDTO> items;
 
     // ── Alias getters for mobile client backward compatibility ─────────────────

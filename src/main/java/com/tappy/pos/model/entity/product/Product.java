@@ -61,6 +61,12 @@ public class Product extends TenantAwareEntity {
     @Builder.Default
     private com.tappy.pos.model.enums.InventoryMode inventoryMode = com.tappy.pos.model.enums.InventoryMode.TRACKED;
 
+    /** Finished good (default, sellable) vs raw ingredient (Phase 3 two-stage inventory). */
+    @Column(name = "product_kind", nullable = false, length = 20)
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    private com.tappy.pos.model.enums.ProductKind productKind = com.tappy.pos.model.enums.ProductKind.FINISHED;
+
     @Column(name = "image_url", length = 500)
     private String imageUrl;
 

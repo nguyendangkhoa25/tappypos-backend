@@ -54,6 +54,9 @@ public class CreateProductRequest {
     @Size(max = 20, message = "Unit must not exceed 20 characters")
     private String unit;
 
+    /** FINISHED (default) | INGREDIENT | BOTH — marks a raw material for two-stage inventory. */
+    private String productKind;
+
     private Long vendorId;
 
     @Size(max = 100, message = "Shelf location must not exceed 100 characters")

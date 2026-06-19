@@ -121,6 +121,24 @@ public class Order extends TenantAwareEntity {
     @Column(name = "source", length = 20, nullable = false)
     private String source = "POS";
 
+    /**
+     * Marks this order as a pre-order (đơn đặt trước) — created now, paid in full later
+     * at pickup. A pre-order is a PENDING order with a future {@link #pickupTime}.
+     * Default false so all existing/normal orders are unaffected.
+     */
+    @Builder.Default
+    @Column(name = "is_preorder", nullable = false, columnDefinition = "BOOLEAN DEFAULT FALSE")
+    private boolean preorder = false;
+
+    /**
+     * Deposit (tiền cọc) taken at pre-order creation, kept as a distinct figure for the
+     * printed phiếu and reports. The running paid total lives in {@link #amountPaid};
+     * balance due is derived as {@code totalAmount - amountPaid} and never stored.
+     */
+    @Builder.Default
+    @Column(name = "deposit_amount", precision = 15, scale = 2, columnDefinition = "DECIMAL(15,2) DEFAULT 0")
+    private BigDecimal depositAmount = BigDecimal.ZERO;
+
     /** Set when this order settles a lodging room stay (ROOM feature); null otherwise. */
     @Column(name = "room_stay_id")
     private Long roomStayId;

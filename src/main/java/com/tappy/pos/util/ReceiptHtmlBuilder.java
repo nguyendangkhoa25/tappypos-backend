@@ -80,7 +80,15 @@ public class ReceiptHtmlBuilder {
                 cfg.getFooterText(),
                 cfg.getPaperWidth(),
                 cfg.isAutoClose(),
-                vietQrBlock
+                vietQrBlock,
+                order.isPreorder()
+                        ? new PreorderInfo(
+                                order.getDepositAmount(),
+                                (order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO)
+                                        .subtract(order.getAmountPaid() != null ? order.getAmountPaid() : BigDecimal.ZERO)
+                                        .max(BigDecimal.ZERO),
+                                order.getPickupTime())
+                        : null
         );
     }
 
@@ -131,7 +139,8 @@ public class ReceiptHtmlBuilder {
                 cfg.getFooterText(),
                 cfg.getPaperWidth(),
                 cfg.isAutoClose(),
-                vietQrBlock
+                vietQrBlock,
+                null   // previews are not pre-orders
         );
     }
 
@@ -156,7 +165,8 @@ public class ReceiptHtmlBuilder {
             String footerText,
             String paperWidth,
             boolean autoClose,
-            String vietQrBlock
+            String vietQrBlock,
+            PreorderInfo preorder
     ) {
         String width = (paperWidth != null && !paperWidth.isBlank()) ? paperWidth : "80mm";
 
@@ -219,6 +229,26 @@ public class ReceiptHtmlBuilder {
         }
 
         StringBuilder cashRows = new StringBuilder();
+        // Pre-order (đơn đặt): show deposit taken, balance still due, and pickup time.
+        if (preorder != null) {
+            int colspan = showTaxBreakdown ? 5 : 3;
+            cashRows.append("<tr><td colspan=\"").append(colspan + 1)
+                    .append("\" style=\"text-align:center;font-weight:bold;padding-top:4px\">— ĐƠN ĐẶT TRƯỚC —</td></tr>\n");
+            cashRows.append("<tr>")
+                    .append("<td colspan=\"").append(colspan).append("\">Đã cọc</td>")
+                    .append("<td style=\"text-align:right\">").append(fmt(preorder.deposit())).append("</td>")
+                    .append("</tr>\n");
+            cashRows.append("<tr>")
+                    .append("<td colspan=\"").append(colspan).append("\"><b>Còn lại</b></td>")
+                    .append("<td style=\"text-align:right;font-weight:bold\">").append(fmt(preorder.balance())).append("</td>")
+                    .append("</tr>\n");
+            if (preorder.pickup() != null) {
+                cashRows.append("<tr>")
+                        .append("<td colspan=\"").append(colspan).append("\">Giờ lấy</td>")
+                        .append("<td style=\"text-align:right\">").append(preorder.pickup().format(DATE_FMT)).append("</td>")
+                        .append("</tr>\n");
+            }
+        }
         if ("CASH".equalsIgnoreCase(paymentMethod) && amountPaid != null) {
             int colspan = showTaxBreakdown ? 5 : 3;
             BigDecimal change = changeAmount != null ? changeAmount : BigDecimal.ZERO;
@@ -375,4 +405,7 @@ public class ReceiptHtmlBuilder {
             BigDecimal taxRate,
             String note
     ) {}
+
+    /** Pre-order (đơn đặt) extras printed on the slip: deposit, balance due, pickup time. */
+    public record PreorderInfo(BigDecimal deposit, BigDecimal balance, LocalDateTime pickup) {}
 }

@@ -88,4 +88,20 @@ public class CheckoutRequest {
      * Client supplies this so the receipt can show the "Vàng dư/bù" line.
      */
     private BigDecimal goldDiffAmount;
+
+    // ── Pre-order / deposit (đặt hàng + tiền cọc) — Phase 2 ─────────────────────
+    /**
+     * When true the checkout creates a PENDING pre-order instead of completing a sale:
+     * no inventory is deducted (deferred to settle/pickup), {@code amountPaid} is set to
+     * {@link #depositAmount}, and the balance is collected later via the settle endpoint.
+     * Defaults to false → identical behaviour to a normal checkout.
+     */
+    private boolean preorder;
+
+    /**
+     * Deposit (tiền cọc) collected at pre-order creation. Must be {@code <= total}.
+     * Zero is allowed (đơn đặt không cọc). Ignored when {@link #preorder} is false.
+     */
+    @DecimalMin(value = "0.0", message = "Deposit must be >= 0")
+    private BigDecimal depositAmount;
 }

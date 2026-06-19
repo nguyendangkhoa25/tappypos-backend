@@ -33,6 +33,42 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.status = :status ORDER BY o.createdAt DESC")
     Page<Order> findAllActiveByStatus(@Param("status") Order.OrderStatus status, Pageable pageable);
 
+    // ── Pre-order pickup queue (đơn đặt) — ordered by pickup time, RLS-scoped ──
+    // from/to are always passed non-null (the service supplies wide sentinels when
+    // unbounded) — Postgres cannot infer the type of a timestamp param used only in
+    // an "IS NULL" branch. Pre-orders with no pickup time yet are always included.
+    @Query("""
+            SELECT o FROM Order o
+            WHERE o.deleted = false AND o.preorder = true
+              AND (:status IS NULL OR o.status = :status)
+              AND (o.pickupTime IS NULL OR (o.pickupTime >= :from AND o.pickupTime <= :to))
+            ORDER BY o.pickupTime ASC
+            """)
+    Page<Order> findPreorders(@Param("status") Order.OrderStatus status,
+                              @Param("from") java.time.LocalDateTime from,
+                              @Param("to") java.time.LocalDateTime to,
+                              Pageable pageable);
+
+    /** Same as {@link #findPreorders} but scoped to one creator (when ORDER_VIEW_ALL is absent). */
+    @Query("""
+            SELECT o FROM Order o
+            WHERE o.deleted = false AND o.preorder = true AND o.createdBy = :createdBy
+              AND (:status IS NULL OR o.status = :status)
+              AND (o.pickupTime IS NULL OR (o.pickupTime >= :from AND o.pickupTime <= :to))
+            ORDER BY o.pickupTime ASC
+            """)
+    Page<Order> findPreordersByCreatedBy(@Param("status") Order.OrderStatus status,
+                                         @Param("from") java.time.LocalDateTime from,
+                                         @Param("to") java.time.LocalDateTime to,
+                                         @Param("createdBy") String createdBy,
+                                         Pageable pageable);
+
+    /** Total deposits currently held (tiền cọc đang giữ) — sum over PENDING pre-orders. */
+    @Query(value = "SELECT COALESCE(SUM(deposit_amount), 0) FROM orders WHERE deleted = false " +
+            "AND tenant_id = current_setting('app.current_tenant', true) " +
+            "AND is_preorder = true AND status = 'PENDING'", nativeQuery = true)
+    BigDecimal sumDepositsHeld();
+
     @Query("""
             SELECT o FROM Order o LEFT JOIN o.customer c
             WHERE o.deleted = false

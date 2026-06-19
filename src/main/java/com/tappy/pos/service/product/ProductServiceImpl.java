@@ -98,6 +98,9 @@ public class ProductServiceImpl implements ProductService {
                 .shelfLocation(request.getShelfLocation())
                 .sourcePawnId(request.getSourcePawnId())
                 .inventoryMode(com.tappy.pos.model.enums.InventoryMode.derive(productType.getCode(), request.getSourcePawnId()))
+                .productKind(request.getProductKind() != null
+                        ? com.tappy.pos.model.enums.ProductKind.valueOf(request.getProductKind())
+                        : com.tappy.pos.model.enums.ProductKind.FINISHED)
                 .vendor(vendor)
                 .status(Product.ProductStatus.valueOf(request.getStatus()))
                 .deleted(false)
@@ -249,6 +252,9 @@ public class ProductServiceImpl implements ProductService {
         product.setUnit(request.getUnit());
         product.setShelfLocation(request.getShelfLocation());
         product.setStatus(Product.ProductStatus.valueOf(request.getStatus()));
+        if (request.getProductKind() != null && !request.getProductKind().isBlank()) {
+            product.setProductKind(com.tappy.pos.model.enums.ProductKind.valueOf(request.getProductKind()));
+        }
 
         if (request.getVendorId() != null) {
             Vendor vendor = vendorRepository.findById(request.getVendorId())
@@ -642,6 +648,7 @@ public class ProductServiceImpl implements ProductService {
                 .imageUrl(product.getImageUrl())
                 .sourcePawnId(product.getSourcePawnId())
                 .inventoryMode(product.getInventoryMode().name())
+                .productKind(product.getProductKind() != null ? product.getProductKind().name() : null)
                 .createdAt(product.getCreatedAt())
                 .updatedAt(product.getUpdatedAt())
                 .build();
@@ -703,6 +710,7 @@ public class ProductServiceImpl implements ProductService {
                 .imageUrl(product.getImageUrl())
                 .sourcePawnId(product.getSourcePawnId())
                 .inventoryMode(product.getInventoryMode().name())
+                .productKind(product.getProductKind() != null ? product.getProductKind().name() : null)
                 .createdAt(product.getCreatedAt())
                 .updatedAt(product.getUpdatedAt())
                 .build();

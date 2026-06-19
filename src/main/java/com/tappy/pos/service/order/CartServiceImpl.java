@@ -111,6 +111,7 @@ public class CartServiceImpl implements CartService {
     private final NotificationService notificationService;
     private final SubscriptionService subscriptionService;
     private final ComboRepository comboRepository;
+    private final com.tappy.pos.service.appointment.AppointmentService appointmentService;
 
     /**
      * Initialize a new cart session
@@ -966,12 +967,26 @@ public class CartServiceImpl implements CartService {
 
         // --- Build Order ---
         boolean inProgress = request.isCreateAsInProgress();
+        // Pre-order (đặt hàng + cọc): created as PENDING now, balance settled at pickup.
+        // Stock is NOT deducted here (deferred to settle/pickup for made-to-order items).
+        boolean preorder = request.isPreorder();
+        BigDecimal depositAmount = BigDecimal.ZERO;
+        if (preorder) {
+            depositAmount = request.getDepositAmount() != null
+                    ? request.getDepositAmount().setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+            if (depositAmount.compareTo(total.max(BigDecimal.ZERO)) > 0) {
+                throw new BadRequestException(messageService.getMessage("error.preorder.deposit.exceeds.total"));
+            }
+        }
         String orderNumber = generateOrderNumber();
         String tenantId = tenantContext.getCurrentTenantId();
         Order order = new Order();
         order.setTenantId(tenantId);
         order.setOrderNumber(orderNumber);
-        order.setStatus(inProgress ? Order.OrderStatus.IN_PROGRESS : Order.OrderStatus.COMPLETED);
+        order.setStatus(preorder ? Order.OrderStatus.PENDING
+                : (inProgress ? Order.OrderStatus.IN_PROGRESS : Order.OrderStatus.COMPLETED));
+        order.setPreorder(preorder);
+        order.setDepositAmount(depositAmount);
         order.setOrderType(orderType);
         order.setTotalAmount(total);
         // sell/buy summary is meaningful only for gold BUY/EXCHANGE; SELL leaves them 0 (total holds the value).
@@ -984,8 +999,9 @@ public class CartServiceImpl implements CartService {
         order.setTaxPercentage(cart.getTaxRate().multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP));
         order.setTaxAmount(totalTax);
         order.setPaymentMethod(paymentMethod);
-        order.setAmountPaid(inProgress ? BigDecimal.ZERO : amountPaid);
-        order.setChangeAmount(inProgress ? BigDecimal.ZERO : changeAmount);
+        // Pre-order: only the deposit is paid now; balance carried until settle. change = 0.
+        order.setAmountPaid(preorder ? depositAmount : (inProgress ? BigDecimal.ZERO : amountPaid));
+        order.setChangeAmount((preorder || inProgress) ? BigDecimal.ZERO : changeAmount);
         order.setNotes(request.getNotes());
         order.setPromotionCode(appliedPromotionCode);
         order.setPromotionDiscount(promotionDiscount);
@@ -995,7 +1011,7 @@ public class CartServiceImpl implements CartService {
         if (resolvedCustomer != null) order.setCustomer(resolvedCustomer);
         String currentUser = SecurityContextHolder.getContext().getAuthentication().getName();
         order.setCreatedBy(currentUser);
-        if (!inProgress) order.complete(currentUser);
+        if (!inProgress && !preorder) order.complete(currentUser);
 
         // --- Build OrderItems + deduct inventory for STANDARD items only ---
         List<OrderItem> orderItems = new ArrayList<>();
@@ -1014,7 +1030,7 @@ public class CartServiceImpl implements CartService {
             oi.setItemType(OrderItem.ItemType.valueOf(cartItem.getItemType().name()));
             oi.setMetadata(cartItem.getMetadata());
             oi.setNote(cartItem.getNotes());
-            oi.setStatus(inProgress ? OrderItem.ItemStatus.PENDING : OrderItem.ItemStatus.COMPLETED);
+            oi.setStatus((inProgress || preorder) ? OrderItem.ItemStatus.PENDING : OrderItem.ItemStatus.COMPLETED);
             oi.setAssignedEmployeeId(cartItem.getAssignedEmployeeId());
             oi.setAssignedEmployeeName(cartItem.getAssignedEmployeeName());
             oi.setCommissionRate(cartItem.getCommissionRate() != null ? cartItem.getCommissionRate() : BigDecimal.ZERO);
@@ -1029,7 +1045,8 @@ public class CartServiceImpl implements CartService {
             //   TRACKED  → decrement qty
             //   UNIQUE   → flip status to INACTIVE ("Đã bán"); never decrement qty
             //   NO_INVENTORY → skip entirely
-            if (cartItem.getItemType() == CartItemEntity.ItemType.STANDARD) {
+            // Pre-orders defer all stock deduction to settle/pickup (Option A, made-to-order).
+            if (!preorder && cartItem.getItemType() == CartItemEntity.ItemType.STANDARD) {
                 try {
                     ProductDTO soldProduct = productService.getProductById(cartItem.getProductId());
                     String mode = soldProduct.getInventoryMode();
@@ -1068,9 +1085,37 @@ public class CartServiceImpl implements CartService {
         Order savedOrder = orderRepository.save(order);
         log.info("Order created: {} type={} (total={})", orderNumber, orderType, total);
 
-        activityLogService.logAsync(tenantContext.getCurrentTenantId(), currentUser, null,
-                ActivityAction.ORDER_CREATED, "ORDER", savedOrder.getOrderNumber(),
-                "Tạo đơn hàng #" + savedOrder.getOrderNumber(), null);
+        if (preorder) {
+            NumberFormat vnd = NumberFormat.getNumberInstance(new java.util.Locale("vi", "VN"));
+            String depositStr = vnd.format(depositAmount.longValue()) + " ₫";
+            String pickupStr = order.getPickupTime() != null
+                    ? order.getPickupTime().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM HH:mm"))
+                    : "—";
+            activityLogService.logAsync(tenantContext.getCurrentTenantId(), currentUser, null,
+                    ActivityAction.PREORDER_CREATED, "ORDER", savedOrder.getOrderNumber(),
+                    "Tạo đơn đặt #" + savedOrder.getOrderNumber()
+                            + " — cọc " + depositStr + ", lấy " + pickupStr, null);
+
+            // Linked-appointment ZNS pickup reminder — only when the shop has APPOINTMENT.
+            // Degrades gracefully: the pre-order works regardless; the reminder is best-effort.
+            if (order.getPickupTime() != null && featureContext.hasFeature("APPOINTMENT")) {
+                try {
+                    appointmentService.createPickupReminder(
+                            savedOrder.getId(),
+                            resolvedCustomer != null ? resolvedCustomer.getId() : null,
+                            resolvedCustomerName,
+                            resolvedCustomer != null ? resolvedCustomer.getPhone() : null,
+                            order.getPickupTime());
+                } catch (Exception e) {
+                    log.warn("Could not create pickup reminder for pre-order {}: {}",
+                            savedOrder.getOrderNumber(), e.getMessage());
+                }
+            }
+        } else {
+            activityLogService.logAsync(tenantContext.getCurrentTenantId(), currentUser, null,
+                    ActivityAction.ORDER_CREATED, "ORDER", savedOrder.getOrderNumber(),
+                    "Tạo đơn hàng #" + savedOrder.getOrderNumber(), null);
+        }
 
         // --- Notify SHOP_OWNER + MANAGER of new order, excluding the creator (fire-and-forget) ---
         String formattedTotal = NumberFormat.getNumberInstance(new java.util.Locale("vi", "VN"))

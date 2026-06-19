@@ -137,6 +137,9 @@ class CartServiceImplTest {
     @Mock
     private ComboRepository comboRepository;
 
+    @Mock
+    private com.tappy.pos.service.appointment.AppointmentService appointmentService;
+
     private CartServiceImpl cartService;
     private ObjectMapper objectMapper;
 
@@ -178,7 +181,8 @@ class CartServiceImplTest {
             tableService,
             notificationService,
             subscriptionService,
-            comboRepository
+            comboRepository,
+            appointmentService
         );
     }
 
