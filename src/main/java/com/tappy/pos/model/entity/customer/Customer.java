@@ -32,6 +32,10 @@ public class Customer extends TenantAwareEntity {
     @Column(length = 500)
     private String notes;
 
+    /** CCCD/CMND for KYC on large gold buys / pawn (jewelry). Optional; blank for most shop types. */
+    @Column(name = "id_number", length = 50)
+    private String idNumber;
+
     // Social IDs
     @Column(name = "zalo_id")
     private String zaloId;

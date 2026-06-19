@@ -14,6 +14,7 @@ public class UpdateCustomerRequest {
     private String phone;
     private String email;
     private String notes;
+    private String idNumber;
 
     // Social IDs
     private String zaloId;

@@ -63,6 +63,7 @@ public class CustomerService {
                 .phone(request.getPhone())
                 .email(request.getEmail())
                 .notes(request.getNotes())
+                .idNumber(request.getIdNumber())
                 .zaloId(request.getZaloId())
                 .facebookId(request.getFacebookId())
                 .preferredServices(request.getPreferredServices())
@@ -167,6 +168,9 @@ public class CustomerService {
         if (request.getNotes() != null) {
             log.debug("Updating notes - id: {}", id);
             customer.setNotes(request.getNotes());
+        }
+        if (request.getIdNumber() != null) {
+            customer.setIdNumber(request.getIdNumber());
         }
         if (request.getZaloId() != null) {
             log.debug("Updating zaloId - id: {}", id);
@@ -302,6 +306,7 @@ public class CustomerService {
                 .phone(customer.getPhone())
                 .email(customer.getEmail())
                 .notes(customer.getNotes())
+                .idNumber(customer.getIdNumber())
                 .zaloId(customer.getZaloId())
                 .facebookId(customer.getFacebookId())
                 .preferredServices(customer.getPreferredServices())
