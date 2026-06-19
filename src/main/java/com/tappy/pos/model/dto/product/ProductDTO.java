@@ -39,6 +39,7 @@ public class ProductDTO {
     private Set<String> categoryNames;
     private Map<String, Object> attributes;
     private Boolean hasVariants;
+    private Boolean hasModifiers;
     private Long stockQuantity;
     private Boolean inStock;
     private String imageUrl;

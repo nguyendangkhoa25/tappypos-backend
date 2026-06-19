@@ -106,6 +106,12 @@ class ProductServiceImplTest {
     @Mock
     private OrderItemRepository orderItemRepository;
 
+    @Mock
+    private com.tappy.pos.repository.modifier.ProductModifierGroupRepository productModifierGroupRepository;
+
+    @Mock
+    private ProductVariantService productVariantService;
+
     @InjectMocks
     private ProductServiceImpl productService;
 

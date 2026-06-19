@@ -54,6 +54,7 @@ public class ProductServiceImpl implements ProductService {
     private final InventoryRepository inventoryRepository;
     private final ProductVariantRepository productVariantRepository;
     private final ProductVariantService productVariantService;
+    private final com.tappy.pos.repository.modifier.ProductModifierGroupRepository productModifierGroupRepository;
     private final R2StorageService r2StorageService;
     private final R2CleanupService r2CleanupService;
     private final com.tappy.pos.repository.order.OrderItemRepository orderItemRepository;
@@ -464,8 +465,11 @@ public class ProductServiceImpl implements ProductService {
         Set<Long> productIdsWithVariants = productIds.isEmpty()
                 ? Collections.emptySet()
                 : productVariantRepository.findProductIdsWithActiveVariants(productIds);
+        Set<Long> productIdsWithModifiers = productIds.isEmpty()
+                ? Collections.emptySet()
+                : productModifierGroupRepository.findProductIdsWithModifiers(productIds);
 
-        return products.map(p -> mapToDTOWithVariantFlag(p, productIdsWithVariants.contains(p.getId())));
+        return products.map(p -> mapToDTOWithVariantFlag(p, productIdsWithVariants.contains(p.getId()), productIdsWithModifiers.contains(p.getId())));
     }
 
     @Override
@@ -477,7 +481,10 @@ public class ProductServiceImpl implements ProductService {
         Set<Long> productIdsWithVariants = productIds.isEmpty()
                 ? Collections.emptySet()
                 : productVariantRepository.findProductIdsWithActiveVariants(productIds);
-        return products.map(p -> mapToDTOWithVariantFlag(p, productIdsWithVariants.contains(p.getId())));
+        Set<Long> productIdsWithModifiers = productIds.isEmpty()
+                ? Collections.emptySet()
+                : productModifierGroupRepository.findProductIdsWithModifiers(productIds);
+        return products.map(p -> mapToDTOWithVariantFlag(p, productIdsWithVariants.contains(p.getId()), productIdsWithModifiers.contains(p.getId())));
     }
 
     @Override
@@ -489,7 +496,10 @@ public class ProductServiceImpl implements ProductService {
         Set<Long> productIdsWithVariants = productIds.isEmpty()
                 ? Collections.emptySet()
                 : productVariantRepository.findProductIdsWithActiveVariants(productIds);
-        return products.map(p -> mapToDTOWithVariantFlag(p, productIdsWithVariants.contains(p.getId())));
+        Set<Long> productIdsWithModifiers = productIds.isEmpty()
+                ? Collections.emptySet()
+                : productModifierGroupRepository.findProductIdsWithModifiers(productIds);
+        return products.map(p -> mapToDTOWithVariantFlag(p, productIdsWithVariants.contains(p.getId()), productIdsWithModifiers.contains(p.getId())));
     }
 
     @Override
@@ -595,7 +605,7 @@ public class ProductServiceImpl implements ProductService {
         return max + 1;
     }
 
-    private ProductDTO mapToDTOWithVariantFlag(Product product, boolean hasVariants) {
+    private ProductDTO mapToDTOWithVariantFlag(Product product, boolean hasVariants, boolean hasModifiers) {
         Map<String, Object> attributes = new HashMap<>();
         for (ProductAttributeValue attrValue : product.getAttributeValues()) {
             attributes.put(attrValue.getAttribute().getCode(), attrValue.getValue());
@@ -644,6 +654,7 @@ public class ProductServiceImpl implements ProductService {
                 .categoryNames(categoryNames)
                 .attributes(attributes)
                 .hasVariants(hasVariants)
+                .hasModifiers(hasModifiers)
                 .stockQuantity(stockQuantity)
                 .inStock(inStock)
                 .imageUrl(product.getImageUrl())
@@ -670,6 +681,7 @@ public class ProductServiceImpl implements ProductService {
                 .collect(Collectors.toSet());
 
         boolean hasVariants = productVariantRepository.existsByProductIdAndDeletedAtIsNull(product.getId());
+        boolean hasModifiers = productModifierGroupRepository.existsByProductId(product.getId());
 
         boolean tracksStock = product.getInventoryMode() != com.tappy.pos.model.enums.InventoryMode.NO_INVENTORY;
         Long stockQuantity = null;
@@ -706,6 +718,7 @@ public class ProductServiceImpl implements ProductService {
                 .categoryNames(categoryNames)
                 .attributes(attributes)
                 .hasVariants(hasVariants)
+                .hasModifiers(hasModifiers)
                 .stockQuantity(stockQuantity)
                 .inStock(inStock)
                 .imageUrl(product.getImageUrl())
