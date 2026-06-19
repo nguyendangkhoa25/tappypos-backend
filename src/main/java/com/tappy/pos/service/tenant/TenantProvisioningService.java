@@ -210,7 +210,7 @@ public class TenantProvisioningService {
         m.put("JEWELRY", Arrays.asList(
             "DASHBOARD", "MY_WORK",
             "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
-            "ORDER", "ORDER_VIEW_ALL", "POS", "PRODUCT", "INVENTORY", "VENDOR", "PROMOTION",
+            "ORDER", "ORDER_VIEW_ALL", "POS", "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION",
             "CUSTOMER", "LOYALTY", "APPOINTMENT",
             "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
