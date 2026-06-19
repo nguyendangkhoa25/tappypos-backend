@@ -51,6 +51,39 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     }
 
     @Override
+    public List<ProductVariantDTO> bulkUpdate(Long productId, com.tappy.pos.model.dto.product.BulkVariantUpdateRequest req) {
+        Product product = requireProduct(productId);
+        List<ProductVariantDTO> result = new ArrayList<>();
+        for (var cell : req.getVariants()) {
+            ProductVariant variant = productVariantRepository
+                    .findByIdAndProductIdAndDeletedAtIsNull(cell.getVariantId(), productId)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            messageService.getMessage("error.product.not.found", cell.getVariantId())));
+            variant.setPriceOverride(cell.getPriceOverride());
+            variant.setCostOverride(cell.getCostOverride());
+            ProductVariant saved = productVariantRepository.save(variant);
+
+            if (cell.getQuantityInStock() != null) {
+                long target = Math.max(0L, cell.getQuantityInStock());
+                Inventory inv = inventoryRepository
+                        .findByProductIdAndVariantIdForUpdate(productId, saved.getId())
+                        .orElse(null);
+                if (inv == null) {
+                    createVariantInventory(saved, product);
+                    inv = inventoryRepository.findByProductIdAndVariantIdForUpdate(productId, saved.getId())
+                            .orElseThrow(() -> new ResourceNotFoundException(
+                                    messageService.getMessage("error.product.not.found", cell.getVariantId())));
+                }
+                inv.setQuantityInStock(target);
+                inventoryRepository.save(inv);
+            }
+            result.add(mapToDTO(saved, product.getPrice()));
+        }
+        log.info("Bulk-updated {} variants for product {}", result.size(), productId);
+        return result;
+    }
+
+    @Override
     public ProductVariantDTO createVariant(Long productId, SaveProductVariantRequest req) {
         Product product = requireProduct(productId);
         checkSkuUnique(req.getSku());

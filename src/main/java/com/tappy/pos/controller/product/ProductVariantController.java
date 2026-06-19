@@ -2,6 +2,7 @@ package com.tappy.pos.controller.product;
 
 import com.tappy.pos.annotation.RequiresFeature;
 import com.tappy.pos.model.dto.ApiResponse;
+import com.tappy.pos.model.dto.product.BulkVariantUpdateRequest;
 import com.tappy.pos.model.dto.product.GenerateVariantsRequest;
 import com.tappy.pos.model.dto.product.ProductVariantDTO;
 import com.tappy.pos.model.dto.product.SaveProductVariantRequest;
@@ -29,6 +30,14 @@ public class ProductVariantController {
             @PathVariable Long productId) {
         log.info("GET /products/{}/variants", productId);
         return ResponseEntity.ok(ApiResponse.success(productVariantService.getVariants(productId)));
+    }
+
+    @PutMapping("/matrix")
+    public ResponseEntity<ApiResponse<List<ProductVariantDTO>>> bulkUpdate(
+            @PathVariable Long productId,
+            @RequestBody @Valid BulkVariantUpdateRequest req) {
+        log.info("PUT /products/{}/variants/matrix - {} cells", productId, req.getVariants().size());
+        return ResponseEntity.ok(ApiResponse.success(productVariantService.bulkUpdate(productId, req)));
     }
 
     @PostMapping
