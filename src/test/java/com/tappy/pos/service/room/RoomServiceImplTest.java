@@ -178,6 +178,32 @@ class RoomServiceImplTest {
     }
 
     @Test
+    void checkout_addsLateCheckoutFee_whenPastGrace() {
+        RoomStayEntity stay = RoomStayEntity.builder()
+                .roomId(1L).roomNumber("101").billingMode("NIGHTLY").rate(new BigDecimal("300000"))
+                .checkinAt(LocalDateTime.now().minusDays(1))
+                .expectedCheckout(LocalDateTime.now().minusHours(3)) // 3h past expected (> 1h grace)
+                .status("IN_HOUSE").deposit(BigDecimal.ZERO).build();
+        stay.setId(10L);
+        when(stayRepository.findByIdAndDeletedFalse(10L)).thenReturn(Optional.of(stay));
+        when(roomRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(room("OCCUPIED")));
+        when(shopConfigService.getDouble(eq(ShopConfigKey.LATE_CHECKOUT_FEE), any())).thenReturn(50000.0);
+        when(shopConfigService.getInt(eq(ShopConfigKey.LATE_CHECKOUT_GRACE_HOURS), any())).thenReturn(1);
+
+        CheckoutRequest req = new CheckoutRequest();
+        req.setUnits(1);
+
+        service.checkout(10L, req);
+
+        ArgumentCaptor<Order> orderCap = ArgumentCaptor.forClass(Order.class);
+        verify(orderRepository).save(orderCap.capture());
+        Order order = orderCap.getValue();
+        // (300000 room + 50000 late fee) × 1.1 = 385000; late fee is its own line item.
+        assertThat(order.getTotalAmount()).isEqualByComparingTo("385000");
+        assertThat(order.getOrderItems()).hasSize(2);
+    }
+
+    @Test
     void checkout_rejectsStayNotInHouse() {
         RoomStayEntity stay = RoomStayEntity.builder().status("CHECKED_OUT").build();
         stay.setId(10L);

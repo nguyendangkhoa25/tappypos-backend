@@ -474,9 +474,13 @@ public class RoomServiceImpl implements RoomService {
         BigDecimal itemsTotal = folio.stream()
                 .map(i -> i.getUnitPrice().multiply(BigDecimal.valueOf(i.getQuantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal grandTotal = roomCharge.add(itemsTotal);
 
-        Long orderId = createSettlementOrder(stay, roomCharge, folio, grandTotal,
+        // 4c: late-checkout fee — a flat shop-config fee when the guest leaves more than the
+        // grace period past the expected checkout. Itemised on the settlement order.
+        BigDecimal lateFee = computeLateCheckoutFee(stay, checkoutAt);
+        BigDecimal grandTotal = roomCharge.add(itemsTotal).add(lateFee);
+
+        Long orderId = createSettlementOrder(stay, roomCharge, folio, grandTotal, lateFee,
                 request != null ? request.getPaymentMethod() : null);
 
         stay.setCheckoutAt(checkoutAt);
@@ -528,8 +532,23 @@ public class RoomServiceImpl implements RoomService {
      * folio item. Links back to the stay via {@code roomStayId} and is tagged source=ROOM so it
      * never collides with normal POS orders. Mirrors {@code BookingServiceImpl.createTimeChargeOrder}.
      */
+    /** Flat late-checkout fee when checkout is more than the configured grace period past expected. */
+    private BigDecimal computeLateCheckoutFee(RoomStayEntity stay, LocalDateTime checkoutAt) {
+        if (stay.getExpectedCheckout() == null) return BigDecimal.ZERO;
+        Double feeCfg = shopConfigService.getDouble(ShopConfigKey.LATE_CHECKOUT_FEE, 0.0);
+        double fee = feeCfg != null ? feeCfg : 0.0;
+        if (fee <= 0) return BigDecimal.ZERO;
+        Integer graceCfg = shopConfigService.getInt(ShopConfigKey.LATE_CHECKOUT_GRACE_HOURS, 1);
+        int graceHours = graceCfg != null ? graceCfg : 1;
+        if (checkoutAt.isAfter(stay.getExpectedCheckout().plusHours(graceHours))) {
+            return BigDecimal.valueOf(fee).setScale(2, RoundingMode.HALF_UP);
+        }
+        return BigDecimal.ZERO;
+    }
+
     private Long createSettlementOrder(RoomStayEntity stay, BigDecimal roomCharge,
                                        List<RoomStayItemEntity> folio, BigDecimal grandTotal,
+                                       BigDecimal lateFee,
                                        String paymentMethod) {
         String tenantId = stay.getTenantId();
         String actor = currentUsername();
@@ -567,6 +586,10 @@ public class RoomServiceImpl implements RoomService {
                 messageService.getMessage("room.charge.label", stay.getRoomNumber()), 1, roomCharge));
         for (RoomStayItemEntity f : folio) {
             items.add(buildOrderItem(tenantId, order, f.getProductId(), f.getProductName(), f.getQuantity(), f.getUnitPrice()));
+        }
+        if (lateFee != null && lateFee.compareTo(BigDecimal.ZERO) > 0) {
+            items.add(buildOrderItem(tenantId, order, null,
+                    messageService.getMessage("room.lateCheckout.label"), 1, lateFee));
         }
         order.setOrderItems(items);
 
