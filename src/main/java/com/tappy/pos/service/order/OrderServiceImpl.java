@@ -76,6 +76,7 @@ public class OrderServiceImpl implements OrderService {
     private final LoyaltyService loyaltyService;
     private final InventoryService inventoryService;
     private final ProductService productService;
+    private final com.tappy.pos.repository.product.ProductVariantRepository productVariantRepository;
     private final MessageService messageService;
     private final PrintTemplateService printTemplateService;
     private final ActivityLogService activityLogService;
@@ -502,6 +503,79 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    public OrderDTO exchangeOrderItem(Long orderId, Long itemId,
+            com.tappy.pos.model.dto.order.ExchangeOrderItemRequest request) {
+        log.info("Request: Exchange item {} on order {} -> variant {}", itemId, orderId, request.getNewVariantId());
+        Order order = findActiveOrder(orderId);
+
+        if (order.getStatus() != Order.OrderStatus.COMPLETED) {
+            throw new BadRequestException(messageService.getMessage("error.exchange.only.completed", order.getStatus()));
+        }
+
+        OrderItem item = order.getOrderItems().stream()
+                .filter(i -> i.getId().equals(itemId))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.order.item.not.found", itemId)));
+
+        if (item.getProductId() == null || item.getVariantId() == null) {
+            throw new BadRequestException(messageService.getMessage("error.exchange.not.variant"));
+        }
+        if (item.getVariantId().equals(request.getNewVariantId())) {
+            throw new BadRequestException(messageService.getMessage("error.exchange.same.variant"));
+        }
+
+        // New variant must be an active variant of the SAME product.
+        var newVariant = productVariantRepository
+                .findByIdAndProductIdAndDeletedAtIsNull(request.getNewVariantId(), item.getProductId())
+                .orElseThrow(() -> new BadRequestException(messageService.getMessage("error.exchange.variant.invalid")));
+        if (newVariant.getStatus() != com.tappy.pos.model.entity.product.ProductVariant.VariantStatus.ACTIVE) {
+            throw new BadRequestException(messageService.getMessage("error.exchange.variant.invalid"));
+        }
+
+        // Equal-price swap only — keeps the order total and payment untouched.
+        BigDecimal newPrice = newVariant.getPriceOverride() != null
+                ? newVariant.getPriceOverride()
+                : (newVariant.getProduct() != null ? newVariant.getProduct().getPrice() : null);
+        if (newPrice == null || item.getUnitPrice() == null || newPrice.compareTo(item.getUnitPrice()) != 0) {
+            throw new BadRequestException(messageService.getMessage("error.exchange.price.mismatch"));
+        }
+
+        long qty = item.getQuantity() != null ? item.getQuantity() : 0L;
+        Long oldVariantId = item.getVariantId();
+
+        // Deduct the new variant's stock (must be available); then restock the returned variant.
+        var newInvPage = inventoryService.getInventoryByProductIdAndVariantId(
+                item.getProductId(), request.getNewVariantId(), PageRequest.of(0, 1));
+        if (newInvPage.isEmpty()) {
+            throw new BadRequestException(messageService.getMessage("error.exchange.no.inventory"));
+        }
+        var newInv = newInvPage.getContent().get(0);
+        if (newInv.getQuantityInStock() == null || newInv.getQuantityInStock() < qty) {
+            throw new BadRequestException(messageService.getMessage("error.exchange.insufficient.stock"));
+        }
+        inventoryService.removeStock(newInv.getId(), qty);
+
+        var oldInvPage = inventoryService.getInventoryByProductIdAndVariantId(
+                item.getProductId(), oldVariantId, PageRequest.of(0, 1));
+        if (!oldInvPage.isEmpty()) {
+            inventoryService.addStock(oldInvPage.getContent().get(0).getId(), qty);
+        } else {
+            log.warn("No inventory for returned variant {} — stock not restored", oldVariantId);
+        }
+
+        item.setVariantId(request.getNewVariantId());
+        Order saved = orderRepository.save(order);
+
+        String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.ORDER_EXCHANGED, "ORDER", saved.getOrderNumber(),
+                "Đổi sản phẩm đơn #" + saved.getOrderNumber() + " (" + item.getProductName() + ")", null);
+
+        log.info("Exchanged item {} on order {}: variant {} -> {}", itemId, orderId, oldVariantId, request.getNewVariantId());
+        return mapToDTO(saved);
+    }
+
+    @Override
     public String generateReceipt(Long id) {
         log.info("Request: Generate receipt for order id: {}", id);
         Order order = findActiveOrder(id);
@@ -606,6 +680,7 @@ public class OrderServiceImpl implements OrderService {
         return OrderItemDTO.builder()
                 .id(item.getId())
                 .productId(item.getProductId())
+                .variantId(item.getVariantId())
                 .productName(item.getProductName())
                 .quantity(item.getQuantity())
                 .unitPrice(item.getUnitPrice())

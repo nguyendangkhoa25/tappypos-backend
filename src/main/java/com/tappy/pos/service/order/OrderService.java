@@ -47,6 +47,9 @@ public interface OrderService {
 
     OrderDTO voidOrder(Long id, VoidOrderRequest request);
 
+    /** Size/color swap on a completed order line: return the item's variant, issue another of the same product. */
+    OrderDTO exchangeOrderItem(Long orderId, Long itemId, com.tappy.pos.model.dto.order.ExchangeOrderItemRequest request);
+
     String generateReceipt(Long id);
 
     String generatePreviewReceipt(ReceiptPreviewRequest request);

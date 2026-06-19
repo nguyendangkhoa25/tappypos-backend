@@ -442,6 +442,17 @@ public class OrderController {
         return ResponseEntity.ok(ApiResponse.success(order, "Order voided successfully"));
     }
 
+    /** Size/color swap on a completed order line — return the item's variant, issue another of the same product. */
+    @PostMapping("/{orderId}/items/{itemId}/exchange")
+    public ResponseEntity<ApiResponse<OrderDTO>> exchangeOrderItem(
+            @PathVariable Long orderId,
+            @PathVariable Long itemId,
+            @RequestBody @jakarta.validation.Valid com.tappy.pos.model.dto.order.ExchangeOrderItemRequest request) {
+        log.info("Endpoint: POST /orders/{}/items/{}/exchange", orderId, itemId);
+        OrderDTO order = orderService.exchangeOrderItem(orderId, itemId, request);
+        return ResponseEntity.ok(ApiResponse.success(order, "Order item exchanged successfully"));
+    }
+
     /**
      * GET /api/orders/{id}/receipt
      * Returns a self-contained HTML receipt (80 mm thermal format) for the given order.
