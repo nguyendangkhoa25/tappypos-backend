@@ -30,6 +30,7 @@ import java.util.Map;
 public class RoomController {
 
     private final RoomService roomService;
+    private final com.tappy.pos.service.invoice.InvoiceService invoiceService;
 
     // ── Board / rooms ─────────────────────────────────────────────────────────
 
@@ -180,7 +181,30 @@ public class RoomController {
     public ResponseEntity<ApiResponse<RoomStayDTO>> checkout(@PathVariable Long stayId,
                                                              @RequestBody(required = false) CheckoutRequest request) {
         log.info("POST /rooms/stays/{}/checkout", stayId);
-        return ResponseEntity.ok(ApiResponse.success(roomService.checkout(stayId, request), "Đã trả phòng"));
+        // The stay settles in its own transaction first; the e-invoice is then issued
+        // separately (best-effort) so a vendor/config failure can never roll back checkout.
+        RoomStayDTO dto = roomService.checkout(stayId, request);
+        if (request != null && request.isIssueInvoice() && dto.getLinkedOrderId() != null) {
+            try {
+                var buyer = com.tappy.pos.model.dto.invoice.CreateInvoiceRequest.BuyerInfo.builder()
+                        .buyerName(request.getBuyerName())
+                        .buyerLegalName(request.getBuyerLegalName())
+                        .buyerTaxCode(request.getBuyerTaxCode())
+                        .buyerAddressLine(request.getBuyerAddress())
+                        .buyerPhoneNumber(request.getBuyerPhone())
+                        .buyerEmail(request.getBuyerEmail())
+                        .build();
+                var invReq = new com.tappy.pos.model.dto.invoice.CreateInvoiceRequest();
+                invReq.setOrderIds(java.util.List.of(dto.getLinkedOrderId()));
+                invReq.setBuyerInfo(buyer);
+                invoiceService.create(invReq);
+                log.info("Issued e-invoice for room stay {} (order {})", stayId, dto.getLinkedOrderId());
+            } catch (Exception e) {
+                // Checkout already committed; surface nothing fatal — reception can invoice manually.
+                log.warn("E-invoice issuance failed for room stay {} (order {}): {}", stayId, dto.getLinkedOrderId(), e.getMessage());
+            }
+        }
+        return ResponseEntity.ok(ApiResponse.success(dto, "Đã trả phòng"));
     }
 
     @PostMapping("/stays/{stayId}/cancel")
