@@ -157,6 +157,12 @@ public class Order extends TenantAwareEntity {
     @Column(name = "order_type", length = 20, nullable = false, columnDefinition = "VARCHAR(20) DEFAULT 'SELL'")
     private OrderType orderType = OrderType.SELL;
 
+    /** FnB fulfilment channel (dine-in / takeaway / delivery). Distinct from {@link OrderType} (gold). */
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "order_channel", length = 20, nullable = false, columnDefinition = "VARCHAR(20) DEFAULT 'DINE_IN'")
+    private OrderChannel orderChannel = OrderChannel.DINE_IN;
+
     /** Total value of GOLD_OUT + STANDARD items (what shop sells to customer). */
     @Builder.Default
     @Column(name = "sell_amount", precision = 15, scale = 2, columnDefinition = "DECIMAL(15,2) DEFAULT 0")
@@ -203,6 +209,12 @@ public class Order extends TenantAwareEntity {
         COMPLETED,
         CANCELLED,
         VOIDED
+    }
+
+    public enum OrderChannel {
+        DINE_IN,
+        TAKEAWAY,
+        DELIVERY
     }
 
     public enum OrderType {

@@ -713,4 +713,10 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     java.util.List<Object[]> getEmployeeRevenueTrendByMonth(
             @Param("from") java.time.LocalDateTime from,
             @Param("to")   java.time.LocalDateTime to);
+
+    /** Revenue segmented by fulfilment channel over a window. Rows: [channel, orderCount, revenue]. */
+    @Query("SELECT o.orderChannel, COUNT(o), COALESCE(SUM(o.totalAmount), 0) FROM Order o " +
+           "WHERE o.deleted = false AND o.status = 'COMPLETED' AND o.completedAt >= :since " +
+           "GROUP BY o.orderChannel")
+    List<Object[]> revenueByChannelSince(@Param("since") java.time.LocalDateTime since);
 }

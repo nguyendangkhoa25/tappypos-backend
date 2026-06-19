@@ -29,6 +29,7 @@ public class OrderDTO {
     private BigDecimal taxAmount;
     private BigDecimal serviceChargeRate;
     private BigDecimal serviceChargeAmount;
+    private String orderChannel;
     private String paymentMethod;
     private BigDecimal amountPaid;
     private BigDecimal changeAmount;

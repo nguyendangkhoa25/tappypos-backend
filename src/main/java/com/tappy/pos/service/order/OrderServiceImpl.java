@@ -184,6 +184,7 @@ public class OrderServiceImpl implements OrderService {
                 .taxAmount(order.getTaxAmount())
                 .serviceChargeRate(order.getServiceChargeRate())
                 .serviceChargeAmount(order.getServiceChargeAmount())
+                .orderChannel(order.getOrderChannel() != null ? order.getOrderChannel().name() : null)
                 .paymentMethod(order.getPaymentMethod())
                 .amountPaid(order.getAmountPaid())
                 .changeAmount(order.getChangeAmount())

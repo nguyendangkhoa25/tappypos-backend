@@ -1013,6 +1013,12 @@ public class CartServiceImpl implements CartService {
         order.setPreorder(preorder);
         order.setDepositAmount(depositAmount);
         order.setOrderType(orderType);
+        // Fulfilment channel: explicit request wins, else a pickup time implies takeaway, else dine-in.
+        Order.OrderChannel channel = request.getOrderChannel();
+        if (channel == null) {
+            channel = request.getPickupTime() != null ? Order.OrderChannel.TAKEAWAY : Order.OrderChannel.DINE_IN;
+        }
+        order.setOrderChannel(channel);
         order.setTotalAmount(total);
         // sell/buy summary is meaningful only for gold BUY/EXCHANGE; SELL leaves them 0 (total holds the value).
         order.setSellAmount(orderType == Order.OrderType.EXCHANGE ? sellGoldSum : BigDecimal.ZERO);

@@ -41,6 +41,9 @@ public class CheckoutRequest {
     @DecimalMin(value = "0.0", message = "Service charge must be >= 0")
     private BigDecimal serviceChargeRate;
 
+    /** Fulfilment channel; if null it is derived from tableId (DINE_IN) / pickupTime (TAKEAWAY). */
+    private Order.OrderChannel orderChannel;
+
     private String notes;
 
     /** ID of an existing customer to associate with this order. */
