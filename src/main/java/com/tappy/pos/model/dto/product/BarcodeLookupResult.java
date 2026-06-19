@@ -11,12 +11,15 @@ import lombok.NoArgsConstructor;
 @Builder
 public class BarcodeLookupResult {
 
-    public enum Source { SHOP, CATALOG, NONE }
+    public enum Source { SHOP, SHOP_VARIANT, CATALOG, NONE }
 
     private Source source;
 
-    /** Populated when source == SHOP */
+    /** Populated when source == SHOP or SHOP_VARIANT (the parent product). */
     private ProductDTO product;
+
+    /** Populated when source == SHOP_VARIANT (the exact scanned size/color SKU). */
+    private ProductVariantDTO variant;
 
     /** Populated when source == CATALOG */
     private CatalogHint catalog;

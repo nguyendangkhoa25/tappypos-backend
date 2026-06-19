@@ -358,6 +358,53 @@ class ProductVariantServiceImplTest {
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
+    // ── findActiveByBarcode (POS scan-to-add) ────────────────────────────────────
+
+    @Test
+    @DisplayName("findActiveByBarcode: blank barcode → empty (no repository hit)")
+    void findActiveByBarcode_blank_empty() {
+        assertThat(variantService.findActiveByBarcode("  ")).isEmpty();
+        verify(productVariantRepository, never()).findFirstByBarcodeAndDeletedAtIsNull(anyString());
+    }
+
+    @Test
+    @DisplayName("findActiveByBarcode: active variant match → DTO")
+    void findActiveByBarcode_match() {
+        ProductVariant hit = ProductVariant.builder()
+                .sku("SHIRT-RED-L").barcode("8930001")
+                .variantOptions(Map.of("Color", "Red", "Size", "L"))
+                .status(ProductVariant.VariantStatus.ACTIVE)
+                .build();
+        hit.setId(42L);
+        ProductVariant spy = spy(hit);
+        doReturn(product).when(spy).getProduct();
+
+        when(productVariantRepository.findFirstByBarcodeAndDeletedAtIsNull("8930001"))
+                .thenReturn(Optional.of(spy));
+
+        var result = variantService.findActiveByBarcode("8930001");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().getSku()).isEqualTo("SHIRT-RED-L");
+        assertThat(result.get().getProductId()).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("findActiveByBarcode: inactive variant → empty")
+    void findActiveByBarcode_inactive_empty() {
+        ProductVariant hit = ProductVariant.builder()
+                .sku("SHIRT-RED-L").barcode("8930001")
+                .variantOptions(Map.of())
+                .status(ProductVariant.VariantStatus.INACTIVE)
+                .build();
+        hit.setId(42L);
+
+        when(productVariantRepository.findFirstByBarcodeAndDeletedAtIsNull("8930001"))
+                .thenReturn(Optional.of(hit));
+
+        assertThat(variantService.findActiveByBarcode("8930001")).isEmpty();
+    }
+
     // ── generateVariants ───────────────────────────────────────────────────────
 
     @Test

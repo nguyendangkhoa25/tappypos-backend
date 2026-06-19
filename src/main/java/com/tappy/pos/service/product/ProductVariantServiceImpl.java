@@ -51,6 +51,17 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public java.util.Optional<ProductVariantDTO> findActiveByBarcode(String barcode) {
+        if (barcode == null || barcode.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        return productVariantRepository.findFirstByBarcodeAndDeletedAtIsNull(barcode.trim())
+                .filter(v -> v.getStatus() == ProductVariant.VariantStatus.ACTIVE)
+                .map(v -> mapToDTO(v, v.getProduct().getPrice()));
+    }
+
+    @Override
     public List<ProductVariantDTO> bulkUpdate(Long productId, com.tappy.pos.model.dto.product.BulkVariantUpdateRequest req) {
         Product product = requireProduct(productId);
         List<ProductVariantDTO> result = new ArrayList<>();

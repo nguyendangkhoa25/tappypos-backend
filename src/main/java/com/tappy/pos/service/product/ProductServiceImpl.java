@@ -53,6 +53,7 @@ public class ProductServiceImpl implements ProductService {
     private final ProductCatalogService productCatalogService;
     private final InventoryRepository inventoryRepository;
     private final ProductVariantRepository productVariantRepository;
+    private final ProductVariantService productVariantService;
     private final R2StorageService r2StorageService;
     private final R2CleanupService r2CleanupService;
     private final com.tappy.pos.repository.order.OrderItemRepository orderItemRepository;
@@ -732,6 +733,20 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public BarcodeLookupResult lookupByBarcode(String barcode) {
+        // Layer 0: a per-variant barcode (fashion size/color SKU) — resolve the exact variant
+        // before the product-level barcode so scanning a SKU adds that exact size/color.
+        var variantHit = productVariantService.findActiveByBarcode(barcode);
+        if (variantHit.isPresent()) {
+            var parent = productRepository.findByIdAndDeletedFalse(variantHit.get().getProductId());
+            if (parent.isPresent()) {
+                return BarcodeLookupResult.builder()
+                        .source(BarcodeLookupResult.Source.SHOP_VARIANT)
+                        .product(mapToDTO(parent.get()))
+                        .variant(variantHit.get())
+                        .build();
+            }
+        }
+
         // Layer 1: shop's own inventory
         var shopProduct = productRepository.findByBarcodeAndDeletedFalse(barcode);
         if (shopProduct.isPresent()) {
