@@ -10,6 +10,9 @@ public interface GoldPriceService {
     GoldPriceDTO createPrice(GoldPriceDTO dto);
     GoldPriceDTO updatePrice(Long id, GoldPriceDTO dto);
     void deletePrice(Long id);
+
+    /** Shop's own gold-price snapshots over a trailing window (for the price-history chart). */
+    java.util.List<com.tappy.pos.model.dto.tenant.GoldPriceHistoryDTO> getPriceHistory(int days);
     PriceBoardResponse getPriceBoard(String code);
     GoldPriceDTO getPriceForCategory(Long categoryId);
 
