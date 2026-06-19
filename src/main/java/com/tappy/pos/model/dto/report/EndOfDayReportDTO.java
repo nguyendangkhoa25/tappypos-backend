@@ -17,6 +17,8 @@ public class EndOfDayReportDTO {
     private GoldLine goldSold;
     /** Gold/silver bought from customers (cash out). */
     private GoldLine goldBought;
+    /** Closing gold-weight position for the day (bought − sold), in chỉ (4c). */
+    private GoldPosition goldPosition;
 
     /** True when the shop has the PAWN feature — drives whether the pawn rows are shown. */
     private boolean pawnEnabled;
@@ -33,6 +35,15 @@ public class EndOfDayReportDTO {
         private long count;
         private BigDecimal weightChi;
         private BigDecimal amount;
+    }
+
+    /** Net gold-weight movement for the day: how much weight came in vs went out. */
+    @Data
+    @Builder
+    public static class GoldPosition {
+        private BigDecimal weightBoughtChi;  // gold weight taken in (BUY/EXCHANGE)
+        private BigDecimal weightSoldChi;    // gold weight sold out (SELL)
+        private BigDecimal netWeightChi;     // boughtChi − soldChi (positive = stock gained)
     }
 
     @Data
