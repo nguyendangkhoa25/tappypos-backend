@@ -182,6 +182,8 @@ public class OrderServiceImpl implements OrderService {
                 .discountAmount(order.getDiscountAmount())
                 .tipAmount(order.getTipAmount())
                 .taxAmount(order.getTaxAmount())
+                .serviceChargeRate(order.getServiceChargeRate())
+                .serviceChargeAmount(order.getServiceChargeAmount())
                 .paymentMethod(order.getPaymentMethod())
                 .amountPaid(order.getAmountPaid())
                 .changeAmount(order.getChangeAmount())

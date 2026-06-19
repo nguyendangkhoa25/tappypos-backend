@@ -71,6 +71,8 @@ public class ReceiptHtmlBuilder {
                 cfg.isShowTable() ? order.getTableLabel() : null,
                 items,
                 order.getDiscountAmount(),
+                order.getServiceChargeRate(),
+                order.getServiceChargeAmount(),
                 order.getTotalAmount(),
                 order.getPaymentMethod(),
                 cfg.isShowCashDetails() ? order.getAmountPaid() : null,
@@ -130,6 +132,8 @@ public class ReceiptHtmlBuilder {
                 cfg.isShowTable() ? req.getTableLabel() : null,
                 items,
                 req.getTotalDiscount(),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
                 req.getTotal(),
                 req.getPaymentMethod(),
                 cfg.isShowCashDetails() ? req.getAmountPaid() : null,
@@ -156,6 +160,8 @@ public class ReceiptHtmlBuilder {
             String tableLabel,
             List<ReceiptItem> items,
             BigDecimal totalDiscount,
+            BigDecimal serviceChargeRate,
+            BigDecimal serviceChargeAmount,
             BigDecimal total,
             String paymentMethod,
             BigDecimal amountPaid,
@@ -226,6 +232,18 @@ public class ReceiptHtmlBuilder {
                         .append("<td style=\"text-align:right\">").append(fmt(entry.getValue())).append("</td>")
                         .append("</tr>\n");
             }
+        }
+
+        // FnB service charge (phí dịch vụ) — own line above the grand total.
+        StringBuilder serviceChargeRow = new StringBuilder();
+        if (serviceChargeAmount != null && serviceChargeAmount.compareTo(BigDecimal.ZERO) > 0) {
+            int colspan = showTaxBreakdown ? 5 : 3;
+            BigDecimal scRate = serviceChargeRate != null ? serviceChargeRate : BigDecimal.ZERO;
+            serviceChargeRow.append("<tr>")
+                    .append("<td colspan=\"").append(colspan).append("\">Phí dịch vụ ")
+                    .append(scRate.stripTrailingZeros().toPlainString()).append("%</td>")
+                    .append("<td style=\"text-align:right\">").append(fmt(serviceChargeAmount)).append("</td>")
+                    .append("</tr>\n");
         }
 
         StringBuilder cashRows = new StringBuilder();
@@ -335,6 +353,7 @@ public class ReceiptHtmlBuilder {
                 rows +
                 discountRow +
                 taxRows +
+                serviceChargeRow +
                 "      <tr class=\"total-row\">\n" +
                 "        <td colspan=\"" + totalColspan + "\">TỔNG CỘNG</td>\n" +
                 "        <td style=\"text-align:right\">" + fmt(total) + "</td>\n" +

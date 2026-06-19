@@ -100,8 +100,8 @@ class ApiSmokeIntegrationTest {
                 "select version from flyway_schema_history where success = true order by installed_rank",
                 String.class);
         // V001 = consolidated bootstrap; V002/V003 = bakery pre-order + recipe; V004 = repair
-        // module; V005 = per-variant barcode index.
-        assertThat(versions).containsExactly("001", "002", "003", "004", "005");
+        // module; V005 = per-variant barcode index; V006 = FnB service charge.
+        assertThat(versions).containsExactly("001", "002", "003", "004", "005", "006");
 
         // Tables created by the bootstrap (formerly separate booking/cash-drawer migrations).
         assertThat(tableExists("tenants")).isTrue();

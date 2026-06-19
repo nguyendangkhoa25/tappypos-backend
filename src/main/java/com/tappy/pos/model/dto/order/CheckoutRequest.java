@@ -34,6 +34,13 @@ public class CheckoutRequest {
     @DecimalMin(value = "0.0", message = "Tip must be >= 0")
     private BigDecimal tip;
 
+    /**
+     * FnB service-charge rate as a percentage (e.g. 5 = 5%). Null = use the shop-config default;
+     * 0 disables it for this order. Applied to the discounted subtotal.
+     */
+    @DecimalMin(value = "0.0", message = "Service charge must be >= 0")
+    private BigDecimal serviceChargeRate;
+
     private String notes;
 
     /** ID of an existing customer to associate with this order. */

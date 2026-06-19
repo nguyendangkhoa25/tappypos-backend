@@ -59,6 +59,15 @@ public class Order extends TenantAwareEntity {
     @Column(name = "tax_amount", precision = 15, scale = 2)
     private BigDecimal taxAmount = BigDecimal.ZERO;
 
+    /** FnB service charge (phí dịch vụ): percentage applied to the discounted subtotal, added as its own line. */
+    @Builder.Default
+    @Column(name = "service_charge_rate", precision = 5, scale = 2, columnDefinition = "DECIMAL(5,2) DEFAULT 0")
+    private BigDecimal serviceChargeRate = BigDecimal.ZERO;
+
+    @Builder.Default
+    @Column(name = "service_charge_amount", precision = 15, scale = 2, columnDefinition = "DECIMAL(15,2) DEFAULT 0")
+    private BigDecimal serviceChargeAmount = BigDecimal.ZERO;
+
     @Builder.Default
     @Column(name = "commission_amount", precision = 15, scale = 2, columnDefinition = "DECIMAL(15,2) DEFAULT 0")
     private BigDecimal commissionAmount = BigDecimal.ZERO;

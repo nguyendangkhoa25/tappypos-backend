@@ -873,6 +873,9 @@ public class CartServiceImpl implements CartService {
         BigDecimal taxableAmount;
         BigDecimal totalTax;
         BigDecimal total;
+        // Service charge (FnB) is computed on the discounted subtotal; captured here so it is
+        // available after the per-type total branches (only the SELL branch sets a real base).
+        BigDecimal serviceChargeBase = BigDecimal.ZERO;
 
         // Pre-compute gold sums for buy_amount / sell_amount columns on the order.
         // Used by all order types so the receipt can show the breakdown.
@@ -901,6 +904,7 @@ public class CartServiceImpl implements CartService {
             taxableAmount = itemsSubtotal.subtract(totalDiscount).max(BigDecimal.ZERO);
             totalTax      = taxableAmount.multiply(cart.getTaxRate()).setScale(2, RoundingMode.HALF_UP);
             total         = taxableAmount.add(totalTax);
+            serviceChargeBase = taxableAmount;
         }
 
         // --- Loyalty points redemption (SELL only, applied after tax) ---
@@ -945,6 +949,27 @@ public class CartServiceImpl implements CartService {
         if (isStandardSell && request.getTip() != null && request.getTip().compareTo(BigDecimal.ZERO) > 0) {
             tipAmount = request.getTip().setScale(2, RoundingMode.HALF_UP);
             total = total.add(tipAmount);
+        }
+
+        // --- Service charge (FnB phí dịch vụ, SELL only) ---
+        // Percentage of the discounted subtotal, added as its own line. Request rate (percent) wins;
+        // otherwise the shop-config default. 0 disables it.
+        BigDecimal serviceChargeRate = BigDecimal.ZERO;
+        BigDecimal serviceChargeAmount = BigDecimal.ZERO;
+        if (isStandardSell) {
+            BigDecimal scRatePercent;
+            if (request.getServiceChargeRate() != null) {
+                scRatePercent = request.getServiceChargeRate();
+            } else {
+                Double cfgRate = shopConfigService.getDouble(ShopConfigKey.SERVICE_CHARGE_RATE, 0.0);
+                scRatePercent = cfgRate != null ? BigDecimal.valueOf(cfgRate) : BigDecimal.ZERO;
+            }
+            if (scRatePercent != null && scRatePercent.compareTo(BigDecimal.ZERO) > 0) {
+                serviceChargeRate = scRatePercent.setScale(2, RoundingMode.HALF_UP);
+                serviceChargeAmount = serviceChargeBase.multiply(serviceChargeRate)
+                        .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+                total = total.add(serviceChargeAmount);
+            }
         }
 
         // --- Payment ---
@@ -998,6 +1023,8 @@ public class CartServiceImpl implements CartService {
         order.setTipAmount(tipAmount);
         order.setTaxPercentage(cart.getTaxRate().multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP));
         order.setTaxAmount(totalTax);
+        order.setServiceChargeRate(serviceChargeRate);
+        order.setServiceChargeAmount(serviceChargeAmount);
         order.setPaymentMethod(paymentMethod);
         // Pre-order: only the deposit is paid now; balance carried until settle. change = 0.
         order.setAmountPaid(preorder ? depositAmount : (inProgress ? BigDecimal.ZERO : amountPaid));

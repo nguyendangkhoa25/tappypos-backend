@@ -27,6 +27,8 @@ public class OrderDTO {
     private BigDecimal discountAmount;
     private BigDecimal tipAmount;
     private BigDecimal taxAmount;
+    private BigDecimal serviceChargeRate;
+    private BigDecimal serviceChargeAmount;
     private String paymentMethod;
     private BigDecimal amountPaid;
     private BigDecimal changeAmount;
