@@ -111,7 +111,8 @@ public class TenantProvisioningService {
             "INVOICE", "ACCOUNTING", "REVENUE", "EXPENSE",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "STOCK_TAKE", "POS",
             "TABLE_SERVICE", "ACTIVITY_LOG", "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
-            "COMMISSION", "COMMISSION_VIEW_ALL", "GOOGLE_DRIVE", "NOTIFICATION", "FEEDBACK", "APPOINTMENT", "BOOKING", "ROOM"
+            "COMMISSION", "COMMISSION_VIEW_ALL", "GOOGLE_DRIVE", "NOTIFICATION", "FEEDBACK", "APPOINTMENT", "BOOKING", "ROOM",
+            "REPAIR", "REPAIR_VIEW_ALL"
         ));
         m.put(RoleEnum.MANAGER.getCode(), Arrays.asList(
             "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "PROMOTION", "RECIPE",
@@ -119,7 +120,8 @@ public class TenantProvisioningService {
             "INVOICE", "ACCOUNTING", "REVENUE", "EXPENSE",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "STOCK_TAKE", "POS",
             "TABLE_SERVICE", "ACTIVITY_LOG", "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
-            "COMMISSION", "COMMISSION_VIEW_ALL", "NOTIFICATION", "FEEDBACK", "BOOKING"
+            "COMMISSION", "COMMISSION_VIEW_ALL", "NOTIFICATION", "FEEDBACK", "BOOKING",
+            "REPAIR", "REPAIR_VIEW_ALL"
         ));
         m.put(RoleEnum.CASHIER.getCode(), Arrays.asList(
             "DASHBOARD", "MY_WORK", "ORDER", "POS", "TABLE_SERVICE",
@@ -145,8 +147,9 @@ public class TenantProvisioningService {
             "CUSTOMER", "COMMISSION", "NOTIFICATION", "FEEDBACK", "BOOKING"
         ));
         m.put(RoleEnum.TECHNICIAN.getCode(), Arrays.asList(
+            // REPAIR_VIEW_ALL intentionally absent: a technician sees only their own repair tickets.
             "DASHBOARD", "MY_WORK", "ORDER", "PRODUCT", "CUSTOMER", "INVENTORY", "POS",
-            "APPOINTMENT", "COMMISSION", "NOTIFICATION", "FEEDBACK"
+            "APPOINTMENT", "COMMISSION", "NOTIFICATION", "FEEDBACK", "REPAIR"
         ));
         m.put(RoleEnum.RECEPTIONIST.getCode(), Arrays.asList(
             "DASHBOARD", "MY_WORK", "ORDER", "CUSTOMER", "POS", "TABLE_SERVICE",
@@ -220,6 +223,21 @@ public class TenantProvisioningService {
             "ORDER", "ORDER_VIEW_ALL", "POS",
             "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION",
             "CUSTOMER", "LOYALTY", "APPOINTMENT",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
+            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
+            "NOTIFICATION", "FEEDBACK"
+        ));
+
+        // Electronics (điện tử / điện máy): shared retail back office PLUS the device
+        // repair/service-ticket module (REPAIR + REPAIR_VIEW_ALL). REPAIR is deliberately
+        // NOT added to the shared RETAIL profile — convenience/pharmacy/fashion don't repair.
+        m.put("ELECTRONICS", Arrays.asList(
+            "DASHBOARD", "MY_WORK",
+            "ORDER", "ORDER_VIEW_ALL", "POS",
+            "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION",
+            "CUSTOMER", "LOYALTY", "APPOINTMENT",
+            "REPAIR", "REPAIR_VIEW_ALL",
             "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
@@ -304,7 +322,7 @@ public class TenantProvisioningService {
         m.put(ShopType.JEWELRY,            "JEWELRY");
         m.put(ShopType.CONVENIENCE_STORE,  "RETAIL");
         m.put(ShopType.PHARMACY,           "RETAIL");
-        m.put(ShopType.ELECTRONICS,        "RETAIL");
+        m.put(ShopType.ELECTRONICS,        "ELECTRONICS");
         m.put(ShopType.FASHION,            "RETAIL");
         m.put(ShopType.BOOK_STORE,         "RETAIL");
         m.put(ShopType.BARBER_SHOP,        "SERVICE");

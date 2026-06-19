@@ -94,14 +94,15 @@ class ApiSmokeIntegrationTest {
 
     @Test
     @Order(1)
-    @DisplayName("Flyway applied a single V001 and seeded the consolidated schema")
+    @DisplayName("Flyway applied V001 bootstrap plus the incremental migrations and seeded the schema")
     void migrationApplied() {
         List<String> versions = jdbc.queryForList(
                 "select version from flyway_schema_history where success = true order by installed_rank",
                 String.class);
-        assertThat(versions).containsExactly("001");
+        // V001 = consolidated bootstrap; V002/V003 = bakery pre-order + recipe; V004 = repair module.
+        assertThat(versions).containsExactly("001", "002", "003", "004");
 
-        // Tables that were formerly separate migrations (V002–V004), now merged into V001.
+        // Tables created by the bootstrap (formerly separate booking/cash-drawer migrations).
         assertThat(tableExists("tenants")).isTrue();
         assertThat(tableExists("bookings")).isTrue();
         assertThat(tableExists("booking_resources")).isTrue();

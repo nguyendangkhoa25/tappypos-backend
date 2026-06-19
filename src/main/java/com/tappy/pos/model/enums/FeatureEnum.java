@@ -49,7 +49,9 @@ public enum FeatureEnum {
     APPOINTMENT("Lịch Hẹn", "Quản lý lịch hẹn với khách hàng, đặt lịch và xác nhận"),
     TABLE_SERVICE("Quản Lý Bàn", "Theo dõi trạng thái bàn và gọi món theo bàn cho quán ăn / quán nhậu"),
     BOOKING("Đặt Bàn / Đặt Sân", "Quản lý bàn bida, sân thể thao: tính giờ chơi, đặt sân theo giờ và tạo hoá đơn khi kết thúc"),
-    UTILITIES("Tiện Ích", "Bộ công cụ tính toán: tính lãi, khoản vay, thuế, ngân sách, đổi tiền, giá vàng thị trường, chia hóa đơn, điểm hòa vốn");
+    UTILITIES("Tiện Ích", "Bộ công cụ tính toán: tính lãi, khoản vay, thuế, ngân sách, đổi tiền, giá vàng thị trường, chia hóa đơn, điểm hòa vốn"),
+    REPAIR("Sửa Chữa", "Quản lý phiếu sửa chữa thiết bị: tiếp nhận máy, ghi lỗi, báo giá, giao thợ, theo dõi tình trạng và bảo hành sửa chữa"),
+    REPAIR_VIEW_ALL("Xem Tất Cả Phiếu Sửa Chữa", "Xem phiếu sửa chữa của tất cả nhân viên; nếu không có quyền này, chỉ xem được phiếu tự tạo");
 
     /**
      * -- GETTER --
