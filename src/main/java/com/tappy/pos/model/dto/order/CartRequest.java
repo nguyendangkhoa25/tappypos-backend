@@ -37,7 +37,10 @@ public class CartRequest {
 
     private Map<String, String> variants;
     private Long variantId;
-    
+
+    /** Selected modifier option ids (FnB). Resolved to labels + price deltas at add-to-cart. */
+    private java.util.List<Long> modifierOptionIds;
+
     // Update quantity
     private Long cartItemId;
     

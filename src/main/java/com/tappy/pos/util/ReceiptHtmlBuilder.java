@@ -48,7 +48,8 @@ public class ReceiptHtmlBuilder {
                         oi.getUnitPrice(),
                         oi.getAmount(),
                         oi.getTaxPercentage() != null ? oi.getTaxPercentage() : BigDecimal.ZERO,
-                        oi.getNote()
+                        oi.getNote(),
+                        formatModifiers(oi.getModifiers())
                 ))
                 .toList();
 
@@ -114,7 +115,8 @@ public class ReceiptHtmlBuilder {
                         i.getUnitPrice(),
                         i.getLineTotal(),
                         i.getTaxRate() != null ? i.getTaxRate() : BigDecimal.TEN,
-                        null   // preview requests don't carry per-item notes
+                        null,  // preview requests don't carry per-item notes
+                        null   // ...nor modifiers
                 ))
                 .toList();
 
@@ -193,10 +195,13 @@ public class ReceiptHtmlBuilder {
             String noteHtml = (item.note() != null && !item.note().isBlank())
                     ? "<br/><span style=\"color:#b45309;font-style:italic;font-size:9px\">&rarr; " + escHtml(item.note()) + "</span>"
                     : "";
+            String modifiersHtml = (item.modifiers() != null && !item.modifiers().isBlank())
+                    ? "<br/><small style=\"color:#555;font-size:9px\">+ " + escHtml(item.modifiers()) + "</small>"
+                    : "";
 
             if (showTaxBreakdown) {
                 rows.append("<tr>")
-                        .append("<td>").append(escHtml(item.productName())).append(skuHtml).append(noteHtml).append("</td>")
+                        .append("<td>").append(escHtml(item.productName())).append(skuHtml).append(modifiersHtml).append(noteHtml).append("</td>")
                         .append("<td style=\"text-align:center\">").append(item.quantity()).append("</td>")
                         .append("<td style=\"text-align:right\">").append(fmt(item.unitPrice())).append("</td>")
                         .append("<td style=\"text-align:center\">").append(rate).append("%</td>")
@@ -205,7 +210,7 @@ public class ReceiptHtmlBuilder {
                         .append("</tr>\n");
             } else {
                 rows.append("<tr>")
-                        .append("<td>").append(escHtml(item.productName())).append(skuHtml).append(noteHtml).append("</td>")
+                        .append("<td>").append(escHtml(item.productName())).append(skuHtml).append(modifiersHtml).append(noteHtml).append("</td>")
                         .append("<td style=\"text-align:center\">").append(item.quantity()).append("</td>")
                         .append("<td style=\"text-align:right\">").append(fmt(item.unitPrice())).append("</td>")
                         .append("<td style=\"text-align:right\">").append(fmt(item.lineTotal())).append("</td>")
@@ -422,8 +427,29 @@ public class ReceiptHtmlBuilder {
             BigDecimal unitPrice,
             BigDecimal lineTotal,
             BigDecimal taxRate,
-            String note
+            String note,
+            String modifiers
     ) {}
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper RECEIPT_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /** Turn the modifiers JSON ([{groupName, optionName, priceDelta}]) into "Size L · Trân châu" or null. */
+    private static String formatModifiers(String modifiersJson) {
+        if (modifiersJson == null || modifiersJson.isBlank()) return null;
+        try {
+            java.util.List<com.tappy.pos.model.dto.modifier.ChosenModifierDTO> list = RECEIPT_MAPPER.readValue(modifiersJson,
+                    RECEIPT_MAPPER.getTypeFactory().constructCollectionType(
+                            java.util.List.class, com.tappy.pos.model.dto.modifier.ChosenModifierDTO.class));
+            if (list.isEmpty()) return null;
+            return list.stream()
+                    .map(com.tappy.pos.model.dto.modifier.ChosenModifierDTO::getOptionName)
+                    .filter(java.util.Objects::nonNull)
+                    .collect(java.util.stream.Collectors.joining(" · "));
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
     /** Pre-order (đơn đặt) extras printed on the slip: deposit, balance due, pickup time. */
     public record PreorderInfo(BigDecimal deposit, BigDecimal balance, LocalDateTime pickup) {}

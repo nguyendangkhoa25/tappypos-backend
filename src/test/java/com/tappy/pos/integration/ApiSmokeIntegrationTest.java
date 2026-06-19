@@ -101,8 +101,8 @@ class ApiSmokeIntegrationTest {
                 String.class);
         // V001 = consolidated bootstrap; V002/V003 = bakery pre-order + recipe; V004 = repair
         // module; V005 = per-variant barcode index; V006 = FnB service charge; V007 = order channel;
-        // V008 = FnB modifier groups.
-        assertThat(versions).containsExactly("001", "002", "003", "004", "005", "006", "007", "008");
+        // V008 = FnB modifier groups; V009 = modifier selections on lines.
+        assertThat(versions).containsExactly("001", "002", "003", "004", "005", "006", "007", "008", "009");
 
         // Tables created by the bootstrap (formerly separate booking/cash-drawer migrations).
         assertThat(tableExists("tenants")).isTrue();

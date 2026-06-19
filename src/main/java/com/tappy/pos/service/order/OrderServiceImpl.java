@@ -692,6 +692,7 @@ public class OrderServiceImpl implements OrderService {
                 .taxAmount(item.getTaxAmount())
                 .itemType(item.getItemType())
                 .metadata(item.getMetadata())
+                .modifiers(item.getModifiers())
                 .note(item.getNote())
                 .itemStatus(item.getStatus() != null ? item.getStatus().name() : "PENDING")
                 .durationMinutes(item.getDurationMinutes() != null ? item.getDurationMinutes() : 0)

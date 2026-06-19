@@ -38,6 +38,7 @@ public class CartItemResponse {
     private BigDecimal tax;
     private BigDecimal lineGrandTotal;
     private Map<String, String> variants;
+    private java.util.List<com.tappy.pos.model.dto.modifier.ChosenModifierDTO> modifiers;
     private CartItemEntity.ItemType itemType;
     private String metadata;
     private String notes;

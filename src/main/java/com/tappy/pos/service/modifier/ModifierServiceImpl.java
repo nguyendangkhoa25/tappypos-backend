@@ -27,6 +27,7 @@ import java.util.stream.Collectors;
 public class ModifierServiceImpl implements ModifierService {
 
     private final ModifierGroupRepository modifierGroupRepository;
+    private final com.tappy.pos.repository.modifier.ModifierOptionRepository modifierOptionRepository;
     private final ProductModifierGroupRepository productModifierGroupRepository;
     private final TenantContext tenantContext;
     private final MessageService messageService;
@@ -36,6 +37,24 @@ public class ModifierServiceImpl implements ModifierService {
     public List<ModifierGroupDTO> listGroups() {
         return modifierGroupRepository.findByDeletedFalseOrderBySortOrderAscIdAsc()
                 .stream().map(this::mapToDTO).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<com.tappy.pos.model.dto.modifier.ChosenModifierDTO> resolveOptions(List<Long> optionIds) {
+        if (optionIds == null || optionIds.isEmpty()) return List.of();
+        var found = modifierOptionRepository.findAllByIdInWithGroup(optionIds).stream()
+                .collect(Collectors.toMap(o -> o.getId(), o -> o, (a, b) -> a));
+        // Preserve the caller's selection order; skip ids that don't resolve.
+        return optionIds.stream()
+                .map(found::get)
+                .filter(java.util.Objects::nonNull)
+                .map(o -> com.tappy.pos.model.dto.modifier.ChosenModifierDTO.builder()
+                        .groupName(o.getModifierGroup() != null ? o.getModifierGroup().getName() : null)
+                        .optionName(o.getName())
+                        .priceDelta(o.getPriceDelta() != null ? o.getPriceDelta() : BigDecimal.ZERO)
+                        .build())
+                .collect(Collectors.toList());
     }
 
     @Override

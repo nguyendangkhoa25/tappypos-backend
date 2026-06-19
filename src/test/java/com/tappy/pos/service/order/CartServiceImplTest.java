@@ -140,6 +140,9 @@ class CartServiceImplTest {
     @Mock
     private com.tappy.pos.service.appointment.AppointmentService appointmentService;
 
+    @Mock
+    private com.tappy.pos.service.modifier.ModifierService modifierService;
+
     private CartServiceImpl cartService;
     private ObjectMapper objectMapper;
 
@@ -160,6 +163,7 @@ class CartServiceImplTest {
     void setUp() {
         objectMapper = new ObjectMapper();
         lenient().when(shopConfigService.getDouble(any(), anyDouble())).thenReturn(0.10);
+        lenient().when(modifierService.resolveOptions(any())).thenReturn(java.util.List.of());
         cartService = new CartServiceImpl(
             cartRepository,
             cartItemRepository,
@@ -170,6 +174,7 @@ class CartServiceImplTest {
             inventoryService,
             productService,
             shopConfigService,
+            modifierService,
             shopInfoService,
             promotionService,
             loyaltyService,

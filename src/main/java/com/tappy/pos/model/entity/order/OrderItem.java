@@ -101,6 +101,11 @@ public class OrderItem extends TenantAwareEntity {
     @Column(name = "metadata", columnDefinition = "jsonb")
     private String metadata;
 
+    /** Chosen modifier options as JSON: [{groupName, optionName, priceDelta}] (FnB). */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "modifiers", columnDefinition = "jsonb")
+    private String modifiers;
+
     /** Per-item customer note (e.g. "ít đường", "không hành", "thêm đá"). */
     @Column(name = "note", length = 500)
     private String note;

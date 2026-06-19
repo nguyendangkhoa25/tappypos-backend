@@ -22,6 +22,8 @@ public class OrderItemDTO {
     private BigDecimal taxAmount;
     private OrderItem.ItemType itemType;
     private String metadata;
+    /** Chosen modifiers as JSON: [{groupName, optionName, priceDelta}] (FnB). */
+    private String modifiers;
     private Long assignedEmployeeId;
     private String assignedEmployeeName;
     private BigDecimal commissionRate;

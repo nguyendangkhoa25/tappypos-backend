@@ -113,6 +113,11 @@ public class CartItemEntity {
     @Column(name = "variants", columnDefinition = "jsonb")
     private String variants;
 
+    /** Chosen modifier options as JSON: [{groupName, optionName, priceDelta}]. Delta already folded into unitPrice. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "modifiers", columnDefinition = "jsonb")
+    private String modifiers;
+
     @Column(name = "variant_id")
     private Long variantId;
 

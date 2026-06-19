@@ -99,6 +99,7 @@ public class CartServiceImpl implements CartService {
     private final InventoryService inventoryService;
     private final ProductService productService;
     private final ShopConfigService shopConfigService;
+    private final com.tappy.pos.service.modifier.ModifierService modifierService;
     private final ShopInfoService shopInfoService;
     private final PromotionService promotionService;
     private final LoyaltyService loyaltyService;
@@ -215,14 +216,25 @@ public class CartServiceImpl implements CartService {
             }
         }
 
-        // Step 2c: Resolve unit price — staff override wins; dynamic types use live market rate; fallback to catalogue
+        // Step 2c: Modifiers (FnB) — resolve chosen options; their delta folds into the unit price below.
+        java.util.List<com.tappy.pos.model.dto.modifier.ChosenModifierDTO> chosenModifiers =
+                modifierService.resolveOptions(request.getModifierOptionIds());
+        final BigDecimal modifierDelta = chosenModifiers.stream()
+                .map(com.tappy.pos.model.dto.modifier.ChosenModifierDTO::getPriceDelta)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        final String modifiersKey = chosenModifiers.isEmpty()
+                ? null : objectMapper.writeValueAsString(chosenModifiers);
+
+        // Step 2d: Resolve unit price — staff override wins; dynamic types use live market rate; fallback
+        // to catalogue. The modifier delta is folded in so it stays effectively final downstream.
         BigDecimal resolvedUnitPrice;
         if (request.getUnitPrice() != null && request.getUnitPrice().compareTo(BigDecimal.ZERO) > 0) {
-            resolvedUnitPrice = request.getUnitPrice();
+            resolvedUnitPrice = request.getUnitPrice().add(modifierDelta);
         } else if (DynamicPriceProductTypes.isDynamicPrice(product.getProductTypeCode())) {
-            resolvedUnitPrice = calculateDynamicUnitPrice(product);
+            resolvedUnitPrice = calculateDynamicUnitPrice(product).add(modifierDelta);
         } else {
-            resolvedUnitPrice = product.getPrice();
+            resolvedUnitPrice = product.getPrice().add(modifierDelta);
         }
 
         // Step 3: Check stock availability via InventoryService.
@@ -288,6 +300,7 @@ public class CartServiceImpl implements CartService {
         List<CartItemEntity> duplicates = cart.getItems().stream()
                 .filter(item -> item.getProductId().equals(request.getProductId())
                         && item.getVariants().equals(variantsJson)
+                        && java.util.Objects.equals(item.getModifiers(), modifiersKey)
                         && java.util.Objects.equals(item.getComboId(), request.getComboId()))
                 .toList();
 
@@ -328,6 +341,7 @@ public class CartServiceImpl implements CartService {
                     .discountType(DiscountType.NONE)
                     .discountValue(BigDecimal.ZERO)
                     .variants(variantsJson)
+                    .modifiers(modifiersKey)
                     .variantId(request.getVariantId())
                     .taxRate(itemTaxRate)
                     .comboId(request.getComboId())
@@ -709,6 +723,7 @@ public class CartServiceImpl implements CartService {
             oi.setProductId(cartItem.getProductId());
             oi.setProductName(cartItem.getProductName());
             oi.setVariantId(cartItem.getVariantId());
+            oi.setModifiers(cartItem.getModifiers());
             oi.setQuantity(cartItem.getQuantity());
             oi.setUnitPrice(cartItem.getUnitPrice());
             oi.setUnitCost(cartItem.getUnitCost());
@@ -1057,6 +1072,7 @@ public class CartServiceImpl implements CartService {
             oi.setProductId(cartItem.getProductId());
             oi.setProductName(cartItem.getProductName());
             oi.setVariantId(cartItem.getVariantId());
+            oi.setModifiers(cartItem.getModifiers());
             oi.setQuantity(cartItem.getQuantity());
             oi.setUnitPrice(cartItem.getUnitPrice());
             oi.setUnitCost(cartItem.getUnitCost());
@@ -1341,6 +1357,17 @@ public class CartServiceImpl implements CartService {
     private CartItemResponse mapItemToResponse(CartItemEntity item) {
         Map<String, String> variants = parseVariants(item.getVariants());
 
+        java.util.List<com.tappy.pos.model.dto.modifier.ChosenModifierDTO> modifiers = java.util.Collections.emptyList();
+        if (item.getModifiers() != null && !item.getModifiers().isBlank()) {
+            try {
+                modifiers = objectMapper.readValue(item.getModifiers(),
+                        objectMapper.getTypeFactory().constructCollectionType(
+                                java.util.List.class, com.tappy.pos.model.dto.modifier.ChosenModifierDTO.class));
+            } catch (Exception e) {
+                log.warn("Could not parse cart item modifiers: {}", e.getMessage());
+            }
+        }
+
         return CartItemResponse.builder()
                 .id(item.getId())
                 .productId(item.getProductId())
@@ -1361,6 +1388,7 @@ public class CartServiceImpl implements CartService {
                 .tax(item.getTax())
                 .lineGrandTotal(item.getLineGrandTotal())
                 .variants(variants)
+                .modifiers(modifiers)
                 .itemType(item.getItemType())
                 .metadata(item.getMetadata())
                 .notes(item.getNotes())
