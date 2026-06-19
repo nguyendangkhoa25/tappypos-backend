@@ -34,6 +34,9 @@ public interface RoomService {
     /** Housekeeping / front-desk status change (e.g. DIRTY → AVAILABLE, → OOO). */
     RoomDTO setRoomStatus(Long id, String status);
 
+    /** Assign (or clear, when employeeId is null) a cleaner to a room; stamps the cleaning-start time. */
+    RoomDTO assignCleaner(Long id, Long employeeId);
+
     // ── Reservations (advance bookings) ─────────────────────────────────────────
     /** Create a RESERVED stay for a future arrival (room is not occupied yet). */
     RoomStayDTO createReservation(CreateReservationRequest request);

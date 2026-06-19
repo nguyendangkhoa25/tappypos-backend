@@ -65,6 +65,14 @@ public class RoomController {
         return ResponseEntity.ok(ApiResponse.success(roomService.setRoomStatus(id, body.get("status")), "Đã cập nhật trạng thái phòng"));
     }
 
+    /** Assign a cleaner to a room (employeeId null clears the assignment). */
+    @PutMapping("/{id}/cleaner")
+    public ResponseEntity<ApiResponse<RoomDTO>> assignCleaner(@PathVariable Long id,
+                                                              @RequestBody Map<String, Long> body) {
+        log.info("PUT /rooms/{}/cleaner - {}", id, body.get("employeeId"));
+        return ResponseEntity.ok(ApiResponse.success(roomService.assignCleaner(id, body.get("employeeId")), "Đã phân công dọn phòng"));
+    }
+
     /** Ensure + return the room's guest QR token (used by the "show QR" / print action). */
     @PostMapping("/{id}/qr")
     public ResponseEntity<ApiResponse<RoomQrDTO>> ensureQr(@PathVariable Long id) {

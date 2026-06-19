@@ -60,6 +60,19 @@ public class RoomEntity extends TenantAwareEntity {
     @Column(name = "legacy_id", length = 50)
     private String legacyId;
 
+    // ── Housekeeping (4d) ──────────────────────────────────────────────────────
+    @Column(name = "assigned_cleaner_id")
+    private Long assignedCleanerId;
+
+    @Column(name = "assigned_cleaner_name", length = 255)
+    private String assignedCleanerName;
+
+    @Column(name = "cleaning_started_at")
+    private java.time.LocalDateTime cleaningStartedAt;
+
+    @Column(name = "cleaned_at")
+    private java.time.LocalDateTime cleanedAt;
+
     /** Auto-assign a QR token for guest in-room ordering when a room is first created. */
     @PrePersist
     protected void onRoomPersist() {

@@ -25,4 +25,9 @@ public class RoomDTO {
     private Integer sortOrder;
     private RoomStayDTO activeStay;    // current in-house stay, if any
     private RoomStayDTO reservedStay;  // soonest due reservation (arriving today/overdue) when not occupied
+    // Housekeeping (4d)
+    private Long assignedCleanerId;
+    private String assignedCleanerName;
+    private java.time.LocalDateTime cleaningStartedAt;
+    private java.time.LocalDateTime cleanedAt;
 }

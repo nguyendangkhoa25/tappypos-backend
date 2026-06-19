@@ -64,6 +64,7 @@ public class RoomServiceImpl implements RoomService {
     private final MessageService messageService;
     private final ActivityLogService activityLogService;
     private final ShopConfigService shopConfigService;
+    private final com.tappy.pos.repository.employee.EmployeeRepository employeeRepository;
 
     // ── Rooms / board ──────────────────────────────────────────────────────────
 
@@ -158,6 +159,34 @@ public class RoomServiceImpl implements RoomService {
             throw new BadRequestException(messageService.getMessage("error.room.status.occupied.locked"));
         }
         room.setStatus(next);
+        // Housekeeping timestamps: marking clean (→ AVAILABLE) records the finish; entering
+        // DIRTY starts a fresh cleaning cycle by clearing the prior assignment/timings.
+        if ("AVAILABLE".equals(next)) {
+            room.setCleanedAt(java.time.LocalDateTime.now());
+        } else if ("DIRTY".equals(next)) {
+            room.setAssignedCleanerId(null);
+            room.setAssignedCleanerName(null);
+            room.setCleaningStartedAt(null);
+            room.setCleanedAt(null);
+        }
+        return mapRoom(roomRepository.save(room), null);
+    }
+
+    @Override
+    public RoomDTO assignCleaner(Long id, Long employeeId) {
+        RoomEntity room = findRoomOrThrow(id);
+        if (employeeId == null) {
+            room.setAssignedCleanerId(null);
+            room.setAssignedCleanerName(null);
+            room.setCleaningStartedAt(null);
+        } else {
+            var emp = employeeRepository.findById(employeeId)
+                    .orElseThrow(() -> new BadRequestException(messageService.getMessage("error.room.cleaner.invalid")));
+            room.setAssignedCleanerId(emp.getId());
+            room.setAssignedCleanerName(emp.getFullName());
+            room.setCleaningStartedAt(java.time.LocalDateTime.now());
+            room.setCleanedAt(null);
+        }
         return mapRoom(roomRepository.save(room), null);
     }
 
@@ -654,6 +683,10 @@ public class RoomServiceImpl implements RoomService {
                 .sortOrder(r.getSortOrder())
                 .activeStay(activeStay)
                 .reservedStay(reservedStay)
+                .assignedCleanerId(r.getAssignedCleanerId())
+                .assignedCleanerName(r.getAssignedCleanerName())
+                .cleaningStartedAt(r.getCleaningStartedAt())
+                .cleanedAt(r.getCleanedAt())
                 .build();
     }
 
