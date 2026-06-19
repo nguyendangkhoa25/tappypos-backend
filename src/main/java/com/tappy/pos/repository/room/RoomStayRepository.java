@@ -16,6 +16,13 @@ public interface RoomStayRepository extends JpaRepository<RoomStayEntity, Long> 
 
     Optional<RoomStayEntity> findByIdAndDeletedFalse(Long id);
 
+    /** Checked-out stays whose checkout falls in [from, to) — for lodging analytics. */
+    @org.springframework.data.jpa.repository.Query(
+        "SELECT s FROM RoomStayEntity s WHERE s.deleted = false AND s.status = 'CHECKED_OUT' " +
+        "AND s.checkoutAt >= :from AND s.checkoutAt < :to")
+    List<RoomStayEntity> findCheckedOutBetween(@org.springframework.data.repository.query.Param("from") java.time.LocalDateTime from,
+                                               @org.springframework.data.repository.query.Param("to") java.time.LocalDateTime to);
+
     /** The current in-house stay for a room, if any. */
     Optional<RoomStayEntity> findFirstByRoomIdAndStatusAndDeletedFalse(Long roomId, String status);
 

@@ -13,6 +13,8 @@ public interface RoomRepository extends JpaRepository<RoomEntity, Long> {
 
     List<RoomEntity> findByDeletedFalseOrderBySortOrderAscRoomNumberAsc();
 
+    long countByDeletedFalse();
+
     Optional<RoomEntity> findByIdAndDeletedFalse(Long id);
 
     Optional<RoomEntity> findByQrTokenAndDeletedFalse(String qrToken);
