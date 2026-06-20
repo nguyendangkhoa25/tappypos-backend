@@ -4,11 +4,15 @@ import com.tappy.pos.config.FeatureContext;
 import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.repair.*;
+import com.tappy.pos.model.entity.order.Order;
+import com.tappy.pos.model.entity.order.OrderItem;
 import com.tappy.pos.model.entity.repair.RepairPart;
 import com.tappy.pos.model.entity.repair.RepairTicket;
 import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.model.enums.RepairStatus;
 import com.tappy.pos.multitenant.TenantContext;
+import com.tappy.pos.repository.employee.EmployeeRepository;
+import com.tappy.pos.repository.order.OrderRepository;
 import com.tappy.pos.repository.repair.RepairTicketRepository;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.audit.ActivityLogService;
@@ -21,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -28,6 +33,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -43,6 +49,8 @@ public class RepairTicketServiceImpl implements RepairTicketService {
     private final FeatureContext featureContext;
     private final MessageService messageService;
     private final ActivityLogService activityLogService;
+    private final OrderRepository orderRepository;
+    private final EmployeeRepository employeeRepository;
 
     @Override
     public Page<RepairTicketDTO> search(String status, String keyword, Pageable pageable) {
@@ -170,6 +178,15 @@ public class RepairTicketServiceImpl implements RepairTicketService {
             action = ActivityAction.REPAIR_CANCELLED;
         }
 
+        // §4a — on completion (or first delivery), turn the repair into a POS sale so it
+        // flows into REVENUE and the technician's COMMISSION. Idempotent via linkedOrderId.
+        boolean billable = RepairStatus.COMPLETED.name().equals(target)
+                || RepairStatus.DELIVERED.name().equals(target);
+        if (billable && ticket.getLinkedOrderId() == null) {
+            Long orderId = createCompletionOrder(ticket, actor);
+            if (orderId != null) ticket.setLinkedOrderId(orderId);
+        }
+
         RepairTicket saved = repairTicketRepository.save(ticket);
         activityLogService.logAsync(saved.getTenantId(), currentUsername(), null, action,
                 "REPAIR_TICKET", String.valueOf(saved.getId()),
@@ -214,7 +231,163 @@ public class RepairTicketServiceImpl implements RepairTicketService {
         return counts;
     }
 
+    @Override
+    public List<RepairTicketDTO> warrantyLookup(String keyword) {
+        String tenantId = tenantContext.getCurrentTenantId();
+        String normKeyword = (keyword != null && !keyword.isBlank()) ? keyword.trim() : null;
+        String createdByScope = featureContext.hasFeature(FEATURE_VIEW_ALL) ? null : currentUsername();
+        LocalDateTime now = LocalDateTime.now();
+        return repairTicketRepository.searchDeliveredUnderWarranty(tenantId, normKeyword, createdByScope).stream()
+                .filter(t -> warrantyExpiry(t) != null && warrantyExpiry(t).isAfter(now))
+                .limit(50)
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public RepairTicketDTO createWarrantyClaim(Long originalTicketId) {
+        RepairTicket original = findOrThrow(originalTicketId);
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime expiry = warrantyExpiry(original);
+        if (expiry == null || !expiry.isAfter(now)) {
+            throw new BadRequestException(messageService.getMessage("error.repair.warranty.invalid"));
+        }
+        // findOrThrow already scoped `original` to the current tenant; source the new ticket's
+        // tenant from TenantContext directly (consistent with create()).
+        String tenantId = tenantContext.getCurrentTenantId();
+        String username = currentUsername();
+
+        RepairTicket claim = RepairTicket.builder()
+                .tenantId(tenantId)
+                .ticketNumber(generateNumber(tenantId))
+                .customerId(original.getCustomerId())
+                .customerName(original.getCustomerName())
+                .customerPhone(original.getCustomerPhone())
+                .deviceType(original.getDeviceType())
+                .brand(original.getBrand())
+                .model(original.getModel())
+                .serialImei(original.getSerialImei())
+                .reportedFault(messageService.getMessage("repair.warranty.fault.prefix", original.getTicketNumber()))
+                .laborAmount(BigDecimal.ZERO)
+                .warrantyDays(0)
+                .isWarrantyClaim(true)
+                .status(RepairStatus.RECEIVED.name())
+                .receivedAt(now)
+                .note(messageService.getMessage("repair.warranty.note", original.getTicketNumber()))
+                .createdBy(username)
+                .parts(new ArrayList<>())
+                .build();
+        recomputeAmounts(claim);
+
+        RepairTicket saved = repairTicketRepository.save(claim);
+        activityLogService.logAsync(tenantId, username, null, ActivityAction.REPAIR_CREATED,
+                "REPAIR_TICKET", String.valueOf(saved.getId()),
+                messageService.getMessage("activity.repair.warranty", saved.getTicketNumber(), original.getTicketNumber()), null);
+        return mapToDTO(saved);
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
+
+    /** Repair-warranty expiry (deliveredAt + warrantyDays), or null when not applicable. */
+    private static LocalDateTime warrantyExpiry(RepairTicket t) {
+        if (t.getDeliveredAt() == null || t.getWarrantyDays() == null || t.getWarrantyDays() <= 0) return null;
+        return t.getDeliveredAt().plusDays(t.getWarrantyDays());
+    }
+
+    /**
+     * §4a — builds and persists a COMPLETED SELL order from a finished repair ticket:
+     * each charged part is a standard line, labor is a productless line carrying the
+     * assigned technician (with their commission rate resolved) so COMMISSION + REVENUE
+     * flow exactly as a normal POS sale. Returns the new order id, or null when there is
+     * nothing to charge (e.g. a free warranty repair).
+     */
+    private Long createCompletionOrder(RepairTicket ticket, String actor) {
+        BigDecimal total = nz(ticket.getTotalAmount());
+        if (total.signum() <= 0) return null;
+        String tenantId = ticket.getTenantId();
+        LocalDateTime now = LocalDateTime.now();
+
+        Order order = new Order();
+        order.setTenantId(tenantId);
+        order.setOrderNumber(generateOrderNumber());
+        order.setOrderType(Order.OrderType.SELL);
+        order.setPaymentMethod("CASH");
+        order.setCreatedBy(actor);
+        order.setNotes(messageService.getMessage("repair.order.note", ticket.getTicketNumber()));
+        order.complete(actor); // → COMPLETED + completedAt + completedBy
+
+        List<OrderItem> items = new ArrayList<>();
+
+        // Parts → standard lines (only positively-priced lines; unitPrice is @Positive).
+        for (RepairPart p : ticket.getParts()) {
+            BigDecimal unit = nz(p.getUnitPrice());
+            if (unit.signum() <= 0) continue;
+            int qty = p.getQuantity() != null && p.getQuantity() > 0 ? p.getQuantity() : 1;
+            OrderItem oi = new OrderItem();
+            oi.setTenantId(tenantId);
+            oi.setOrder(order);
+            oi.setProductId(p.getProductId());
+            oi.setProductName(p.getProductName());
+            oi.setQuantity(qty);
+            oi.setUnitPrice(unit);
+            oi.setAmount(unit.multiply(BigDecimal.valueOf(qty)));
+            oi.setStatus(OrderItem.ItemStatus.COMPLETED);
+            oi.setCompletedAt(now);
+            items.add(oi);
+        }
+
+        // Labor → productless line credited to the assigned technician for commission.
+        BigDecimal labor = nz(ticket.getLaborAmount());
+        if (labor.signum() > 0) {
+            OrderItem laborItem = new OrderItem();
+            laborItem.setTenantId(tenantId);
+            laborItem.setOrder(order);
+            laborItem.setProductName(messageService.getMessage("repair.labor.line", ticket.getTicketNumber()));
+            laborItem.setQuantity(1);
+            laborItem.setUnitPrice(labor);
+            laborItem.setAmount(labor);
+            laborItem.setStatus(OrderItem.ItemStatus.COMPLETED);
+            laborItem.setCompletedAt(now);
+            // Credit the assigned technician only when they resolve to an in-tenant employee.
+            // employeeRepository.findById runs under the tenant's RLS context, so a stale or
+            // cross-tenant technician id simply yields no attribution (no foreign name/commission).
+            if (ticket.getAssignedTechnicianId() != null) {
+                employeeRepository.findById(ticket.getAssignedTechnicianId()).ifPresent(emp -> {
+                    laborItem.setAssignedEmployeeId(emp.getId());
+                    laborItem.setAssignedEmployeeName(ticket.getAssignedTechnicianName());
+                    BigDecimal rate = emp.getCommissionRate() != null ? emp.getCommissionRate() : BigDecimal.ZERO;
+                    laborItem.setCommissionRate(rate);
+                    laborItem.setCommissionAmount(labor.multiply(rate).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
+                });
+            }
+            items.add(laborItem);
+        }
+
+        if (items.isEmpty()) return null;
+
+        order.setOrderItems(items);
+        order.setTotalAmount(total);
+        order.setSellAmount(total);
+        order.setAmountPaid(total);
+        BigDecimal commissionTotal = items.stream()
+                .map(i -> nz(i.getCommissionAmount()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        order.setCommissionAmount(commissionTotal);
+
+        Order saved = orderRepository.save(order);
+        activityLogService.logAsync(tenantId, actor, null, ActivityAction.ORDER_CREATED,
+                "ORDER", saved.getOrderNumber(),
+                messageService.getMessage("activity.repair.order", ticket.getTicketNumber(), saved.getOrderNumber()), null);
+        return saved.getId();
+    }
+
+    private String generateOrderNumber() {
+        String datePart = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        int seq = ThreadLocalRandom.current().nextInt(10000, 99999);
+        return "ORD-" + datePart + "-" + seq;
+    }
+
 
     /**
      * Finds the ticket within tenant scope. When the caller lacks REPAIR_VIEW_ALL,
@@ -280,6 +453,8 @@ public class RepairTicketServiceImpl implements RepairTicketService {
     private RepairTicketDTO mapToDTO(RepairTicket t) {
         List<RepairPartDTO> parts = t.getParts() == null ? List.of()
                 : t.getParts().stream().map(this::mapPart).collect(Collectors.toList());
+        LocalDateTime warrantyExpiresAt = warrantyExpiry(t);
+        boolean underWarranty = warrantyExpiresAt != null && warrantyExpiresAt.isAfter(LocalDateTime.now());
         return RepairTicketDTO.builder()
                 .id(t.getId())
                 .ticketNumber(t.getTicketNumber())
@@ -306,6 +481,8 @@ public class RepairTicketServiceImpl implements RepairTicketService {
                 .completedAt(t.getCompletedAt())
                 .deliveredAt(t.getDeliveredAt())
                 .linkedOrderId(t.getLinkedOrderId())
+                .warrantyExpiresAt(warrantyExpiresAt)
+                .underWarranty(underWarranty)
                 .createdBy(t.getCreatedBy())
                 .createdAt(t.getCreatedAt())
                 .parts(parts)

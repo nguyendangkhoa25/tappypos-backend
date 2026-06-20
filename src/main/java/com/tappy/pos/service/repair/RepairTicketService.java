@@ -24,4 +24,16 @@ public interface RepairTicketService {
 
     /** Ticket counts grouped by status (for the status board), scoped to visibility. */
     Map<String, Long> statusCounts();
+
+    /**
+     * Warranty lookup (§4d): delivered repair tickets whose repair-warranty window is
+     * still open, matched by serial/IMEI, phone, customer name, or ticket number.
+     */
+    java.util.List<RepairTicketDTO> warrantyLookup(String keyword);
+
+    /**
+     * Opens a warranty repair (§4d): a new free-labor ticket cloned from a still-in-warranty
+     * delivered ticket. Throws if the original is no longer under warranty.
+     */
+    RepairTicketDTO createWarrantyClaim(Long originalTicketId);
 }

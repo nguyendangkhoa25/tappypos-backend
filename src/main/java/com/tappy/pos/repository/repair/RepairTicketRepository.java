@@ -57,6 +57,29 @@ public interface RepairTicketRepository extends JpaRepository<RepairTicket, Long
         """)
     long countTodayByTenantId(@Param("tenantId") String tenantId, @Param("today") LocalDate today);
 
+    // ── Warranty lookup: delivered tickets that carry a repair warranty. ────────
+    // The final "still valid" check (deliveredAt + warrantyDays >= now) is done in
+    // the service because JPQL can't add a column's worth of days to a timestamp.
+    // When createdBy is non-null (caller lacks REPAIR_VIEW_ALL) the result is scoped
+    // to the caller's own tickets.
+    @Query("""
+        SELECT t FROM RepairTicket t
+        WHERE t.tenantId = :tenantId
+          AND t.deleted = false
+          AND t.status = 'DELIVERED'
+          AND t.deliveredAt IS NOT NULL
+          AND t.warrantyDays > 0
+          AND (:createdBy IS NULL OR t.createdBy = :createdBy)
+          AND (:keyword IS NULL OR LOWER(COALESCE(t.serialImei, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
+               OR LOWER(t.customerName) LIKE LOWER(CONCAT('%', :keyword, '%'))
+               OR LOWER(COALESCE(t.customerPhone, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
+               OR LOWER(t.ticketNumber) LIKE LOWER(CONCAT('%', :keyword, '%')))
+        ORDER BY t.deliveredAt DESC
+        """)
+    java.util.List<RepairTicket> searchDeliveredUnderWarranty(@Param("tenantId") String tenantId,
+                                                              @Param("keyword") String keyword,
+                                                              @Param("createdBy") String createdBy);
+
     @Query("""
         SELECT t.status, COUNT(t) FROM RepairTicket t
         WHERE t.tenantId = :tenantId AND t.deleted = false

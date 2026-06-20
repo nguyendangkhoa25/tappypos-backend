@@ -39,6 +39,19 @@ public class RepairTicketController {
         return ResponseEntity.ok(ApiResponse.success(repairTicketService.statusCounts(), "OK"));
     }
 
+    @GetMapping("/warranty-lookup")
+    public ResponseEntity<ApiResponse<java.util.List<RepairTicketDTO>>> warrantyLookup(
+            @RequestParam(required = false) String keyword) {
+        log.info("GET /repair-tickets/warranty-lookup?keyword={}", keyword);
+        return ResponseEntity.ok(ApiResponse.success(repairTicketService.warrantyLookup(keyword), "OK"));
+    }
+
+    @PostMapping("/{id}/warranty-claim")
+    public ResponseEntity<ApiResponse<RepairTicketDTO>> warrantyClaim(@PathVariable Long id) {
+        log.info("POST /repair-tickets/{}/warranty-claim", id);
+        return ResponseEntity.ok(ApiResponse.success(repairTicketService.createWarrantyClaim(id), "Đã mở phiếu bảo hành"));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<RepairTicketDTO>> getById(@PathVariable Long id) {
         log.info("GET /repair-tickets/{}", id);

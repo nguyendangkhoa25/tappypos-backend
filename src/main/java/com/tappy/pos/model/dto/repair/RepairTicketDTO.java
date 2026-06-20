@@ -41,6 +41,11 @@ public class RepairTicketDTO {
     private LocalDateTime deliveredAt;
     private Long linkedOrderId;
 
+    /** When the repair warranty lapses (deliveredAt + warrantyDays); null if not delivered or no warranty. */
+    private LocalDateTime warrantyExpiresAt;
+    /** True when the device is still inside its repair-warranty window right now. */
+    private Boolean underWarranty;
+
     private String createdBy;
     private LocalDateTime createdAt;
 
