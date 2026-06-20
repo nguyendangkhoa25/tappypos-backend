@@ -29,6 +29,12 @@ public interface OrderService {
 
     OrderDTO getOrderById(Long id);
 
+    /** All quotations (báo giá) — orders flagged is_quote, newest first. */
+    List<OrderDTO> getQuotes();
+
+    /** Convert a quotation into a real order: deduct stock and mark it completed. */
+    OrderDTO convertQuote(Long id);
+
     OrderDTO startOrder(Long id);
 
     OrderDTO completeOrder(Long id);
@@ -98,6 +104,13 @@ public interface OrderService {
 
     OrderDTO payAndCompleteOrder(Long orderId, PayAndCompleteRequest request);
 
+    // ── Split / merge bill (FnB table tabs) ─────────────────────────────────────
+    /** Split a running tab into child checks; returns every settle-able check in the group. */
+    List<OrderDTO> splitBill(Long orderId, com.tappy.pos.model.dto.order.SplitBillRequest request);
+
+    /** Fold the source order's items into the target order, void the source, release its table. */
+    OrderDTO mergeBill(Long targetOrderId, com.tappy.pos.model.dto.order.MergeBillRequest request);
+
     // ── Item-level work queue (MY_WORK feature) ────────────────────────────────
     Page<WorkItemDTO> getMyWorkItems(Pageable pageable);
 
@@ -158,4 +171,7 @@ public interface OrderService {
 
     /** Owner rejects a SUBMITTED order → CANCELLED with an optional reason. */
     OrderDTO rejectOrder(Long orderId, String reason);
+
+    /** Advance a delivery order's status (PENDING → DELIVERING → DELIVERED / CANCELLED). */
+    OrderDTO updateDeliveryStatus(Long orderId, com.tappy.pos.model.entity.order.Order.DeliveryStatus status);
 }

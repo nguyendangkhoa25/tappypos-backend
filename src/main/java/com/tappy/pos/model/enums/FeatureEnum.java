@@ -22,6 +22,7 @@ public enum FeatureEnum {
     SALARY_VIEW_ALL("Xem Tất Cả Bảng Lương", "Xem bảng lương của tất cả nhân viên; nếu không có quyền này, chỉ xem được bảng lương của bản thân"),
     CUSTOMER("Khách Hàng", "Quản lý thông tin khách hàng, lịch sử mua hàng"),
     LOYALTY("Tích Điểm Khách Hàng", "Chương trình tích điểm và phần thưởng khách hàng"),
+    CUSTOMER_DEBT("Công Nợ Khách Hàng", "Bán chịu, ghi sổ nợ và thu nợ khách hàng (thường dùng cho vật liệu xây dựng)"),
     INVOICE("Hóa Đơn", "Quản lý hóa đơn, xuất hóa đơn điện tử"),
     REVENUE("Doanh Thu", "Xem báo cáo doanh thu, lợi nhuận"),
     EXPENSE("Chi Phí", "Theo dõi và quản lý chi phí hoạt động cửa hàng"),

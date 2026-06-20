@@ -30,6 +30,12 @@ public interface PawnService {
 
     PawnResponse extendPawn(Long pawnId, PawnRequest pawnRequest);
 
+    /** Stores the borrower's drawn signature against a PAWNED contract (digital contract, §4d). */
+    PawnResponse signContract(Long pawnId, SignPawnRequest request);
+
+    /** Clears the stored signature so the contract can be re-signed. */
+    PawnResponse removeSignature(Long pawnId);
+
     PawnKPIs getPawnKPIs(DateFilterRequest dateFilter);
 
     FileSystemResource exportPawns(SearchPawnRequest searchRequest) throws IOException;

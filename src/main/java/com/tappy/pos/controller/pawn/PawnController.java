@@ -155,6 +155,26 @@ public class PawnController {
         );
     }
 
+    @PostMapping("/{pawnId}/signature")
+    public ResponseEntity<ApiResponse<PawnResponse>> signContract(@PathVariable Long pawnId, @Valid @RequestBody SignPawnRequest request) {
+        log.info("Request: Sign pawn contract: {}", pawnId);
+        PawnResponse response = pawnService.signContract(pawnId, request);
+        log.info("Pawn contract signed: {}", pawnId);
+        return ResponseEntity.ok(
+                ApiResponse.success(response, "Pawn contract signed successfully")
+        );
+    }
+
+    @DeleteMapping("/{pawnId}/signature")
+    public ResponseEntity<ApiResponse<PawnResponse>> removeSignature(@PathVariable Long pawnId) {
+        log.info("Request: Remove pawn signature: {}", pawnId);
+        PawnResponse response = pawnService.removeSignature(pawnId);
+        log.info("Pawn signature removed: {}", pawnId);
+        return ResponseEntity.ok(
+                ApiResponse.success(response, "Pawn signature removed successfully")
+        );
+    }
+
     @PostMapping("/kpi-section")
     public ResponseEntity<ApiResponse<PawnKPIs>> getPawnKPIs(@Valid @RequestBody DateFilterRequest dateFilter) {
         log.info("Request: Get pawn KPIs");

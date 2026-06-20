@@ -339,6 +339,20 @@ public class OrderController {
      * GET /api/orders/{id}
      * Returns a single order with its items.
      */
+    /** Quotations (báo giá) — orders flagged is_quote. */
+    @GetMapping("/quotes")
+    public ResponseEntity<ApiResponse<java.util.List<OrderDTO>>> getQuotes() {
+        log.info("Endpoint: GET /orders/quotes");
+        return ResponseEntity.ok(ApiResponse.success(orderService.getQuotes(), "OK"));
+    }
+
+    /** Convert a quotation into a real order (deduct stock + complete). */
+    @PostMapping("/{id}/convert-quote")
+    public ResponseEntity<ApiResponse<OrderDTO>> convertQuote(@PathVariable Long id) {
+        log.info("Endpoint: POST /orders/{}/convert-quote", id);
+        return ResponseEntity.ok(ApiResponse.success(orderService.convertQuote(id), "Quote converted"));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<OrderDTO>> getOrderById(@PathVariable Long id) {
         log.info("Endpoint: GET /orders/{}", id);
@@ -673,6 +687,28 @@ public class OrderController {
         return ResponseEntity.ok(ApiResponse.success(order, "Order paid and completed"));
     }
 
+    // ── Split / merge bill (FnB table tabs) ─────────────────────────────────────
+
+    /** POST /api/orders/{id}/split — split a running tab into child checks (by item or evenly). */
+    @PostMapping("/{id}/split")
+    public ResponseEntity<ApiResponse<List<OrderDTO>>> splitBill(
+            @PathVariable Long id,
+            @Valid @RequestBody com.tappy.pos.model.dto.order.SplitBillRequest request) {
+        log.info("Endpoint: POST /orders/{}/split mode={}", id, request.getMode());
+        List<OrderDTO> checks = orderService.splitBill(id, request);
+        return ResponseEntity.ok(ApiResponse.success(checks, "Bill split"));
+    }
+
+    /** POST /api/orders/{id}/merge — fold the source order's items into this order (gộp bill). */
+    @PostMapping("/{id}/merge")
+    public ResponseEntity<ApiResponse<OrderDTO>> mergeBill(
+            @PathVariable Long id,
+            @Valid @RequestBody com.tappy.pos.model.dto.order.MergeBillRequest request) {
+        log.info("Endpoint: POST /orders/{}/merge source={}", id, request.getSourceOrderId());
+        OrderDTO order = orderService.mergeBill(id, request);
+        return ResponseEntity.ok(ApiResponse.success(order, "Bills merged"));
+    }
+
     // ── Staff performance endpoints (requires ORDER_VIEW_ALL) ──────────────────
 
     @GetMapping("/by-staff/summary")
@@ -762,5 +798,17 @@ public class OrderController {
         log.info("Endpoint: PATCH /orders/{}/reject", orderId);
         String reason = request != null ? request.getReason() : null;
         return ResponseEntity.ok(ApiResponse.success(orderService.rejectOrder(orderId, reason), "Order rejected"));
+    }
+
+    /** PATCH /api/orders/{id}/delivery-status — advance a delivery order's status. */
+    @PatchMapping("/{orderId}/delivery-status")
+    public ResponseEntity<ApiResponse<OrderDTO>> updateDeliveryStatus(
+            @PathVariable Long orderId,
+            @RequestBody java.util.Map<String, String> body) {
+        com.tappy.pos.model.entity.order.Order.DeliveryStatus status =
+                com.tappy.pos.model.entity.order.Order.DeliveryStatus.valueOf(body.get("status"));
+        log.info("Endpoint: PATCH /orders/{}/delivery-status → {}", orderId, status);
+        return ResponseEntity.ok(ApiResponse.success(
+                orderService.updateDeliveryStatus(orderId, status), "Delivery status updated"));
     }
 }

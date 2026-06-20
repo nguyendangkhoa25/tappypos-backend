@@ -43,4 +43,21 @@ public class LoyaltyProgram extends TenantAwareEntity {
     @Builder.Default
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
+
+    // ── Stamp card ("mua N ly tặng 1") — opt-in, disabled by default ────────────
+
+    /** When true, qualifying orders accrue stamps toward a free-item reward. */
+    @Builder.Default
+    @Column(name = "stamp_card_enabled", nullable = false)
+    private Boolean stampCardEnabled = false;
+
+    /** Stamps required to fill one card (e.g. 10 → mua 10 ly tặng 1). */
+    @Builder.Default
+    @Column(name = "stamp_card_size", nullable = false)
+    private Integer stampCardSize = 10;
+
+    /** Human description of the reward shown to staff/customer. */
+    @Builder.Default
+    @Column(name = "stamp_card_reward", nullable = false, length = 255)
+    private String stampCardReward = "Tặng 1 ly nước bất kỳ";
 }

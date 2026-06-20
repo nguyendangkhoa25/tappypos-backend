@@ -102,8 +102,12 @@ class ApiSmokeIntegrationTest {
         // V001 = consolidated bootstrap; V002/V003 = bakery pre-order + recipe; V004 = repair
         // module; V005 = per-variant barcode index; V006 = FnB service charge; V007 = order channel;
         // V008 = FnB modifier groups; V009 = modifier selections on lines; V010 = room housekeeping;
-        // V011 = customer id_number (KYC); V012 = shop-own gold-price history.
-        assertThat(versions).containsExactly("001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012");
+        // V011 = customer id_number (KYC); V012 = shop-own gold-price history; V013 = order split/merge;
+        // V014 = table reservations; V015 = loyalty stamp card; V016 = order delivery; V017 = order
+        // stamps awarded; V018 = order prescription; V019 = customer debt (công nợ); V020 = product alt-unit;
+        // V021 = order-item sell unit; V022 = wholesale price + customer type; V023 = order quote (báo giá).
+        assertThat(versions).containsExactly("001", "002", "003", "004", "005", "006", "007", "008", "009",
+                "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023");
 
         // Tables created by the bootstrap (formerly separate booking/cash-drawer migrations).
         assertThat(tableExists("tenants")).isTrue();

@@ -49,6 +49,9 @@ public class InventoryDTO {
     private String inventoryType;
     private Boolean lowStock;
     private Boolean expired;
+    /** True when the product is a prescription-required drug (pharmacy) — drives the POS grid badge.
+     *  Populated by the service via a batch lookup; left null by fromEntity (defaults to not-required). */
+    private Boolean prescriptionRequired;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

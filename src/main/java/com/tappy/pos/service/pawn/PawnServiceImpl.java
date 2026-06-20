@@ -2,7 +2,10 @@ package com.tappy.pos.service.pawn;
 
 import com.tappy.pos.config.AuthContext;
 import com.tappy.pos.config.FeatureContext;
+import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.exception.PawnStatusNotAllowException;
+import com.tappy.pos.service.storage.R2CleanupService;
+import com.tappy.pos.service.storage.R2StorageService;
 import com.tappy.pos.service.tenant.ShopInfoService;
 import com.tappy.pos.service.audit.ActivityLogService;
 import com.tappy.pos.service.MessageService;
@@ -67,9 +70,15 @@ public class PawnServiceImpl implements PawnService {
     private final PawnRealEstateRepository realEstateRepository;
     private final PawnGeneralRepository generalRepository;
     private final PawnJewelryRepository jewelryRepository;
+    private final R2StorageService r2StorageService;
+    private final R2CleanupService r2CleanupService;
 
     @Value("${schedule.cleanup.pawn.cutoffMonths:3}")
     private int cutoffMonths;
+
+    /** Cap on a decoded signature PNG — a finger-drawn signature is well under this. */
+    private static final int MAX_SIGNATURE_BYTES = 256 * 1024;
+    private static final byte[] PNG_MAGIC = {(byte) 0x89, 'P', 'N', 'G'};
 
     @Override
     public PawnResponse createPawn(PawnRequest pawnRequest) {
@@ -207,6 +216,7 @@ public class PawnServiceImpl implements PawnService {
                     .id(customer.getId())
                     .name(customer.getName())
                     .phone(customer.getPhone())
+                    .idNumber(customer.getIdNumber())
                     .build();
             pawnResponse.setCustomer(customerDTO);
             // Prefer the name stored on the pawn itself (set at creation for visiting guests).
@@ -214,12 +224,107 @@ public class PawnServiceImpl implements PawnService {
                     ? pawnEntity.getCustomerName() : customer.getName();
             pawnResponse.setCustomerName(resolvedName);
             pawnResponse.setPhone(customer.getPhone());
+            pawnResponse.setCustomerIdNumber(customer.getIdNumber());
         });
         enrichWithItemDetail(pawnResponse, pawnId, pawnEntity.getPawnCategory());
         List<PawnAuditEntity> auditEntities = auditRepository.findByPawnIdOrderByActionIdAsc(pawnId);
         List<PawnAudit> pawnAudits = auditEntities.stream().map(pawnMapper::auditFromPawnAuditEntity).toList();
         pawnResponse.setAudits(pawnAudits);
         return pawnResponse;
+    }
+
+    @Override
+    public PawnResponse signContract(Long pawnId, SignPawnRequest request) {
+        PawnEntity pawnEntity = loadPawnWithOwnershipGuard(pawnId);
+        // Only an active contract can be signed (not redeemed/forfeited/cancelled).
+        if (pawnEntity.getPawnStatus() != PawnStatus.PAWNED) {
+            throw new PawnStatusNotAllowException(messageService.getMessage(
+                    "error.pawn.statusNotAllowed", new Object[]{pawnEntity.getPawnStatus()}));
+        }
+
+        byte[] png = decodeSignaturePng(request.getSignature());
+
+        // Upload the new signature first; only delete the old object once the new one is stored.
+        String oldKey = r2StorageService.keyFromUrl(pawnEntity.getCustomerSignatureUrl());
+        String key = "pawn-signatures/" + tenantContext.getCurrentTenantId() + "/"
+                + pawnId + "-" + UUID.randomUUID() + ".png";
+        String url = r2StorageService.upload(key, png, "image/png");
+
+        pawnEntity.setCustomerSignatureUrl(StringUtils.isBlank(url) ? null : url);
+        pawnEntity.setSignedAt(LocalDateTime.now());
+        pawnEntity.setUpdatedBy(authContext.getCurrentUsername());
+        pawnEntity.setUpdatedAt(LocalDateTime.now());
+        pawnRepository.save(pawnEntity);
+
+        r2CleanupService.deleteAsync(oldKey);
+
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.PAWN_SIGNED, "PAWN", String.valueOf(pawnId),
+                messageService.getMessage("activity.pawn.signed", pawnId), null);
+
+        return getPawnDetails(pawnId);
+    }
+
+    @Override
+    public PawnResponse removeSignature(Long pawnId) {
+        PawnEntity pawnEntity = loadPawnWithOwnershipGuard(pawnId);
+        String oldKey = r2StorageService.keyFromUrl(pawnEntity.getCustomerSignatureUrl());
+        pawnEntity.setCustomerSignatureUrl(null);
+        pawnEntity.setSignedAt(null);
+        pawnEntity.setUpdatedBy(authContext.getCurrentUsername());
+        pawnEntity.setUpdatedAt(LocalDateTime.now());
+        pawnRepository.save(pawnEntity);
+        r2CleanupService.deleteAsync(oldKey);
+        return getPawnDetails(pawnId);
+    }
+
+    /**
+     * Loads a pawn and enforces the PAWN_VIEW_ALL ownership guard — a staffer who cannot view a
+     * contract cannot sign/modify it. Throws 404 (not 403) to avoid leaking record existence,
+     * mirroring {@link #getPawnDetails}.
+     */
+    private PawnEntity loadPawnWithOwnershipGuard(Long pawnId) {
+        PawnEntity pawnEntity = pawnRepository.findById(pawnId).orElseThrow(ResourceNotFoundException::new);
+        if (!featureContext.hasFeature("PAWN_VIEW_ALL")) {
+            String currentUser = authContext.getCurrentUsername();
+            if (!currentUser.equals(pawnEntity.getCreatedBy())) {
+                log.warn("User {} attempted to modify pawn {} created by {} without PAWN_VIEW_ALL",
+                        currentUser, pawnId, pawnEntity.getCreatedBy());
+                throw new ResourceNotFoundException();
+            }
+        }
+        return pawnEntity;
+    }
+
+    /** Decodes a PNG data URL / base64 signature, validating it is a PNG within the size cap. */
+    private byte[] decodeSignaturePng(String signature) {
+        String base64 = signature == null ? "" : signature.trim();
+        int comma = base64.indexOf(',');
+        if (base64.startsWith("data:") && comma > 0) {
+            base64 = base64.substring(comma + 1);
+        }
+        base64 = base64.replaceAll("\\s", "");
+        byte[] bytes;
+        try {
+            bytes = Base64.getDecoder().decode(base64);
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException(messageService.getMessage("error.pawn.signatureInvalid"));
+        }
+        if (bytes.length < PNG_MAGIC.length || !startsWith(bytes, PNG_MAGIC)) {
+            throw new BadRequestException(messageService.getMessage("error.pawn.signatureInvalid"));
+        }
+        if (bytes.length > MAX_SIGNATURE_BYTES) {
+            throw new BadRequestException(messageService.getMessage("error.pawn.signatureTooLarge"));
+        }
+        return bytes;
+    }
+
+    private static boolean startsWith(byte[] data, byte[] prefix) {
+        if (data.length < prefix.length) return false;
+        for (int i = 0; i < prefix.length; i++) {
+            if (data[i] != prefix[i]) return false;
+        }
+        return true;
     }
 
     @Override
@@ -332,12 +437,14 @@ public class PawnServiceImpl implements PawnService {
                     .id(customer.getId())
                     .name(customer.getName())
                     .phone(customer.getPhone())
+                    .idNumber(customer.getIdNumber())
                     .build();
             pawnResponse.setCustomer(customerDTO);
             String resolvedName = StringUtils.isNotEmpty(pawnEntity.getCustomerName())
                     ? pawnEntity.getCustomerName() : customer.getName();
             pawnResponse.setCustomerName(resolvedName);
             pawnResponse.setPhone(customer.getPhone());
+            pawnResponse.setCustomerIdNumber(customer.getIdNumber());
         });
         if (redeemRequest != null && redeemRequest.getRedeemDate() != null) {
             redeemDate = DateTimeUtil.fromLocalDateTime(redeemRequest.getRedeemDate());

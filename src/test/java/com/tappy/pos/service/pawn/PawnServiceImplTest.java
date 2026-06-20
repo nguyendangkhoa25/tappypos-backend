@@ -2,8 +2,11 @@ package com.tappy.pos.service.pawn;
 
 import com.tappy.pos.config.AuthContext;
 import com.tappy.pos.config.FeatureContext;
+import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.exception.PawnStatusNotAllowException;
 import com.tappy.pos.exception.ResourceNotFoundException;
+import com.tappy.pos.service.storage.R2CleanupService;
+import com.tappy.pos.service.storage.R2StorageService;
 import com.tappy.pos.model.dto.pawn.*;
 import com.tappy.pos.model.entity.customer.Customer;
 import com.tappy.pos.model.entity.pawn.PawnAuditEntity;
@@ -11,6 +14,7 @@ import com.tappy.pos.model.entity.pawn.PawnElectronicsEntity;
 import com.tappy.pos.model.entity.pawn.PawnEntity;
 import com.tappy.pos.model.entity.pawn.PawnQuery;
 import com.tappy.pos.model.entity.pawn.ReqMoneyEntity;
+import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.model.enums.PawnStatus;
 import com.tappy.pos.model.mapper.PawnMapper;
 import com.tappy.pos.multitenant.TenantContext;
@@ -44,6 +48,7 @@ import org.springframework.data.jpa.domain.Specification;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -77,6 +82,8 @@ class PawnServiceImplTest {
     @Mock private PawnWatchRepository watchRepository;
     @Mock private PawnRealEstateRepository realEstateRepository;
     @Mock private PawnGeneralRepository generalRepository;
+    @Mock private R2StorageService r2StorageService;
+    @Mock private R2CleanupService r2CleanupService;
 
     @InjectMocks
     private PawnServiceImpl pawnService;
@@ -1428,5 +1435,104 @@ class PawnServiceImplTest {
         assertThat(result).isNotNull();
         verify(electronicsRepository).findByPawnId(6L);
         verify(pawnMapper).fromElectronicsEntity(electronicsEntity);
+    }
+
+    // ── signContract / removeSignature (digital pawn contract, §4d) ─────────────
+
+    /** A minimal valid PNG header (8-byte signature) base64-encoded as a data URL. */
+    private static String pngDataUrl() {
+        byte[] png = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+        return "data:image/png;base64," + Base64.getEncoder().encodeToString(png);
+    }
+
+    private void stubGetPawnDetails() {
+        when(pawnMapper.fromPawnEntity(pawnEntity)).thenReturn(pawnResponse);
+        when(customerRepository.findById(anyLong())).thenReturn(Optional.empty());
+        when(auditRepository.findByPawnIdOrderByActionIdAsc(1L)).thenReturn(List.of());
+    }
+
+    @Test
+    @DisplayName("signContract stores the signature, stamps signedAt, logs PAWN_SIGNED, cleans up the old image")
+    void testSignContract_Success() {
+        pawnEntity.setCustomerSignatureUrl("https://img/old.png");
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+        when(r2StorageService.keyFromUrl("https://img/old.png")).thenReturn("old-key");
+        when(r2StorageService.upload(anyString(), any(byte[].class), eq("image/png")))
+                .thenReturn("https://img/new.png");
+        stubGetPawnDetails();
+
+        SignPawnRequest req = new SignPawnRequest();
+        req.setSignature(pngDataUrl());
+
+        PawnResponse result = pawnService.signContract(1L, req);
+
+        assertThat(result).isNotNull();
+        assertThat(pawnEntity.getCustomerSignatureUrl()).isEqualTo("https://img/new.png");
+        assertThat(pawnEntity.getSignedAt()).isNotNull();
+        verify(r2StorageService).upload(anyString(), any(byte[].class), eq("image/png"));
+        verify(pawnRepository).save(pawnEntity);
+        verify(r2CleanupService).deleteAsync("old-key");
+        verify(activityLogService).logAsync(eq("test-shop"), eq("staff01"), isNull(),
+                eq(ActivityAction.PAWN_SIGNED), eq("PAWN"), eq("1"), any(), isNull());
+    }
+
+    @Test
+    @DisplayName("signContract rejects a non-PAWNED contract")
+    void testSignContract_StatusNotAllowed() {
+        pawnEntity.setPawnStatus(PawnStatus.REDEEMED);
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+
+        SignPawnRequest req = new SignPawnRequest();
+        req.setSignature(pngDataUrl());
+
+        assertThatThrownBy(() -> pawnService.signContract(1L, req))
+                .isInstanceOf(PawnStatusNotAllowException.class);
+        verify(r2StorageService, never()).upload(anyString(), any(byte[].class), anyString());
+    }
+
+    @Test
+    @DisplayName("signContract throws 404 when a non-owner lacks PAWN_VIEW_ALL")
+    void testSignContract_OwnershipDenied() {
+        pawnEntity.setCreatedBy("someone-else");
+        when(featureContext.hasFeature("PAWN_VIEW_ALL")).thenReturn(false);
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+
+        SignPawnRequest req = new SignPawnRequest();
+        req.setSignature(pngDataUrl());
+
+        assertThatThrownBy(() -> pawnService.signContract(1L, req))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verify(r2StorageService, never()).upload(anyString(), any(byte[].class), anyString());
+    }
+
+    @Test
+    @DisplayName("signContract rejects a payload that is not a PNG")
+    void testSignContract_InvalidPng() {
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+
+        SignPawnRequest req = new SignPawnRequest();
+        req.setSignature("data:image/png;base64," + Base64.getEncoder().encodeToString("not-a-png".getBytes()));
+
+        assertThatThrownBy(() -> pawnService.signContract(1L, req))
+                .isInstanceOf(BadRequestException.class);
+        verify(r2StorageService, never()).upload(anyString(), any(byte[].class), anyString());
+    }
+
+    @Test
+    @DisplayName("removeSignature clears the columns and cleans up the stored image")
+    void testRemoveSignature_Success() {
+        pawnEntity.setCustomerSignatureUrl("https://img/old.png");
+        pawnEntity.setSignedAt(LocalDateTime.now());
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+        when(r2StorageService.keyFromUrl("https://img/old.png")).thenReturn("old-key");
+        stubGetPawnDetails();
+
+        PawnResponse result = pawnService.removeSignature(1L);
+
+        assertThat(result).isNotNull();
+        assertThat(pawnEntity.getCustomerSignatureUrl()).isNull();
+        assertThat(pawnEntity.getSignedAt()).isNull();
+        verify(pawnRepository).save(pawnEntity);
+        verify(r2CleanupService).deleteAsync("old-key");
     }
 }

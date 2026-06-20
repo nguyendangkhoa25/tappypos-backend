@@ -96,6 +96,12 @@ public class OnboardingController {
                 "NOTIFICATION", "FEEDBACK", "ACTIVITY_LOG", "SHOP_INFO",
                 "PRINT_TEMPLATE", "BANK_ACCOUNT", "INVOICE", "ACCOUNTING"
         ));
+        m.put(ShopType.BUILDING_MATERIALS, List.of(
+                "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "PRODUCT", "POS", "INVENTORY",
+                "CUSTOMER", "EMPLOYEE", "EXPENSE", "REVENUE", "USER", "VENDOR",
+                "NOTIFICATION", "FEEDBACK", "ACTIVITY_LOG", "SHOP_INFO",
+                "PRINT_TEMPLATE", "BANK_ACCOUNT", "INVOICE", "ACCOUNTING"
+        ));
         m.put(ShopType.PHARMACY, List.of(
                 "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "PRODUCT", "POS", "INVENTORY",
                 "CUSTOMER", "EMPLOYEE", "EXPENSE", "REVENUE", "USER", "VENDOR",
@@ -136,6 +142,7 @@ public class OnboardingController {
 
     private static final Map<String, ShopType> SHOP_TYPE_MAP = Map.ofEntries(
             Map.entry("CONVENIENCE_STORE",  ShopType.CONVENIENCE_STORE),
+            Map.entry("BUILDING_MATERIALS", ShopType.BUILDING_MATERIALS),
             Map.entry("FOOD_BEVERAGE",      ShopType.FOOD_BEVERAGE),
             Map.entry("BAKERY",             ShopType.BAKERY),
             Map.entry("RESTAURANT",         ShopType.RESTAURANT),
@@ -166,6 +173,7 @@ public class OnboardingController {
     static {
         Map<ShopType, String> m = new EnumMap<>(ShopType.class);
         m.put(ShopType.CONVENIENCE_STORE, "gen");
+        m.put(ShopType.BUILDING_MATERIALS, "vlxd");
         m.put(ShopType.FOOD_BEVERAGE, "food");
         m.put(ShopType.BAKERY, "bake");
         m.put(ShopType.RESTAURANT, "res");
@@ -197,6 +205,7 @@ public class OnboardingController {
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getShopTypes() {
         List<Map<String, Object>> types = Arrays.asList(
                 shopEntry("CONVENIENCE_STORE", "Cửa hàng tổng hợp"),
+                shopEntry("BUILDING_MATERIALS", "Cửa hàng vật liệu xây dựng"),
                 shopEntry("FOOD_BEVERAGE", "Thực phẩm / Đồ uống"),
                 shopEntry("BAKERY", "Tiệm bánh"),
                 shopEntry("RESTAURANT", "Quán ăn / Nhà hàng"),

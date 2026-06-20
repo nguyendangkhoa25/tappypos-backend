@@ -16,6 +16,7 @@ public class CreateCustomerRequest {
     @NotBlank(message = "Số điện thoại không được để trống")
     private String phone;
     private String email;
+    private String customerType;
     private String notes;
     private String idNumber;
 

@@ -72,6 +72,15 @@ class TenantSeedServiceTest {
     }
 
     @Test
+    @DisplayName("seed: executes all statements from pharmacy.sql")
+    void seed_pharmacy() throws Exception {
+        tenantSeedService.seed(ShopType.PHARMACY);
+
+        verify(mockSession).doWork(any(Work.class));
+        verify(mockStatement, atLeastOnce()).execute(anyString());
+    }
+
+    @Test
     @DisplayName("seed: executes all statements from fashion.sql")
     void seed_fashion() throws Exception {
         tenantSeedService.seed(ShopType.FASHION);

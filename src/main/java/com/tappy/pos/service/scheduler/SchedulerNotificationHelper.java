@@ -16,6 +16,7 @@ import com.tappy.pos.service.tenant.ZaloMessageTemplateService;
 import com.tappy.pos.service.tenant.ZaloOaService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,6 +49,10 @@ public class SchedulerNotificationHelper {
     private final ZaloZnsService zaloZnsService;
     private final ZaloMessageTemplateService zaloMessageTemplateService;
     private final ZaloOaService zaloOaService;
+
+    /** How many days before its due date a pawn contract triggers a borrower ZNS reminder. */
+    @Value("${pawn.due.reminder-lead-days:3}")
+    private int reminderLeadDays;
 
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
 
@@ -84,7 +89,12 @@ public class SchedulerNotificationHelper {
     }
 
     /**
-     * Queries PAWNED contracts due today and pushes a notification to SHOP_OWNER and MANAGER.
+     * Pawn due-date reminders. Two independent parts:
+     * <ol>
+     *   <li>an in-app summary to SHOP_OWNER / MANAGER of contracts due <em>today</em>; and</li>
+     *   <li>a Zalo ZNS reminder to each borrower whose contract falls due in
+     *       {@code reminderLeadDays} days (so they have time to redeem or extend).</li>
+     * </ol>
      * TenantContext must be set by the caller before invoking this method.
      */
     @Transactional
@@ -96,18 +106,62 @@ public class SchedulerNotificationHelper {
         List<Object[]> result = pawnRepository.sumByPawnStatusAndPawnDueDateBetween(
                 PawnStatus.PAWNED, from, to, false);
 
-        if (result.isEmpty()) return;
-        long count = ((Number) result.get(0)[1]).longValue();
-        if (count == 0) return;
+        long count = result.isEmpty() ? 0 : ((Number) result.get(0)[1]).longValue();
+        if (count > 0) {
+            Locale vi = new Locale("vi");
+            String dateStr = today.format(DATE_FMT);
+            String title = messageService.getMessage("notification.pawn.due.title", vi, count);
+            String message = messageService.getMessage("notification.pawn.due.message", vi, count, dateStr);
 
-        Locale vi = new Locale("vi");
-        String dateStr = today.format(DATE_FMT);
-        String title = messageService.getMessage("notification.pawn.due.title", vi, count);
-        String message = messageService.getMessage("notification.pawn.due.message", vi, count, dateStr);
+            notificationService.pushToRoles(Notification.NotificationType.INFO, title, message,
+                    "PAWN", null, List.of(RoleEnum.SHOP_OWNER.getCode(), RoleEnum.MANAGER.getCode()));
+            log.info("Pawn due notification sent for tenant {}: {} contract(s)", tenant.getTenantId(), count);
+        }
 
-        notificationService.pushToRoles(Notification.NotificationType.INFO, title, message,
-                "PAWN", null, List.of(RoleEnum.SHOP_OWNER.getCode(), RoleEnum.MANAGER.getCode()));
-        log.info("Pawn due notification sent for tenant {}: {} contract(s)", tenant.getTenantId(), count);
+        sendPawnDueCustomerReminders(tenant, today);
+    }
+
+    /**
+     * Sends a Zalo ZNS reminder to every borrower whose active contract falls due
+     * exactly {@code reminderLeadDays} days from {@code today}. Each contract is reminded
+     * once (a single due date hits the window on a single scheduler run). Fire-and-forget;
+     * a missing ZNS template simply skips the tenant.
+     */
+    private void sendPawnDueCustomerReminders(Tenant tenant, LocalDate today) {
+        LocalDate target = today.plusDays(reminderLeadDays);
+        LocalDateTime from = target.atStartOfDay();
+        LocalDateTime to = target.atTime(LocalTime.MAX);
+
+        List<Object[]> due = pawnRepository.findDueForCustomerReminder(PawnStatus.PAWNED, from, to);
+        if (due.isEmpty()) return;
+
+        String templateId = zaloMessageTemplateService.getDefaultTemplateId(
+                ZaloMessageTemplateService.PAWN_DUE_REMINDER);
+        if (templateId == null) {
+            log.debug("No PAWN_DUE_REMINDER ZNS template for tenant {} — skipping {} borrower reminder(s)",
+                    tenant.getTenantId(), due.size());
+            return;
+        }
+
+        // Tenant's own OA access token (null → ZNS service falls back to platform token).
+        String tenantAccessToken = zaloOaService.getAccessToken();
+        NumberFormat vnNum = NumberFormat.getNumberInstance(new Locale("vi"));
+
+        for (Object[] row : due) {
+            Long pawnId = (Long) row[0];
+            String customerName = (String) row[1];
+            String phone = (String) row[2];
+            LocalDateTime dueDate = (LocalDateTime) row[3];
+            BigDecimal amount = (BigDecimal) row[4];
+
+            String amountStr = vnNum.format(amount == null ? BigDecimal.ZERO : amount) + " ₫";
+            String dateStr = dueDate.format(DATE_FMT);
+
+            zaloZnsService.sendPawnDueReminderAsync(
+                    phone, customerName, amountStr, dateStr, pawnId, templateId, tenantAccessToken);
+        }
+        log.info("Pawn due borrower reminders queued for tenant {}: {} contract(s)",
+                tenant.getTenantId(), due.size());
     }
 
     /**

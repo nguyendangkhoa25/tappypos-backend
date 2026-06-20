@@ -17,4 +17,10 @@ public class CustomerLoyaltySummaryDTO {
     private LoyaltyTierDTO currentTier;
     private LoyaltyTierDTO nextTier;
     private BigDecimal amountToNextTier;
+    // Stamp card ("mua N ly tặng 1")
+    private Boolean stampCardEnabled;
+    private Integer stampCount;       // stamps on the current card
+    private Integer stampCardSize;    // stamps needed to fill a card
+    private Integer stampRewards;     // filled cards available to redeem
+    private String stampCardReward;   // reward description
 }

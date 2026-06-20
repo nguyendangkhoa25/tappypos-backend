@@ -47,6 +47,22 @@ public class Product extends TenantAwareEntity {
     @Column(length = 20)
     private String unit;
 
+    /** Optional alternate sell unit (bán sỉ), e.g. "bao" when base unit is "kg". */
+    @Column(name = "alt_unit", length = 20)
+    private String altUnit;
+
+    /** How many base units make up one alternate unit (e.g. 50 → 1 bao = 50 kg). */
+    @Column(name = "alt_unit_factor", precision = 15, scale = 3)
+    private BigDecimal altUnitFactor;
+
+    /** Price per alternate unit; when null, falls back to price × factor. */
+    @Column(name = "alt_unit_price", precision = 15, scale = 2)
+    private BigDecimal altUnitPrice;
+
+    /** Wholesale price (per base unit) charged to WHOLESALE-type customers; null = no tier. */
+    @Column(name = "wholesale_price", precision = 15, scale = 2)
+    private BigDecimal wholesalePrice;
+
     @Column(name = "shelf_location", length = 100)
     private String shelfLocation;
 

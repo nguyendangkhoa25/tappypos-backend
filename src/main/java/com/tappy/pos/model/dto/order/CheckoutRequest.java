@@ -44,7 +44,22 @@ public class CheckoutRequest {
     /** Fulfilment channel; if null it is derived from tableId (DINE_IN) / pickupTime (TAKEAWAY). */
     private Order.OrderChannel orderChannel;
 
+    // ── Delivery details — only used when orderChannel = DELIVERY ────────────────
+    private Order.DeliveryPlatform deliveryPlatform;
+    private String deliveryRecipient;
+    private String deliveryPhone;
+    private String deliveryAddress;
+    /** Ship fee added to the order total (self-delivery). */
+    @DecimalMin(value = "0.0", message = "Delivery fee must be >= 0")
+    private BigDecimal deliveryFee;
+    private String deliveryNote;
+
     private String notes;
+
+    /** Pharmacy prescription dispensing record (§4d) — optional; captured when the
+     *  cart holds a prescription-required drug. Non-blocking. */
+    private String prescriberName;
+    private String prescriptionNote;
 
     /** ID of an existing customer to associate with this order. */
     private Long customerId;
@@ -107,6 +122,13 @@ public class CheckoutRequest {
      * Defaults to false → identical behaviour to a normal checkout.
      */
     private boolean preorder;
+
+    /**
+     * When true, the checkout is saved as a quotation (báo giá): the order is flagged
+     * is_quote, no stock is deducted, and it is excluded from revenue until converted
+     * to a real order via the convert-quote endpoint. Defaults to false.
+     */
+    private boolean quote;
 
     /**
      * Deposit (tiền cọc) collected at pre-order creation. Must be {@code <= total}.

@@ -35,6 +35,14 @@ public class CartRequest {
     @DecimalMin(value = "0.0", message = "Unit price must be >= 0")
     private BigDecimal unitPrice;
 
+    /** Optional sell unit. When it matches the product's alt unit, the line is priced per alt unit
+     *  and stock is deducted in the base unit (quantity × factor). Null/base unit = normal line. */
+    private String sellUnit;
+
+    /** Quote mode (báo giá): when true, the line may exceed available stock (the insufficient-stock
+     *  guard is skipped at add time). Defaults to false → normal stock enforcement. */
+    private boolean quote;
+
     private Map<String, String> variants;
     private Long variantId;
 

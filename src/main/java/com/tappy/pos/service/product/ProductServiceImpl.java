@@ -97,6 +97,10 @@ public class ProductServiceImpl implements ProductService {
                 .commissionRate(request.getCommissionRate())
                 .durationMinutes(request.getDurationMinutes() != null ? request.getDurationMinutes() : 0)
                 .unit(request.getUnit())
+                .altUnit(request.getAltUnit())
+                .altUnitFactor(request.getAltUnitFactor())
+                .altUnitPrice(request.getAltUnitPrice())
+                .wholesalePrice(request.getWholesalePrice())
                 .shelfLocation(request.getShelfLocation())
                 .sourcePawnId(request.getSourcePawnId())
                 .inventoryMode(com.tappy.pos.model.enums.InventoryMode.derive(productType.getCode(), request.getSourcePawnId()))
@@ -252,6 +256,10 @@ public class ProductServiceImpl implements ProductService {
             product.setDurationMinutes(request.getDurationMinutes());
         }
         product.setUnit(request.getUnit());
+        product.setAltUnit(request.getAltUnit());
+        product.setAltUnitFactor(request.getAltUnitFactor());
+        product.setAltUnitPrice(request.getAltUnitPrice());
+        product.setWholesalePrice(request.getWholesalePrice());
         product.setShelfLocation(request.getShelfLocation());
         product.setStatus(Product.ProductStatus.valueOf(request.getStatus()));
         if (request.getProductKind() != null && !request.getProductKind().isBlank()) {
@@ -646,6 +654,10 @@ public class ProductServiceImpl implements ProductService {
                 .commissionRate(product.getCommissionRate())
                 .durationMinutes(product.getDurationMinutes())
                 .unit(product.getUnit())
+                .altUnit(product.getAltUnit())
+                .altUnitFactor(product.getAltUnitFactor())
+                .altUnitPrice(product.getAltUnitPrice())
+                .wholesalePrice(product.getWholesalePrice())
                 .vendorId(product.getVendor() != null ? product.getVendor().getId() : null)
                 .vendorName(product.getVendor() != null ? product.getVendor().getName() : null)
                 .shelfLocation(product.getShelfLocation())
@@ -710,6 +722,10 @@ public class ProductServiceImpl implements ProductService {
                 .commissionRate(product.getCommissionRate())
                 .durationMinutes(product.getDurationMinutes())
                 .unit(product.getUnit())
+                .altUnit(product.getAltUnit())
+                .altUnitFactor(product.getAltUnitFactor())
+                .altUnitPrice(product.getAltUnitPrice())
+                .wholesalePrice(product.getWholesalePrice())
                 .vendorId(product.getVendor() != null ? product.getVendor().getId() : null)
                 .vendorName(product.getVendor() != null ? product.getVendor().getName() : null)
                 .shelfLocation(product.getShelfLocation())

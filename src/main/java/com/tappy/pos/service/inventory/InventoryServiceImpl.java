@@ -42,6 +42,30 @@ public class InventoryServiceImpl implements InventoryService {
     private final TenantContext tenantContext;
     private final ActivityLogService activityLogService;
     private final NotificationService notificationService;
+    private final com.tappy.pos.repository.product.ProductAttributeValueRepository productAttributeValueRepository;
+
+    /**
+     * Maps a page of Inventory to DTOs and flags the prescription-required drugs (pharmacy) in a
+     * single batch query — no per-row N+1. A no-op (all flags stay null/false) for every shop type
+     * that has no `prescription_required` attribute.
+     */
+    private Page<InventoryDTO> mapWithPrescriptionFlag(Page<Inventory> inventories) {
+        Page<InventoryDTO> dtos = inventories.map(InventoryDTO::fromEntity);
+        List<Long> productIds = dtos.getContent().stream()
+                .map(InventoryDTO::getProductId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        if (!productIds.isEmpty()) {
+            List<Long> rxIds = productAttributeValueRepository.findPrescriptionRequiredProductIds(productIds);
+            if (rxIds != null && !rxIds.isEmpty()) {
+                java.util.Set<Long> rxProductIds = new java.util.HashSet<>(rxIds);
+                dtos.getContent().forEach(d ->
+                        d.setPrescriptionRequired(rxProductIds.contains(d.getProductId())));
+            }
+        }
+        return dtos;
+    }
 
     @Override
     public InventoryDTO createInventory(CreateInventoryRequest request) {
@@ -134,7 +158,7 @@ public class InventoryServiceImpl implements InventoryService {
         log.info("Request: Get all inventory - page: {}, size: {}", pageable.getPageNumber(), pageable.getPageSize());
         Page<Inventory> inventories = inventoryRepository.findAllActive(pageable);
         log.info("Retrieved {} inventories from page {}", inventories.getContent().size(), pageable.getPageNumber());
-        return inventories.map(InventoryDTO::fromEntity);
+        return mapWithPrescriptionFlag(inventories);
     }
 
     @Override
@@ -230,12 +254,12 @@ public class InventoryServiceImpl implements InventoryService {
             Long productId = Long.parseLong(keyword);
             Page<Inventory> inventories = inventoryRepository.searchByKeyword(productId, keyword, pageable);
             log.info("Found {} inventories matching keyword", inventories.getTotalElements());
-            return inventories.map(InventoryDTO::fromEntity);
+            return mapWithPrescriptionFlag(inventories);
         } catch (NumberFormatException e) {
             // Search by batch number or warehouse location instead
             Page<Inventory> inventories = inventoryRepository.searchByKeyword(0L, keyword, pageable);
             log.info("Found {} inventories matching keyword", inventories.getTotalElements());
-            return inventories.map(InventoryDTO::fromEntity);
+            return mapWithPrescriptionFlag(inventories);
         }
     }
 

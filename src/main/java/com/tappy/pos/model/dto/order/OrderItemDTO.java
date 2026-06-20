@@ -16,6 +16,8 @@ public class OrderItemDTO {
     private Long variantId;
     private String productName;
     private Integer quantity;
+    private String sellUnit;
+    private BigDecimal unitFactor;
     private BigDecimal unitPrice;
     private BigDecimal amount;
     private BigDecimal taxPercentage;

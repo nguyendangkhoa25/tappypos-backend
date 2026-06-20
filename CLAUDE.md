@@ -99,7 +99,7 @@ Features are enforced at three levels:
 | `ACCOUNTING` | (stub page — no controller yet) |
 | `AGENT_MGMT` | `AgentController` (master-only; manages platform agents) |
 | `VENDOR` | `VendorController`, `PurchaseOrderController` |
-| `PAWN` | `PawnController`, `BuybackOrderController`, `MarketPriceController`, `GoldPriceController` |
+| `PAWN` | `PawnController`, `MarketPriceController`, `GoldPriceController` |
 | `ACTIVITY_LOG` | `ActivityLogController` |
 | `NOTIFICATION` | `NotificationController` — includes `GET/PUT /notifications/preferences` for per-user type opt-in |
 | `FEEDBACK` | `FeedbackController` (shop-user submit methods only; admin review methods use `@MasterDatabaseOnly`) |

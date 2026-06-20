@@ -59,6 +59,9 @@ class InventoryServiceImplTest {
     @Mock
     private ActivityLogService activityLogService;
 
+    @Mock
+    private com.tappy.pos.repository.product.ProductAttributeValueRepository productAttributeValueRepository;
+
     @InjectMocks
     private InventoryServiceImpl inventoryService;
 

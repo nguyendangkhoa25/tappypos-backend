@@ -91,8 +91,31 @@ public class ReceiptHtmlBuilder {
                                         .subtract(order.getAmountPaid() != null ? order.getAmountPaid() : BigDecimal.ZERO)
                                         .max(BigDecimal.ZERO),
                                 order.getPickupTime())
-                        : null
+                        : null,
+                buildPrescriptionBlock(order.getPrescriberName(), order.getPrescriptionNote())
         );
+    }
+
+    /**
+     * Pharmacy dispensing footer (PHARMACY §4d): prescriber + note, shown on the "Hóa đơn thuốc"
+     * receipt only when recorded. Returns null for every order without a prescription record, so
+     * non-pharmacy receipts are unchanged.
+     */
+    private static String buildPrescriptionBlock(String prescriberName, String prescriptionNote) {
+        boolean hasName = prescriberName != null && !prescriberName.isBlank();
+        boolean hasNote = prescriptionNote != null && !prescriptionNote.isBlank();
+        if (!hasName && !hasNote) return null;
+        StringBuilder b = new StringBuilder();
+        b.append("  <div style=\"border-top:1px dashed #000;margin-top:6px;padding-top:4px\">\n");
+        b.append("    <p class=\"center meta\" style=\"font-weight:bold\">ĐƠN THUỐC KÊ ĐƠN</p>\n");
+        if (hasName) {
+            b.append("    <p class=\"meta\">Bác sĩ kê đơn: ").append(escHtml(prescriberName)).append("</p>\n");
+        }
+        if (hasNote) {
+            b.append("    <p class=\"meta\">Ghi chú: ").append(escHtml(prescriptionNote)).append("</p>\n");
+        }
+        b.append("  </div>\n");
+        return b.toString();
     }
 
     /** Build receipt HTML from a pre-checkout preview request + shop info. */
@@ -146,7 +169,8 @@ public class ReceiptHtmlBuilder {
                 cfg.getPaperWidth(),
                 cfg.isAutoClose(),
                 vietQrBlock,
-                null   // previews are not pre-orders
+                null,  // previews are not pre-orders
+                null   // ...nor do previews carry a prescription record
         );
     }
 
@@ -174,7 +198,8 @@ public class ReceiptHtmlBuilder {
             String paperWidth,
             boolean autoClose,
             String vietQrBlock,
-            PreorderInfo preorder
+            PreorderInfo preorder,
+            String prescriptionBlock
     ) {
         String width = (paperWidth != null && !paperWidth.isBlank()) ? paperWidth : "80mm";
 
@@ -366,6 +391,7 @@ public class ReceiptHtmlBuilder {
                 cashRows +
                 "    </tbody>\n" +
                 "  </table>\n" +
+                (prescriptionBlock != null ? prescriptionBlock : "") +
                 (vietQrBlock != null ? vietQrBlock : "") +
                 footerLines +
                 autoCloseScript +

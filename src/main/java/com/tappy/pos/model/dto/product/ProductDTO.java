@@ -29,6 +29,10 @@ public class ProductDTO {
     private BigDecimal commissionRate;
     private Integer durationMinutes;
     private String unit;
+    private String altUnit;
+    private BigDecimal altUnitFactor;
+    private BigDecimal altUnitPrice;
+    private BigDecimal wholesalePrice;
     private Long vendorId;
     private String vendorName;
     private String shelfLocation;

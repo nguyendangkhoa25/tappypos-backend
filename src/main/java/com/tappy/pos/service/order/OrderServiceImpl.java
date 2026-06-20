@@ -166,6 +166,53 @@ public class OrderServiceImpl implements OrderService {
         return mapToDTO(order);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderDTO> getQuotes() {
+        return orderRepository.findActiveQuotes().stream().map(this::mapToDTO).collect(java.util.stream.Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public OrderDTO convertQuote(Long id) {
+        Order order = orderRepository.findById(id)
+                .filter(o -> !Boolean.TRUE.equals(o.getDeleted()))
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.order.not.found", id)));
+        if (!order.isQuote()) {
+            throw new BadRequestException(messageService.getMessage("error.quote.not_quote"));
+        }
+        // A quote was allowed to exceed stock at creation time (báo giá). Re-validate availability now
+        // and surface a recoverable error — otherwise deductStockForOrder swallows removeStock's failure
+        // and the quote would complete with no deduction (oversell).
+        assertStockAvailableForQuote(order);
+        // Now a real sale — deduct stock (reuses the same path as preorder settle) and finalize.
+        deductStockForOrder(order);
+        order.setQuote(false);
+        order.setStatus(Order.OrderStatus.COMPLETED);
+        order.setCompletedAt(java.time.LocalDateTime.now());
+        Order saved = orderRepository.save(order);
+        String actor = getCurrentUsername();
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.ORDER_CONFIRMED, "ORDER", String.valueOf(id),
+                "Chuyển báo giá thành đơn #" + order.getOrderNumber(), null);
+        // Award loyalty now that the quote is a real, completed sale (no points/stamps were granted
+        // when the quote was saved). Mirrors the completeOrder / settle completion paths.
+        if (saved.getCustomer() != null) {
+            try {
+                loyaltyService.awardPointsForOrder(
+                        saved.getCustomer().getId(), saved.getId(), saved.getTotalAmount());
+                if (!saved.isStampsAwarded()) {
+                    loyaltyService.awardStampsForOrder(
+                            saved.getCustomer().getId(), saved.getId(), stampQtyForOrder(saved));
+                    saved.setStampsAwarded(true);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to award loyalty for converted quote {}: {}", saved.getId(), e.getMessage());
+            }
+        }
+        return mapToDTO(saved);
+    }
+
     private OrderDTO mapToDTO(Order order) {
         List<OrderItemDTO> items = order.getOrderItems().stream()
                 .map(this::mapItemToDTO)
@@ -185,10 +232,19 @@ public class OrderServiceImpl implements OrderService {
                 .serviceChargeRate(order.getServiceChargeRate())
                 .serviceChargeAmount(order.getServiceChargeAmount())
                 .orderChannel(order.getOrderChannel() != null ? order.getOrderChannel().name() : null)
+                .deliveryPlatform(order.getDeliveryPlatform() != null ? order.getDeliveryPlatform().name() : null)
+                .deliveryRecipient(order.getDeliveryRecipient())
+                .deliveryPhone(order.getDeliveryPhone())
+                .deliveryAddress(order.getDeliveryAddress())
+                .deliveryFee(order.getDeliveryFee())
+                .deliveryNote(order.getDeliveryNote())
+                .deliveryStatus(order.getDeliveryStatus() != null ? order.getDeliveryStatus().name() : null)
                 .paymentMethod(order.getPaymentMethod())
                 .amountPaid(order.getAmountPaid())
                 .changeAmount(order.getChangeAmount())
                 .notes(order.getNotes())
+                .prescriberName(order.getPrescriberName())
+                .prescriptionNote(order.getPrescriptionNote())
                 .createdBy(order.getCreatedBy())
                 .completedAt(order.getCompletedAt())
                 .completedBy(order.getCompletedBy())
@@ -206,8 +262,12 @@ public class OrderServiceImpl implements OrderService {
                 .loyaltyPointsRedeemed(order.getLoyaltyPointsRedeemed())
                 .loyaltyDiscount(order.getLoyaltyDiscount())
                 .tableLabel(order.getTableLabel())
+                .tableId(order.getTableId())
+                .parentOrderId(order.getParentOrderId())
                 .pickupTime(order.getPickupTime())
                 .preorder(order.isPreorder())
+                .quote(order.isQuote())
+                .quoteNumber(order.getQuoteNumber())
                 .depositAmount(order.getDepositAmount())
                 .balanceDue(computeBalanceDue(order))
                 .buyAmount(order.getBuyAmount())
@@ -257,7 +317,12 @@ public class OrderServiceImpl implements OrderService {
         order.complete(completedBy);
         Order saved = orderRepository.save(order);
         log.info("Order {} completed by {}", id, completedBy);
-        releaseTableForOrder(saved);
+        // A split-group check releases the table only when every sibling is settled; others release now.
+        if (saved.getParentOrderId() != null || !orderRepository.findByParentOrderId(saved.getId()).isEmpty()) {
+            releaseTableForSplitGroupIfComplete(saved);
+        } else {
+            releaseTableForOrder(saved);
+        }
 
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), completedBy, null,
                 ActivityAction.ORDER_COMPLETED, "ORDER", saved.getOrderNumber(),
@@ -268,12 +333,25 @@ public class OrderServiceImpl implements OrderService {
             try {
                 loyaltyService.awardPointsForOrder(
                         saved.getCustomer().getId(), saved.getId(), saved.getTotalAmount());
+                if (!saved.isStampsAwarded()) {
+                    loyaltyService.awardStampsForOrder(
+                            saved.getCustomer().getId(), saved.getId(), stampQtyForOrder(saved));
+                    saved.setStampsAwarded(true);
+                }
             } catch (Exception e) {
                 log.warn("Failed to award loyalty points for order {}: {}", saved.getId(), e.getMessage());
             }
         }
 
         return mapToDTO(saved);
+    }
+
+    /** Total item quantity on an order — one stamp per cup/món for the loyalty stamp card. */
+    private int stampQtyForOrder(Order order) {
+        if (order.getOrderItems() == null) return 0;
+        return order.getOrderItems().stream()
+                .mapToInt(oi -> oi.getQuantity() != null ? oi.getQuantity() : 0)
+                .sum();
     }
 
     @Override
@@ -403,6 +481,10 @@ public class OrderServiceImpl implements OrderService {
         if (saved.getCustomer() != null) {
             try {
                 loyaltyService.awardPointsForOrder(saved.getCustomer().getId(), saved.getId(), saved.getTotalAmount());
+                if (!saved.isStampsAwarded()) {
+                    loyaltyService.awardStampsForOrder(saved.getCustomer().getId(), saved.getId(), stampQtyForOrder(saved));
+                    saved.setStampsAwarded(true);
+                }
             } catch (Exception e) {
                 log.warn("Failed to award loyalty points for settled pre-order {}: {}", saved.getId(), e.getMessage());
             }
@@ -436,6 +518,43 @@ public class OrderServiceImpl implements OrderService {
      * Deducts stock for an order's STANDARD items (TRACKED → decrement, UNIQUE → mark sold),
      * mirroring the checkout deduction. Fire-and-forget per item — never aborts the settle.
      */
+    /**
+     * Re-validate stock for a quote being converted to a real order. A quote may have been saved with
+     * quantities exceeding stock; this throws a recoverable {@link BadRequestException} (Vietnamese,
+     * with the shortfall) before any deduction so the cashier sees a clear "thiếu hàng" message rather
+     * than the order silently completing with no stock removed. Required base-unit quantity is
+     * aggregated per product/variant so multiple lines of the same product are summed.
+     */
+    private void assertStockAvailableForQuote(Order order) {
+        java.util.Map<String, Long> needed = new java.util.LinkedHashMap<>();
+        java.util.Map<String, OrderItem> sample = new java.util.HashMap<>();
+        for (OrderItem item : order.getOrderItems()) {
+            if (item.getItemType() != OrderItem.ItemType.STANDARD || item.getProductId() == null) continue;
+            String key = item.getProductId() + ":" + (item.getVariantId() == null ? "" : item.getVariantId());
+            needed.merge(key, item.baseQuantity(), Long::sum);
+            sample.putIfAbsent(key, item);
+        }
+        for (var entry : needed.entrySet()) {
+            OrderItem item = sample.get(entry.getKey());
+            long qtyNeeded = entry.getValue();
+            ProductDTO product;
+            try { product = productService.getProductById(item.getProductId()); }
+            catch (Exception e) { continue; }
+            if (!"TRACKED".equals(product.getInventoryMode())) continue;
+            var pageable = PageRequest.of(0, 1);
+            var inv = item.getVariantId() != null
+                    ? inventoryService.getInventoryByProductIdAndVariantId(item.getProductId(), item.getVariantId(), pageable)
+                    : inventoryService.getInventoryByProductId(item.getProductId(), pageable);
+            long available = (!inv.isEmpty() && inv.getContent().get(0).getQuantityInStock() != null)
+                    ? inv.getContent().get(0).getQuantityInStock() : 0L;
+            if (available < qtyNeeded) {
+                throw new BadRequestException(String.format(
+                        messageService.getMessage("product.insufficient.stock"),
+                        product.getName(), available));
+            }
+        }
+    }
+
     private void deductStockForOrder(Order order) {
         for (OrderItem item : order.getOrderItems()) {
             if (item.getItemType() != OrderItem.ItemType.STANDARD || item.getProductId() == null) continue;
@@ -448,7 +567,7 @@ public class OrderServiceImpl implements OrderService {
                             ? inventoryService.getInventoryByProductIdAndVariantId(item.getProductId(), item.getVariantId(), pageable)
                             : inventoryService.getInventoryByProductId(item.getProductId(), pageable);
                     if (!inv.isEmpty()) {
-                        inventoryService.removeStock(inv.getContent().get(0).getId(), (long) item.getQuantity());
+                        inventoryService.removeStock(inv.getContent().get(0).getId(), item.baseQuantity());
                     } else {
                         log.warn("No inventory for product {} — stock not deducted at settle", item.getProductId());
                     }
@@ -484,8 +603,8 @@ public class OrderServiceImpl implements OrderService {
                         item.getProductId(), PageRequest.of(0, 1));
                 if (!inventoryPage.isEmpty()) {
                     Long inventoryId = inventoryPage.getContent().get(0).getId();
-                    inventoryService.addStock(inventoryId, (long) item.getQuantity());
-                    log.info("Restored {} units of product {} to inventory", item.getQuantity(), item.getProductId());
+                    inventoryService.addStock(inventoryId, item.baseQuantity());
+                    log.info("Restored {} base-units of product {} to inventory", item.baseQuantity(), item.getProductId());
                 } else {
                     log.warn("No inventory found for product {} — stock not restored", item.getProductId());
                 }
@@ -543,7 +662,7 @@ public class OrderServiceImpl implements OrderService {
             throw new BadRequestException(messageService.getMessage("error.exchange.price.mismatch"));
         }
 
-        long qty = item.getQuantity() != null ? item.getQuantity() : 0L;
+        long qty = item.baseQuantity();   // base-unit qty (handles alt-unit lines)
         Long oldVariantId = item.getVariantId();
 
         // Deduct the new variant's stock (must be available); then restock the returned variant.
@@ -686,6 +805,8 @@ public class OrderServiceImpl implements OrderService {
                 .variantId(item.getVariantId())
                 .productName(item.getProductName())
                 .quantity(item.getQuantity())
+                .sellUnit(item.getSellUnit())
+                .unitFactor(item.getUnitFactor())
                 .unitPrice(item.getUnitPrice())
                 .amount(item.getAmount())
                 .taxPercentage(item.getTaxPercentage())
@@ -1255,6 +1376,30 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    @Transactional
+    public OrderDTO updateDeliveryStatus(Long orderId, Order.DeliveryStatus status) {
+        log.info("Request: Update delivery status of order {} → {}", orderId, status);
+        Order order = findActiveOrder(orderId);
+        if (order.getOrderChannel() != Order.OrderChannel.DELIVERY) {
+            throw new BadRequestException(messageService.getMessage("error.order.not.delivery"));
+        }
+        order.setDeliveryStatus(status);
+        Order saved = orderRepository.save(order);
+
+        String actor = getCurrentUsername();
+        String statusLabel = switch (status) {
+            case PENDING -> "Chờ lấy hàng";
+            case DELIVERING -> "Đang giao";
+            case DELIVERED -> "Đã giao";
+            case CANCELLED -> "Đã hủy giao";
+        };
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.ORDER_DELIVERY_UPDATED, "ORDER", saved.getOrderNumber(),
+                "Cập nhật giao hàng đơn #" + saved.getOrderNumber() + " → " + statusLabel, null);
+        return mapToDTO(saved);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public java.util.List<java.util.Map<String, Object>> getCustomerOrderChart(Long customerId, LocalDate from, LocalDate to, String granularity) {
         LocalDateTime dtFrom = from.atStartOfDay();
@@ -1351,7 +1496,7 @@ public class OrderServiceImpl implements OrderService {
             try {
                 var inventoryPage = inventoryService.getInventoryByProductId(item.getProductId(), PageRequest.of(0, 1));
                 if (!inventoryPage.isEmpty()) {
-                    inventoryService.addStock(inventoryPage.getContent().get(0).getId(), (long) item.getQuantity());
+                    inventoryService.addStock(inventoryPage.getContent().get(0).getId(), item.baseQuantity());
                 }
             } catch (Exception e) {
                 log.warn("Inventory restore failed for product {}: {}", item.getProductId(), e.getMessage());
@@ -1538,6 +1683,10 @@ public class OrderServiceImpl implements OrderService {
         if (saved.getCustomer() != null) {
             try {
                 loyaltyService.awardPointsForOrder(saved.getCustomer().getId(), saved.getId(), saved.getTotalAmount());
+                if (!saved.isStampsAwarded()) {
+                    loyaltyService.awardStampsForOrder(saved.getCustomer().getId(), saved.getId(), stampQtyForOrder(saved));
+                    saved.setStampsAwarded(true);
+                }
             } catch (Exception e) {
                 log.warn("Failed to award loyalty points for order {}: {}", saved.getId(), e.getMessage());
             }
@@ -1547,6 +1696,296 @@ public class OrderServiceImpl implements OrderService {
                 ActivityAction.ORDER_COMPLETED, "ORDER", saved.getOrderNumber(),
                 "Thanh toán và hoàn tất đơn hàng #" + saved.getOrderNumber(), null);
 
+        // For a split-group check, release the table only once every sibling check is settled.
+        releaseTableForSplitGroupIfComplete(saved);
+
         return mapToDTO(saved);
+    }
+
+    // ── Split / merge bill (FnB table tabs) ─────────────────────────────────────
+
+    private static final java.util.EnumSet<Order.OrderStatus> ACTIVE_TAB_STATUSES =
+            java.util.EnumSet.of(Order.OrderStatus.PENDING, Order.OrderStatus.IN_PROGRESS,
+                    Order.OrderStatus.SUBMITTED);
+
+    @Override
+    @Transactional
+    public List<OrderDTO> splitBill(Long orderId, com.tappy.pos.model.dto.order.SplitBillRequest request) {
+        log.info("Request: Split bill order {} mode={}", orderId, request.getMode());
+        Order order = findActiveOrder(orderId);
+        if (!ACTIVE_TAB_STATUSES.contains(order.getStatus())) {
+            throw new BadRequestException(messageService.getMessage("error.order.split.invalid.status"));
+        }
+        if (order.getParentOrderId() != null) {
+            throw new BadRequestException(messageService.getMessage("error.order.split.already.child"));
+        }
+
+        String mode = request.getMode() == null ? "ITEM" : request.getMode().trim().toUpperCase();
+        String tenantId = tenantContext.getCurrentTenantId();
+        String actor = getCurrentUsername();
+
+        List<OrderDTO> result = "EVEN".equals(mode)
+                ? splitEvenly(order, request, tenantId, actor)
+                : splitByItem(order, request, tenantId, actor);
+
+        activityLogService.logAsync(tenantId, actor, null,
+                ActivityAction.ORDER_SPLIT, "ORDER", order.getOrderNumber(),
+                "Tách bill đơn #" + order.getOrderNumber() + " (" + ("EVEN".equals(mode) ? "chia đều" : "theo món") + ")",
+                null);
+        return result;
+    }
+
+    /** EVEN: divide the order total into N equal child checks; void the source order. */
+    private List<OrderDTO> splitEvenly(Order order, com.tappy.pos.model.dto.order.SplitBillRequest request,
+                                       String tenantId, String actor) {
+        Integer n = request.getSplitCount();
+        if (n == null || n < 2 || n > 20) {
+            throw new BadRequestException(messageService.getMessage("error.order.split.count.invalid"));
+        }
+        BigDecimal total = order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO;
+        BigDecimal share = total.divide(BigDecimal.valueOf(n), 0, java.math.RoundingMode.HALF_UP);
+
+        List<Order> children = new java.util.ArrayList<>();
+        BigDecimal allocated = BigDecimal.ZERO;
+        for (int i = 1; i <= n; i++) {
+            // Last child absorbs the rounding remainder so the children sum back to the original.
+            BigDecimal childTotal = (i == n) ? total.subtract(allocated).max(BigDecimal.ZERO) : share;
+            allocated = allocated.add(childTotal);
+            Order child = newChildCheck(order, tenantId, actor);
+            child.setTotalAmount(childTotal);
+            child.setNotes("Chia đều " + i + "/" + n
+                    + (order.getTableLabel() != null ? " — Bàn " + order.getTableLabel() : ""));
+            children.add(orderRepository.save(child));
+        }
+
+        // Zero the source total before voiding (matches splitByItem) so any report that sums
+        // total_amount without excluding VOIDED rows doesn't double-count the split-out value.
+        order.setTotalAmount(BigDecimal.ZERO);
+        order.voidOrder("Tách bill chia đều " + n + " phần", actor);
+        orderRepository.save(order);
+        return children.stream().map(this::mapToDTO).collect(Collectors.toList());
+    }
+
+    /** ITEM: move chosen item quantities into one child check per group; remainder stays on the source. */
+    private List<OrderDTO> splitByItem(Order order, com.tappy.pos.model.dto.order.SplitBillRequest request,
+                                       String tenantId, String actor) {
+        List<com.tappy.pos.model.dto.order.SplitBillRequest.SplitGroup> groups = request.getGroups();
+        if (groups == null || groups.isEmpty()) {
+            throw new BadRequestException(messageService.getMessage("error.order.split.groups.required"));
+        }
+
+        // Capture the grand total before any mutation so the child checks sum back to it exactly
+        // (covers any service charge / tip baked into the total beyond the raw line items).
+        BigDecimal grandTotal = order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO;
+
+        // Snapshot the source items and a running "remaining quantity" ledger keyed by item id.
+        List<OrderItem> sourceItems = new java.util.ArrayList<>(order.getOrderItems());
+        java.util.Map<Long, OrderItem> itemById = new java.util.HashMap<>();
+        java.util.Map<Long, Integer> remaining = new java.util.HashMap<>();
+        for (OrderItem it : sourceItems) {
+            itemById.put(it.getId(), it);
+            remaining.put(it.getId(), it.getQuantity());
+        }
+
+        List<Order> children = new java.util.ArrayList<>();
+        for (com.tappy.pos.model.dto.order.SplitBillRequest.SplitGroup group : groups) {
+            if (group.getItems() == null || group.getItems().isEmpty()) {
+                continue; // skip empty groups defensively
+            }
+            Order child = newChildCheck(order, tenantId, actor);
+            BigDecimal childSubtotal = BigDecimal.ZERO;
+            for (com.tappy.pos.model.dto.order.SplitBillRequest.SplitItem si : group.getItems()) {
+                OrderItem src = itemById.get(si.getItemId());
+                if (src == null) {
+                    throw new ResourceNotFoundException(messageService.getMessage("error.order.item.not.found", si.getItemId()));
+                }
+                int qty = si.getQuantity() == null ? 0 : si.getQuantity();
+                if (qty <= 0 || qty > remaining.get(si.getItemId())) {
+                    throw new BadRequestException(messageService.getMessage("error.order.split.quantity.invalid", src.getProductName()));
+                }
+                // Add to the child's collection (cascade ALL persists on save) so the returned
+                // DTO carries the line items — not orderItemRepository.save(), which leaves the
+                // in-memory collection empty and renders the response check itemless.
+                OrderItem copy = copyItem(src, qty, child, tenantId);
+                child.getOrderItems().add(copy);
+                childSubtotal = childSubtotal.add(copy.getUnitPrice().multiply(BigDecimal.valueOf(qty)));
+                remaining.put(si.getItemId(), remaining.get(si.getItemId()) - qty);
+            }
+            if (child.getOrderItems().isEmpty()) { continue; } // never persisted — nothing to delete
+            child.setTotalAmount(childSubtotal);
+            children.add(orderRepository.save(child));
+        }
+        if (children.isEmpty()) {
+            throw new BadRequestException(messageService.getMessage("error.order.split.groups.required"));
+        }
+
+        // Apply the ledger to the source items: shrink partially-moved, delete fully-moved.
+        BigDecimal originalSubtotal = BigDecimal.ZERO;
+        boolean originalHasItems = false;
+        for (OrderItem src : sourceItems) {
+            int left = remaining.get(src.getId());
+            if (left <= 0) {
+                order.getOrderItems().remove(src); // orphanRemoval deletes it on save
+            } else {
+                src.setQuantity(left);
+                originalSubtotal = originalSubtotal.add(src.getUnitPrice().multiply(BigDecimal.valueOf(left)));
+                originalHasItems = true;
+            }
+        }
+
+        List<Order> checks = new java.util.ArrayList<>(children);
+        if (originalHasItems) {
+            order.setTotalAmount(originalSubtotal);
+            checks.add(order);
+        } else {
+            // Everything was split out — close the now-empty source order.
+            order.setTotalAmount(BigDecimal.ZERO);
+            order.voidOrder("Tách bill toàn bộ thành " + children.size() + " bill", actor);
+        }
+
+        // Keep the checks summing to the captured grand total; the first check absorbs any
+        // non-item remainder (service charge / tip) or rounding.
+        BigDecimal checksTotal = checks.stream().map(Order::getTotalAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal diff = grandTotal.subtract(checksTotal);
+        if (diff.signum() != 0 && !checks.isEmpty()) {
+            Order first = checks.get(0);
+            first.setTotalAmount(first.getTotalAmount().add(diff).max(BigDecimal.ZERO));
+            orderRepository.save(first);
+        }
+
+        orderRepository.save(order);
+        return checks.stream().map(this::mapToDTO).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public OrderDTO mergeBill(Long targetOrderId, com.tappy.pos.model.dto.order.MergeBillRequest request) {
+        log.info("Request: Merge order {} into {}", request.getSourceOrderId(), targetOrderId);
+        if (request.getSourceOrderId() == null || request.getSourceOrderId().equals(targetOrderId)) {
+            throw new BadRequestException(messageService.getMessage("error.order.merge.same"));
+        }
+        Order target = findActiveOrder(targetOrderId);
+        Order source = findActiveOrder(request.getSourceOrderId());
+        if (!ACTIVE_TAB_STATUSES.contains(target.getStatus())
+                || !ACTIVE_TAB_STATUSES.contains(source.getStatus())) {
+            throw new BadRequestException(messageService.getMessage("error.order.merge.invalid.status"));
+        }
+
+        String tenantId = tenantContext.getCurrentTenantId();
+        String actor = getCurrentUsername();
+
+        // Copy each source item onto the target, then empty the source (orphanRemoval deletes originals).
+        for (OrderItem src : new java.util.ArrayList<>(source.getOrderItems())) {
+            OrderItem copy = copyItem(src, src.getQuantity(), target, tenantId);
+            orderItemRepository.save(copy);
+        }
+        BigDecimal sourceTotal = source.getTotalAmount() != null ? source.getTotalAmount() : BigDecimal.ZERO;
+        target.setTotalAmount((target.getTotalAmount() != null ? target.getTotalAmount() : BigDecimal.ZERO).add(sourceTotal));
+        orderRepository.save(target);
+
+        source.getOrderItems().clear(); // orphanRemoval deletes the moved-out items
+        source.setTotalAmount(BigDecimal.ZERO);
+        source.voidOrder("Gộp vào đơn #" + target.getOrderNumber(), actor);
+        Order savedSource = orderRepository.save(source);
+        releaseTableForOrder(savedSource); // free the merged-away table
+
+        activityLogService.logAsync(tenantId, actor, null,
+                ActivityAction.ORDER_MERGED, "ORDER", target.getOrderNumber(),
+                "Gộp bill #" + savedSource.getOrderNumber() + " vào #" + target.getOrderNumber(), null);
+
+        // Reload the target so the response carries the merged-in items.
+        return mapToDTO(findActiveOrder(targetOrderId));
+    }
+
+    /** A fresh IN_PROGRESS child check that inherits the source order's table + channel context. */
+    private Order newChildCheck(Order source, String tenantId, String actor) {
+        Order child = Order.builder()
+                .orderNumber(generateUniqueOrderNumber())
+                .status(Order.OrderStatus.IN_PROGRESS)
+                .orderType(source.getOrderType())
+                .orderChannel(source.getOrderChannel())
+                .source("SPLIT")
+                .parentOrderId(source.getId())
+                .tableId(source.getTableId())
+                .tableLabel(source.getTableLabel())
+                .serviceChargeRate(source.getServiceChargeRate())
+                .createdBy(actor)
+                .totalAmount(BigDecimal.ZERO)
+                .build();
+        // @Builder on Order does not include the @SuperBuilder parent's tenantId — set it explicitly.
+        child.setTenantId(tenantId);
+        return child;
+    }
+
+    /** Deep-copy an order item for a different order, with a (possibly reduced) quantity. */
+    private OrderItem copyItem(OrderItem src, int qty, Order targetOrder, String tenantId) {
+        OrderItem c = new OrderItem();
+        c.setTenantId(tenantId);
+        c.setOrder(targetOrder);
+        c.setProductId(src.getProductId());
+        c.setProductName(src.getProductName());
+        c.setVariantId(src.getVariantId());
+        c.setQuantity(qty);
+        c.setSellUnit(src.getSellUnit());
+        c.setUnitFactor(src.getUnitFactor());
+        c.setUnitPrice(src.getUnitPrice());
+        c.setUnitCost(src.getUnitCost() != null ? src.getUnitCost() : BigDecimal.ZERO);
+        c.setItemType(src.getItemType());
+        c.setStatus(src.getStatus());
+        c.setCompletedAt(src.getCompletedAt());
+        c.setTaxPercentage(src.getTaxPercentage() != null ? src.getTaxPercentage() : BigDecimal.ZERO);
+        c.setTaxAmount(BigDecimal.ZERO);
+        c.setCommissionRate(src.getCommissionRate() != null ? src.getCommissionRate() : BigDecimal.ZERO);
+        c.setCommissionAmount(BigDecimal.ZERO);
+        c.setAssignedEmployeeId(src.getAssignedEmployeeId());
+        c.setAssignedEmployeeName(src.getAssignedEmployeeName());
+        c.setMetadata(src.getMetadata());
+        c.setModifiers(src.getModifiers());
+        c.setNote(src.getNote());
+        c.setComboId(src.getComboId());
+        c.setDurationMinutes(src.getDurationMinutes() != null ? src.getDurationMinutes() : 0);
+        return c; // amount / costAmount computed in @PrePersist
+    }
+
+    /** Order number generator (mirrors CartServiceImpl), retried for uniqueness. */
+    private String generateUniqueOrderNumber() {
+        for (int attempt = 0; attempt < 10; attempt++) {
+            String datePart = LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
+            int seq = java.util.concurrent.ThreadLocalRandom.current().nextInt(10000, 99999);
+            String candidate = "ORD-" + datePart + "-" + seq;
+            if (orderRepository.findByOrderNumber(candidate).isEmpty()) {
+                return candidate;
+            }
+        }
+        return "ORD-" + LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
+    }
+
+    /**
+     * Release the table backing a split group once every member check is settled. No-op for any
+     * order that is not part of a split group, so non-FnB and unsplit orders are untouched.
+     */
+    private void releaseTableForSplitGroupIfComplete(Order order) {
+        Long rootId = order.getParentOrderId() != null ? order.getParentOrderId() : order.getId();
+        List<Order> children = orderRepository.findByParentOrderId(rootId);
+        if (order.getParentOrderId() == null && children.isEmpty()) {
+            return; // not a split group
+        }
+        List<Order> members = new java.util.ArrayList<>(children);
+        orderRepository.findById(rootId).ifPresent(members::add);
+        boolean anyActive = members.stream().anyMatch(o -> ACTIVE_TAB_STATUSES.contains(o.getStatus()));
+        if (anyActive) {
+            return;
+        }
+        try {
+            tableRepository.findByTenantIdAndCurrentOrderId(order.getTenantId(), rootId)
+                    .ifPresent(table -> {
+                        table.setStatus(com.tappy.pos.model.enums.TableStatus.AVAILABLE);
+                        table.setCurrentOrderId(null);
+                        tableRepository.save(table);
+                        log.debug("Table {} released after split group {} fully settled", table.getId(), rootId);
+                    });
+        } catch (Exception e) {
+            log.warn("Could not release table for split group {}: {}", rootId, e.getMessage());
+        }
     }
 }

@@ -65,6 +65,7 @@ public class TenantProvisioningService {
         m.put(ShopType.JEWELRY,            "ORDERS,REVENUE,PAWN,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.PAWN_SHOP,          "PAWN,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.CONVENIENCE_STORE,  "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
+        m.put(ShopType.BUILDING_MATERIALS, "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.PHARMACY,           "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS");
         m.put(ShopType.ELECTRONICS,        "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.FOOD_BEVERAGE,      "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS");
@@ -85,6 +86,7 @@ public class TenantProvisioningService {
         m.put(ShopType.JEWELRY,            "home,pawn,pos,customers,orders,dashboard,users");
         m.put(ShopType.PAWN_SHOP,          "home,pawn,pos,customers,orders,dashboard,users");
         m.put(ShopType.CONVENIENCE_STORE,  "home,pos,orders,customers,dashboard,users");
+        m.put(ShopType.BUILDING_MATERIALS, "home,pos,orders,customers,dashboard,users");
         m.put(ShopType.PHARMACY,           "home,pos,orders,customers,dashboard,users");
         m.put(ShopType.ELECTRONICS,        "home,pos,orders,customers,dashboard,users");
         m.put(ShopType.FOOD_BEVERAGE,      "home,orders,pos,customers,dashboard,users");
@@ -107,7 +109,7 @@ public class TenantProvisioningService {
         Map<String, List<String>> m = new LinkedHashMap<>();
         m.put(RoleEnum.SHOP_OWNER.getCode(), Arrays.asList(
             "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "PROMOTION", "RECIPE",
-            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "CUSTOMER", "LOYALTY",
+            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "CUSTOMER", "LOYALTY", "CUSTOMER_DEBT",
             "INVOICE", "ACCOUNTING", "REVENUE", "EXPENSE",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "STOCK_TAKE", "POS",
             "TABLE_SERVICE", "ACTIVITY_LOG", "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
@@ -116,7 +118,7 @@ public class TenantProvisioningService {
         ));
         m.put(RoleEnum.MANAGER.getCode(), Arrays.asList(
             "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "PROMOTION", "RECIPE",
-            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "CUSTOMER", "LOYALTY",
+            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "CUSTOMER", "LOYALTY", "CUSTOMER_DEBT",
             "INVOICE", "ACCOUNTING", "REVENUE", "EXPENSE",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "STOCK_TAKE", "POS",
             "TABLE_SERVICE", "ACTIVITY_LOG", "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
@@ -129,7 +131,7 @@ public class TenantProvisioningService {
             "NOTIFICATION", "FEEDBACK", "BOOKING"
         ));
         m.put(RoleEnum.ACCOUNTANT.getCode(), Arrays.asList(
-            "DASHBOARD", "MY_WORK", "REVENUE", "EXPENSE", "SALARY", "INVOICE", "ACCOUNTING", "CUSTOMER",
+            "DASHBOARD", "MY_WORK", "REVENUE", "EXPENSE", "SALARY", "INVOICE", "ACCOUNTING", "CUSTOMER", "CUSTOMER_DEBT",
             "NOTIFICATION", "FEEDBACK"
         ));
         m.put(RoleEnum.WAREHOUSE_STAFF.getCode(), Arrays.asList(
@@ -222,7 +224,7 @@ public class TenantProvisioningService {
             "DASHBOARD", "MY_WORK",
             "ORDER", "ORDER_VIEW_ALL", "POS",
             "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION",
-            "CUSTOMER", "LOYALTY", "APPOINTMENT",
+            "CUSTOMER", "LOYALTY", "CUSTOMER_DEBT", "APPOINTMENT",
             "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
@@ -321,6 +323,7 @@ public class TenantProvisioningService {
         m.put(ShopType.PAWN_SHOP,          "PAWN");
         m.put(ShopType.JEWELRY,            "JEWELRY");
         m.put(ShopType.CONVENIENCE_STORE,  "RETAIL");
+        m.put(ShopType.BUILDING_MATERIALS, "RETAIL");
         m.put(ShopType.PHARMACY,           "RETAIL");
         m.put(ShopType.ELECTRONICS,        "ELECTRONICS");
         m.put(ShopType.FASHION,            "RETAIL");
@@ -343,7 +346,7 @@ public class TenantProvisioningService {
         m.put(ShopType.PUB_GOAT,           "FNB");
         m.put(ShopType.PUB_BEEF,           "FNB");
         m.put(ShopType.BILLIARDS_HALL,     "FNB");      // POS + drinks/food orders; booking model TBD
-        m.put(ShopType.TENNIS_COURT,       "SERVICE");  // service-style; booking model TBD
+        m.put(ShopType.SPORT_COURT,        "SERVICE");  // service-style; booking model TBD
         m.put(ShopType.HOTEL,              "LODGING");
         m.put(ShopType.MOTEL,              "LODGING");
         m.put(ShopType.HOMESTAY,           "LODGING");

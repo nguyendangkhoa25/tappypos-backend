@@ -331,4 +331,20 @@ public interface PawnRepository extends JpaRepository<PawnEntity, Long> {
 
     @Query("SELECT COUNT(p) FROM PawnEntity p WHERE p.customerId IS NULL AND p.pawnDate BETWEEN :fromDate AND :toDate AND (:excludeVisibleItem = false OR p.visible IS NULL OR p.visible = true)")
     long countWalkInPawns(@Param("fromDate") LocalDateTime fromDate, @Param("toDate") LocalDateTime toDate, @Param("excludeVisibleItem") boolean excludeVisibleItem);
+
+    /**
+     * Active contracts whose due date falls in the window, joined to the borrower's customer record
+     * for the phone number — used by the scheduler to send each borrower a Zalo ZNS due-date reminder.
+     * Excludes walk-in pawns (no customer / the canonical walk-in phone) and blank phones.
+     * Projection: [pawnId(Long), customerName(String), phone(String), pawnDueDate(LocalDateTime), pawnAmount(BigDecimal)].
+     */
+    @Query("SELECT p.pawnId, p.customerName, c.phone, p.pawnDueDate, p.pawnAmount " +
+            "FROM PawnEntity p, Customer c " +
+            "WHERE c.id = p.customerId " +
+            "AND p.pawnStatus = :pawnStatus " +
+            "AND (p.visible IS NULL OR p.visible = true) " +
+            "AND p.pawnDueDate BETWEEN :fromDate AND :toDate " +
+            "AND c.phone IS NOT NULL AND c.phone <> '' AND c.phone <> '0000000000'")
+    List<Object[]> findDueForCustomerReminder(@Param("pawnStatus") PawnStatus pawnStatus,
+            @Param("fromDate") LocalDateTime fromDate, @Param("toDate") LocalDateTime toDate);
 }

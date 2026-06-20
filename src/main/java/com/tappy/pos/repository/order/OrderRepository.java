@@ -20,17 +20,23 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     Optional<Order> findByOrderNumber(String orderNumber);
 
-    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status NOT IN ('CANCELLED','VOIDED') AND EXTRACT(YEAR FROM created_at) = :year AND EXTRACT(MONTH FROM created_at) = :month",
+    /** Child checks of a split group (tách bill): all orders split from the given source order. */
+    List<Order> findByParentOrderId(Long parentOrderId);
+
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND is_quote = false AND tenant_id = current_setting('app.current_tenant', true) AND status NOT IN ('CANCELLED','VOIDED') AND EXTRACT(YEAR FROM created_at) = :year AND EXTRACT(MONTH FROM created_at) = :month",
            nativeQuery = true)
     long countOrdersThisMonth(@Param("year") int year, @Param("month") int month);
 
-    @Query("SELECT o FROM Order o WHERE o.customer.id = :customerId AND o.deleted = false ORDER BY o.createdAt DESC")
+    @Query("SELECT o FROM Order o WHERE o.customer.id = :customerId AND o.deleted = false AND o.quote = false ORDER BY o.createdAt DESC")
     Page<Order> findByCustomerId(@Param("customerId") Long customerId, Pageable pageable);
 
-    @Query("SELECT o FROM Order o WHERE o.deleted = false ORDER BY o.createdAt DESC")
+    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.quote = false ORDER BY o.createdAt DESC")
     Page<Order> findAllActive(Pageable pageable);
 
-    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.status = :status ORDER BY o.createdAt DESC")
+    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.quote = true ORDER BY o.createdAt DESC")
+    List<Order> findActiveQuotes();
+
+    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.quote = false AND o.status = :status ORDER BY o.createdAt DESC")
     Page<Order> findAllActiveByStatus(@Param("status") Order.OrderStatus status, Pageable pageable);
 
     // ── Pre-order pickup queue (đơn đặt) — ordered by pickup time, RLS-scoped ──
@@ -71,7 +77,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     @Query("""
             SELECT o FROM Order o LEFT JOIN o.customer c
-            WHERE o.deleted = false
+            WHERE o.deleted = false AND o.quote = false
               AND (LOWER(o.orderNumber) LIKE LOWER(CONCAT('%', :keyword, '%'))
                 OR LOWER(c.name) LIKE LOWER(CONCAT('%', :keyword, '%')))
             ORDER BY o.createdAt DESC
@@ -218,7 +224,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
            nativeQuery = true)
     List<Order> findRecentCompleted(Pageable pageable);
 
-    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = :#{#status.name()}",
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND is_quote = false AND tenant_id = current_setting('app.current_tenant', true) AND status = :#{#status.name()}",
            nativeQuery = true)
     long countByDeletedFalseAndStatus(@Param("status") Order.OrderStatus status);
 
@@ -229,29 +235,29 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     // ── Order type filters (global) ────────────────────────────────────────────
 
-    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.orderType = :orderType ORDER BY o.createdAt DESC")
+    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.quote = false AND o.orderType = :orderType ORDER BY o.createdAt DESC")
     Page<Order> findAllActiveByOrderType(@Param("orderType") Order.OrderType orderType, Pageable pageable);
 
-    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.status = :status AND o.orderType = :orderType ORDER BY o.createdAt DESC")
+    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.quote = false AND o.status = :status AND o.orderType = :orderType ORDER BY o.createdAt DESC")
     Page<Order> findAllActiveByStatusAndOrderType(@Param("status") Order.OrderStatus status, @Param("orderType") Order.OrderType orderType, Pageable pageable);
 
     // ── Scoped list (ORDER_VIEW_ALL absent — show only own orders) ─────────────
 
-    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.createdBy = :username ORDER BY o.createdAt DESC")
+    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.quote = false AND o.createdBy = :username ORDER BY o.createdAt DESC")
     Page<Order> findAllActiveByCreatedBy(@Param("username") String username, Pageable pageable);
 
-    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.status = :status AND o.createdBy = :username ORDER BY o.createdAt DESC")
+    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.quote = false AND o.status = :status AND o.createdBy = :username ORDER BY o.createdAt DESC")
     Page<Order> findAllActiveByStatusAndCreatedBy(@Param("status") Order.OrderStatus status, @Param("username") String username, Pageable pageable);
 
-    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.orderType = :orderType AND o.createdBy = :username ORDER BY o.createdAt DESC")
+    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.quote = false AND o.orderType = :orderType AND o.createdBy = :username ORDER BY o.createdAt DESC")
     Page<Order> findAllActiveByOrderTypeAndCreatedBy(@Param("orderType") Order.OrderType orderType, @Param("username") String username, Pageable pageable);
 
-    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.status = :status AND o.orderType = :orderType AND o.createdBy = :username ORDER BY o.createdAt DESC")
+    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.quote = false AND o.status = :status AND o.orderType = :orderType AND o.createdBy = :username ORDER BY o.createdAt DESC")
     Page<Order> findAllActiveByStatusAndOrderTypeAndCreatedBy(@Param("status") Order.OrderStatus status, @Param("orderType") Order.OrderType orderType, @Param("username") String username, Pageable pageable);
 
     @Query("""
             SELECT o FROM Order o LEFT JOIN o.customer c
-            WHERE o.deleted = false
+            WHERE o.deleted = false AND o.quote = false
               AND o.createdBy = :username
               AND (LOWER(o.orderNumber) LIKE LOWER(CONCAT('%', :keyword, '%'))
                 OR LOWER(c.name) LIKE LOWER(CONCAT('%', :keyword, '%')))
@@ -261,23 +267,23 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     // ── My Work ────────────────────────────────────────────────────────────────
 
-    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.createdBy = :username AND o.status IN :statuses ORDER BY o.createdAt ASC")
+    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.quote = false AND o.createdBy = :username AND o.status IN :statuses ORDER BY o.createdAt ASC")
     Page<Order> findActiveByCreatedBy(@Param("username") String username, @Param("statuses") Collection<Order.OrderStatus> statuses, Pageable pageable);
 
-    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.createdBy = :username AND o.status = 'COMPLETED' AND o.completedAt >= :from AND o.completedAt < :to ORDER BY o.completedAt DESC")
+    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.quote = false AND o.createdBy = :username AND o.status = 'COMPLETED' AND o.completedAt >= :from AND o.completedAt < :to ORDER BY o.completedAt DESC")
     Page<Order> findCompletedByCreatedByAndPeriod(@Param("username") String username, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to, Pageable pageable);
 
-    @Query("SELECT COUNT(o), COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.deleted = false AND o.createdBy = :username AND o.status = 'COMPLETED' AND o.completedAt >= :from AND o.completedAt < :to")
+    @Query("SELECT COUNT(o), COALESCE(SUM(o.totalAmount), 0) FROM Order o WHERE o.deleted = false AND o.quote = false AND o.createdBy = :username AND o.status = 'COMPLETED' AND o.completedAt >= :from AND o.completedAt < :to")
     List<Object[]> getMyCompletedStats(@Param("username") String username, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
-    @Query("SELECT COUNT(o) FROM Order o WHERE o.deleted = false AND o.createdBy = :username AND o.status IN :statuses")
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.deleted = false AND o.quote = false AND o.createdBy = :username AND o.status IN :statuses")
     Long countActiveByCreatedBy(@Param("username") String username, @Param("statuses") Collection<Order.OrderStatus> statuses);
 
-    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND created_at >= :from AND created_at <= :to",
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND is_quote = false AND tenant_id = current_setting('app.current_tenant', true) AND created_at >= :from AND created_at <= :to",
            nativeQuery = true)
     long countByDateRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
-    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = :#{#status.name()} AND created_at >= :from AND created_at <= :to",
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND is_quote = false AND tenant_id = current_setting('app.current_tenant', true) AND status = :#{#status.name()} AND created_at >= :from AND created_at <= :to",
            nativeQuery = true)
     long countByDateRangeAndStatus(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to, @Param("status") Order.OrderStatus status);
 
@@ -418,14 +424,14 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to);
 
-    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND customer_id = :customerId " +
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND is_quote = false AND tenant_id = current_setting('app.current_tenant', true) AND customer_id = :customerId " +
            "AND created_at BETWEEN :from AND :to", nativeQuery = true)
     long countByCustomerAndDateRange(
             @Param("customerId") Long customerId,
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to);
 
-    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND customer_id = :customerId " +
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND is_quote = false AND tenant_id = current_setting('app.current_tenant', true) AND customer_id = :customerId " +
            "AND status = :status AND created_at BETWEEN :from AND :to", nativeQuery = true)
     long countByCustomerAndDateRangeAndStatus(
             @Param("customerId") Long customerId,
@@ -495,10 +501,10 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query(value = "SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND status = 'COMPLETED' AND created_by = :createdBy AND completed_at BETWEEN :from AND :to", nativeQuery = true)
     BigDecimal sumRevenueByCreatedBy(@Param("createdBy") String createdBy, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
-    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND created_by = :createdBy AND created_at BETWEEN :from AND :to", nativeQuery = true)
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND is_quote = false AND tenant_id = current_setting('app.current_tenant', true) AND created_by = :createdBy AND created_at BETWEEN :from AND :to", nativeQuery = true)
     long countByCreatedByAndDateRange(@Param("createdBy") String createdBy, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
-    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND tenant_id = current_setting('app.current_tenant', true) AND created_by = :createdBy AND status = :status AND created_at BETWEEN :from AND :to", nativeQuery = true)
+    @Query(value = "SELECT COUNT(*) FROM orders WHERE deleted = false AND is_quote = false AND tenant_id = current_setting('app.current_tenant', true) AND created_by = :createdBy AND status = :status AND created_at BETWEEN :from AND :to", nativeQuery = true)
     long countByCreatedByAndDateRangeAndStatus(@Param("createdBy") String createdBy, @Param("status") String status, @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
     // ── Filtered list (Report screen) ──────────────────────────────────────────
@@ -506,6 +512,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query(value = """
             SELECT * FROM orders
             WHERE deleted = FALSE
+            AND is_quote = FALSE
             AND tenant_id = current_setting('app.current_tenant', true)
             AND (CAST(:status AS text) IS NULL OR status = CAST(:status AS text))
             AND (CAST(:paymentMethod AS text) IS NULL OR payment_method = CAST(:paymentMethod AS text))
@@ -516,6 +523,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
            countQuery = """
             SELECT COUNT(*) FROM orders
             WHERE deleted = FALSE
+            AND is_quote = FALSE
             AND tenant_id = current_setting('app.current_tenant', true)
             AND (CAST(:status AS text) IS NULL OR status = CAST(:status AS text))
             AND (CAST(:paymentMethod AS text) IS NULL OR payment_method = CAST(:paymentMethod AS text))
@@ -591,11 +599,11 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     // ── Kitchen Display ────────────────────────────────────────────────────────
 
     /** All PENDING + IN_PROGRESS orders for the kitchen display, oldest first. */
-    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.status IN ('PENDING', 'IN_PROGRESS') ORDER BY o.createdAt ASC")
+    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.quote = false AND o.status IN ('PENDING', 'IN_PROGRESS') ORDER BY o.createdAt ASC")
     List<Order> findAllKitchenOrders();
 
     /** Customer-submitted orders awaiting owner confirmation, oldest first. */
-    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.status = 'SUBMITTED' ORDER BY o.createdAt ASC")
+    @Query("SELECT o FROM Order o WHERE o.deleted = false AND o.quote = false AND o.status = 'SUBMITTED' ORDER BY o.createdAt ASC")
     List<Order> findAllSubmittedOrders();
 
     // Payment method breakdown by date range: [paymentMethod, count, totalAmount]

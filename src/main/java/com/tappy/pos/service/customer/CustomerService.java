@@ -54,6 +54,20 @@ public class CustomerService {
     private final R2StorageService r2StorageService;
     private final R2CleanupService r2CleanupService;
 
+    /**
+     * Validate and normalize the customer tier. Null/blank defaults to RETAIL; otherwise it must be
+     * one of the recognized tiers (case-insensitive) — POS price resolution branches on it, so an
+     * unrecognized value would silently never get wholesale pricing.
+     */
+    private String normalizeCustomerType(String raw) {
+        if (raw == null || raw.isBlank()) return "RETAIL";
+        String normalized = raw.trim().toUpperCase();
+        if (!normalized.equals("RETAIL") && !normalized.equals("WHOLESALE")) {
+            throw new BadRequestException(messageService.getMessage("error.customer.invalid.type"));
+        }
+        return normalized;
+    }
+
     public CustomerDTO createCustomer(CreateCustomerRequest request) {
         log.info("Request: Create new customer - name: {}, phone: {}, email: {}",
                 request.getName(), request.getPhone(), request.getEmail());
@@ -62,6 +76,7 @@ public class CustomerService {
                 .name(request.getName())
                 .phone(request.getPhone())
                 .email(request.getEmail())
+                .customerType(normalizeCustomerType(request.getCustomerType()))
                 .notes(request.getNotes())
                 .idNumber(request.getIdNumber())
                 .zaloId(request.getZaloId())
@@ -168,6 +183,9 @@ public class CustomerService {
         if (request.getNotes() != null) {
             log.debug("Updating notes - id: {}", id);
             customer.setNotes(request.getNotes());
+        }
+        if (request.getCustomerType() != null) {
+            customer.setCustomerType(normalizeCustomerType(request.getCustomerType()));
         }
         if (request.getIdNumber() != null) {
             customer.setIdNumber(request.getIdNumber());
@@ -305,6 +323,7 @@ public class CustomerService {
                 .name(customer.getName())
                 .phone(customer.getPhone())
                 .email(customer.getEmail())
+                .customerType(customer.getCustomerType())
                 .notes(customer.getNotes())
                 .idNumber(customer.getIdNumber())
                 .zaloId(customer.getZaloId())

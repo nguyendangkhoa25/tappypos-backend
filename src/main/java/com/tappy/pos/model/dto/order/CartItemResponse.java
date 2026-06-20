@@ -27,6 +27,8 @@ public class CartItemResponse {
     private String sku;
     private String barcode;
     private Integer quantity;
+    private String sellUnit;
+    private BigDecimal unitFactor;
     private BigDecimal unitPrice;
     private BigDecimal basePrice;
     private BigDecimal unitCost;
@@ -46,5 +48,7 @@ public class CartItemResponse {
     private String assignedEmployeeName;
     private java.math.BigDecimal commissionRate;
     private java.math.BigDecimal commissionAmount;
+    /** True when this line is a prescription-required drug — drives the POS dispensing warning. */
+    private Boolean prescriptionRequired;
 }
 

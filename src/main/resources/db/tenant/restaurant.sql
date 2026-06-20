@@ -79,7 +79,7 @@ VALUES
     (current_setting('app.current_tenant', true), 'Thành viên',  0,        1.00, '#CD7F32', 'Thành viên cơ bản',         1),
     (current_setting('app.current_tenant', true), 'Bạc',         1000000,  1.25, '#9E9E9E', 'Chi tiêu từ 1 triệu VND',   2),
     (current_setting('app.current_tenant', true), 'Vàng',        5000000,  1.50, '#FFC107', 'Chi tiêu từ 5 triệu VND',   3),
-    (current_setting('app.current_tenant', true), 'VIP',         20000000, 2.00, '#00BCD4', 'Chi tiêu từ 20 triệu VND',  4, 'TRACKED');
+    (current_setting('app.current_tenant', true), 'VIP',         20000000, 2.00, '#00BCD4', 'Chi tiêu từ 20 triệu VND',  4);
 
 -- ── 9. Print templates ────────────────────────────────────────
 INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_default) VALUES
@@ -95,7 +95,7 @@ INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_def
   "showCashDetails": true,
   "paperWidth": "80mm",
   "autoClose": true
-}', TRUE, 'TRACKED'),
+}', TRUE),
     (current_setting('app.current_tenant', true), 'PRODUCT_STAMP', 'Tem sản phẩm', '{
   "showShopName": true,
   "showSku": true,
@@ -106,7 +106,7 @@ INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_def
   "showExpiry": false,
   "labelWidth": 60,
   "labelHeight": 38
-}', TRUE, 'TRACKED'),
+}', TRUE),
     (current_setting('app.current_tenant', true), 'INVENTORY_STAMP', 'Tem kho', '{
   "showShopName": true,
   "showSku": true,
@@ -117,7 +117,7 @@ INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_def
   "showExpiry": false,
   "labelWidth": 60,
   "labelHeight": 38
-}', TRUE, 'TRACKED')
+}', TRUE)
 ON CONFLICT (template_type, name, tenant_id) DO NOTHING;
 
 -- ── 10. Attribute groups & definitions (FOOD) ─────────────────

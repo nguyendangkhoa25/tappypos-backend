@@ -216,6 +216,22 @@ public class CartServiceImpl implements CartService {
             }
         }
 
+        // Step 2b-bis: Resolve alternate sell unit (bán sỉ). When the requested sellUnit matches the
+        // product's configured alt unit, the line is priced per alt unit and deducts base-unit stock
+        // (quantity × factor). Otherwise it is a normal single-unit line (factor null → treated as 1).
+        final boolean useAltUnit = request.getSellUnit() != null
+                && product.getAltUnit() != null
+                && request.getSellUnit().equalsIgnoreCase(product.getAltUnit())
+                && product.getAltUnitFactor() != null
+                && product.getAltUnitFactor().signum() > 0;
+        final String effectiveSellUnit = useAltUnit ? product.getAltUnit()
+                : (request.getSellUnit() != null ? request.getSellUnit() : product.getUnit());
+        final BigDecimal effectiveFactor = useAltUnit ? product.getAltUnitFactor() : null;
+        final long baseQtyNeeded = useAltUnit
+                ? effectiveFactor.multiply(BigDecimal.valueOf(request.getQuantity()))
+                        .setScale(0, java.math.RoundingMode.HALF_UP).longValueExact()
+                : request.getQuantity();
+
         // Step 2c: Modifiers (FnB) — resolve chosen options; their delta folds into the unit price below.
         java.util.List<com.tappy.pos.model.dto.modifier.ChosenModifierDTO> chosenModifiers =
                 modifierService.resolveOptions(request.getModifierOptionIds());
@@ -226,13 +242,40 @@ public class CartServiceImpl implements CartService {
         final String modifiersKey = chosenModifiers.isEmpty()
                 ? null : objectMapper.writeValueAsString(chosenModifiers);
 
-        // Step 2d: Resolve unit price — staff override wins; dynamic types use live market rate; fallback
-        // to catalogue. The modifier delta is folded in so it stays effectively final downstream.
+        // Wholesale price tier (giá sỉ): the cart's customer is flagged WHOLESALE (e.g. a contractor).
+        boolean isWholesaleCustomer = false;
+        if (cart.getCustomerId() != null) {
+            isWholesaleCustomer = customerRepository
+                    .findByIdActiveAndTenantId(cart.getCustomerId(), tenantContext.getCurrentTenantId())
+                    .map(c -> "WHOLESALE".equalsIgnoreCase(c.getCustomerType()))
+                    .orElse(false);
+        }
+
+        // Step 2d: Resolve unit price — staff override wins; dynamic types use live market rate;
+        // then alternate sell unit; then the wholesale tier for wholesale customers; else catalogue.
+        // The modifier delta is folded in so it stays effectively final downstream.
         BigDecimal resolvedUnitPrice;
         if (request.getUnitPrice() != null && request.getUnitPrice().compareTo(BigDecimal.ZERO) > 0) {
             resolvedUnitPrice = request.getUnitPrice().add(modifierDelta);
         } else if (DynamicPriceProductTypes.isDynamicPrice(product.getProductTypeCode())) {
             resolvedUnitPrice = calculateDynamicUnitPrice(product).add(modifierDelta);
+        } else if (useAltUnit) {
+            // Price per alternate unit: an explicit configured alt price wins; otherwise the
+            // per-base-unit rate × factor — and that per-base rate is the wholesale tier for a
+            // wholesale customer (so giá sỉ composes with bán theo đơn vị lớn), else the catalogue price.
+            BigDecimal altPrice;
+            if (product.getAltUnitPrice() != null && product.getAltUnitPrice().signum() > 0) {
+                altPrice = product.getAltUnitPrice();
+            } else {
+                BigDecimal perBase = (isWholesaleCustomer
+                        && product.getWholesalePrice() != null && product.getWholesalePrice().signum() > 0)
+                        ? product.getWholesalePrice()
+                        : product.getPrice();
+                altPrice = perBase.multiply(effectiveFactor);
+            }
+            resolvedUnitPrice = altPrice.add(modifierDelta);
+        } else if (isWholesaleCustomer && product.getWholesalePrice() != null && product.getWholesalePrice().signum() > 0) {
+            resolvedUnitPrice = product.getWholesalePrice().add(modifierDelta);
         } else {
             resolvedUnitPrice = product.getPrice().add(modifierDelta);
         }
@@ -262,21 +305,26 @@ public class CartServiceImpl implements CartService {
                     resolvedUnitCost = inventory.getUnitCost();
                 }
 
-                // Validate stock availability
-                if (inventory.getQuantityInStock() == null || inventory.getQuantityInStock() < request.getQuantity()) {
+                // Validate stock availability (in base units — alt-unit lines need quantity × factor).
+                // Quote lines (báo giá) are exempt: a shop may quote quantities not yet in stock; the
+                // stock guard is re-applied when the quote is converted to a real order.
+                if (inventory.getQuantityInStock() == null || inventory.getQuantityInStock() < baseQtyNeeded) {
                     Long available = inventory.getQuantityInStock() != null ?
                             inventory.getQuantityInStock() : 0;
 
-                    log.warn("Insufficient stock for product {}: requested={}, available={}",
-                            request.getProductId(), request.getQuantity(), available);
-
-                    throw new BadRequestException(
-                            String.format(
-                                    messageService.getMessage("product.insufficient.stock"),
-                                    product.getName(),
-                                    available
-                            )
-                    );
+                    if (!request.isQuote()) {
+                        log.warn("Insufficient stock for product {}: requested={}, available={}",
+                                request.getProductId(), request.getQuantity(), available);
+                        throw new BadRequestException(
+                                String.format(
+                                        messageService.getMessage("product.insufficient.stock"),
+                                        product.getName(),
+                                        available
+                                )
+                        );
+                    }
+                    log.debug("Quote line for product {} exceeds stock ({} < {}) — allowed (báo giá).",
+                            request.getProductId(), available, baseQtyNeeded);
                 }
 
                 log.debug("Stock validation passed. Product: {}, Stock: {}, UnitCost: {}",
@@ -301,6 +349,7 @@ public class CartServiceImpl implements CartService {
                 .filter(item -> item.getProductId().equals(request.getProductId())
                         && item.getVariants().equals(variantsJson)
                         && java.util.Objects.equals(item.getModifiers(), modifiersKey)
+                        && java.util.Objects.equals(item.getSellUnit(), effectiveSellUnit)
                         && java.util.Objects.equals(item.getComboId(), request.getComboId()))
                 .toList();
 
@@ -331,10 +380,13 @@ public class CartServiceImpl implements CartService {
                     .productId(request.getProductId())
                     .productName(product.getName())
                     .productTypeCode(productTypeCode)
+                    .prescriptionRequired(isPrescriptionRequired(product))
                     .sku(product.getSku())
                     //Todo to generate barcode
                     //.barcode(product.getBarcode())
                     .quantity(request.getQuantity())
+                    .sellUnit(effectiveSellUnit)
+                    .unitFactor(effectiveFactor)
                     .basePrice(resolvedUnitPrice)
                     .unitPrice(resolvedUnitPrice)
                     .unitCost(resolvedUnitCost)
@@ -643,11 +695,52 @@ public class CartServiceImpl implements CartService {
 
         cart.setCustomerId(customerId);
 
-        // TODO: Apply member pricing
-        // If customer is member, recalculate prices for all items
+        // Apply customer-tier (wholesale / giá sỉ) pricing now that the customer is known. Lines
+        // added before the customer was attached are re-priced; switching back to a retail customer
+        // reverts them. Manual overrides and alt-unit lines are left untouched.
+        applyCustomerTierPricing(cart, customerId);
 
         CartEntity saved = cartRepository.save(cart);
         return mapToResponse(saved);
+    }
+
+    /**
+     * Re-price STANDARD lines for the cart's customer tier: a WHOLESALE customer gets each product's
+     * wholesale_price; a RETAIL customer (or no tier) reverts to the catalogue price. Alt-unit lines
+     * are handled too — both the retail and wholesale rates are scaled by the line's conversion factor,
+     * so giá sỉ composes with bán theo đơn vị lớn. Only lines still at the plain retail/wholesale rate
+     * are touched — manual price overrides, dynamic-price, and explicit alt-unit prices keep their price.
+     */
+    private void applyCustomerTierPricing(CartEntity cart, Long customerId) {
+        boolean wholesale = customerId != null
+                && customerRepository.findByIdActiveAndTenantId(customerId, tenantContext.getCurrentTenantId())
+                        .map(c -> "WHOLESALE".equalsIgnoreCase(c.getCustomerType()))
+                        .orElse(false);
+        for (CartItemEntity item : cart.getItems()) {
+            if (item.getItemType() != CartItemEntity.ItemType.STANDARD) continue;
+            ProductDTO product;
+            try { product = productService.getProductById(item.getProductId()); }
+            catch (Exception e) { continue; }
+            if (product == null || product.getPrice() == null) continue;
+            BigDecimal factor = item.getUnitFactor() != null ? item.getUnitFactor() : BigDecimal.ONE;
+            BigDecimal retail = product.getPrice().multiply(factor);
+            BigDecimal wholesalePrice = product.getWholesalePrice() != null
+                    ? product.getWholesalePrice().multiply(factor) : null;
+            BigDecimal current = item.getBasePrice();
+            if (current == null) continue;
+            if (wholesale && wholesalePrice != null && wholesalePrice.signum() > 0) {
+                if (current.compareTo(retail) == 0) {                   // plain retail → apply wholesale
+                    item.setBasePrice(wholesalePrice);
+                    item.setUnitPrice(wholesalePrice);
+                    item.recalculateLineTotal();
+                }
+            } else if (wholesalePrice != null && current.compareTo(wholesalePrice) == 0) {
+                item.setBasePrice(retail);                              // revert wholesale → retail
+                item.setUnitPrice(retail);
+                item.recalculateLineTotal();
+            }
+        }
+        cart.recalculateTotals();
     }
 
     /**
@@ -725,11 +818,14 @@ public class CartServiceImpl implements CartService {
             oi.setVariantId(cartItem.getVariantId());
             oi.setModifiers(cartItem.getModifiers());
             oi.setQuantity(cartItem.getQuantity());
+            oi.setSellUnit(cartItem.getSellUnit());
+            oi.setUnitFactor(cartItem.getUnitFactor());
             oi.setUnitPrice(cartItem.getUnitPrice());
             oi.setUnitCost(cartItem.getUnitCost());
             oi.setItemType(OrderItem.ItemType.valueOf(cartItem.getItemType().name()));
             oi.setMetadata(cartItem.getMetadata());
             oi.setNote(cartItem.getNotes());
+            oi.setPrescriptionRequired(Boolean.TRUE.equals(cartItem.getPrescriptionRequired()));
             oi.setStatus(OrderItem.ItemStatus.PENDING);
             oi.setAssignedEmployeeId(cartItem.getAssignedEmployeeId());
             oi.setAssignedEmployeeName(cartItem.getAssignedEmployeeName());
@@ -944,8 +1040,8 @@ public class CartServiceImpl implements CartService {
             }
         }
 
-        // --- Loyalty redemption (SELL only) ---
-        if (isStandardSell && resolvedCustomer != null && resolvedCustomerId != null
+        // --- Loyalty redemption (SELL only; never on a quote/báo giá) ---
+        if (isStandardSell && !request.isQuote() && resolvedCustomer != null && resolvedCustomerId != null
                 && request.getLoyaltyPointsToRedeem() != null
                 && request.getLoyaltyPointsToRedeem() > 0) {
             try {
@@ -987,6 +1083,15 @@ public class CartServiceImpl implements CartService {
             }
         }
 
+        // --- Delivery fee (SELL, only for the DELIVERY channel) ---
+        // Self-delivery ship fee added as its own line; null/0 for every other order.
+        BigDecimal deliveryFee = BigDecimal.ZERO;
+        if (isStandardSell && request.getOrderChannel() == Order.OrderChannel.DELIVERY
+                && request.getDeliveryFee() != null && request.getDeliveryFee().compareTo(BigDecimal.ZERO) > 0) {
+            deliveryFee = request.getDeliveryFee().setScale(2, RoundingMode.HALF_UP);
+            total = total.add(deliveryFee);
+        }
+
         // --- Payment ---
         String paymentMethod = (request.getPaymentMethod() != null && !request.getPaymentMethod().isBlank())
                 ? request.getPaymentMethod() : "CASH";
@@ -1020,12 +1125,15 @@ public class CartServiceImpl implements CartService {
         }
         String orderNumber = generateOrderNumber();
         String tenantId = tenantContext.getCurrentTenantId();
+        boolean quote = request.isQuote();
         Order order = new Order();
         order.setTenantId(tenantId);
         order.setOrderNumber(orderNumber);
-        order.setStatus(preorder ? Order.OrderStatus.PENDING
+        order.setStatus((preorder || quote) ? Order.OrderStatus.PENDING
                 : (inProgress ? Order.OrderStatus.IN_PROGRESS : Order.OrderStatus.COMPLETED));
         order.setPreorder(preorder);
+        order.setQuote(quote);
+        if (quote) order.setQuoteNumber(orderNumber);
         order.setDepositAmount(depositAmount);
         order.setOrderType(orderType);
         // Fulfilment channel: explicit request wins, else a pickup time implies takeaway, else dine-in.
@@ -1034,6 +1142,16 @@ public class CartServiceImpl implements CartService {
             channel = request.getPickupTime() != null ? Order.OrderChannel.TAKEAWAY : Order.OrderChannel.DINE_IN;
         }
         order.setOrderChannel(channel);
+        // Delivery details — only persisted for DELIVERY orders.
+        if (channel == Order.OrderChannel.DELIVERY) {
+            order.setDeliveryPlatform(request.getDeliveryPlatform());
+            order.setDeliveryRecipient(request.getDeliveryRecipient());
+            order.setDeliveryPhone(request.getDeliveryPhone());
+            order.setDeliveryAddress(request.getDeliveryAddress());
+            order.setDeliveryFee(deliveryFee);
+            order.setDeliveryNote(request.getDeliveryNote());
+            order.setDeliveryStatus(Order.DeliveryStatus.PENDING);
+        }
         order.setTotalAmount(total);
         // sell/buy summary is meaningful only for gold BUY/EXCHANGE; SELL leaves them 0 (total holds the value).
         order.setSellAmount(orderType == Order.OrderType.EXCHANGE ? sellGoldSum : BigDecimal.ZERO);
@@ -1055,11 +1173,19 @@ public class CartServiceImpl implements CartService {
         order.setPromotionDiscount(promotionDiscount);
         order.setLoyaltyPointsRedeemed(loyaltyPointsRedeemed);
         order.setLoyaltyDiscount(loyaltyDiscount);
+        // Pharmacy dispensing record (§4d): persisted as-is, never blocks checkout.
+        if (request.getPrescriberName() != null && !request.getPrescriberName().isBlank()) {
+            order.setPrescriberName(request.getPrescriberName().trim());
+        }
+        if (request.getPrescriptionNote() != null && !request.getPrescriptionNote().isBlank()) {
+            order.setPrescriptionNote(request.getPrescriptionNote().trim());
+        }
         order.setPickupTime(request.getPickupTime());
         if (resolvedCustomer != null) order.setCustomer(resolvedCustomer);
         String currentUser = SecurityContextHolder.getContext().getAuthentication().getName();
         order.setCreatedBy(currentUser);
-        if (!inProgress && !preorder) order.complete(currentUser);
+        // Quotes (báo giá) stay PENDING — never auto-completed; conversion finalizes them later.
+        if (!inProgress && !preorder && !quote) order.complete(currentUser);
 
         // --- Build OrderItems + deduct inventory for STANDARD items only ---
         List<OrderItem> orderItems = new ArrayList<>();
@@ -1074,11 +1200,14 @@ public class CartServiceImpl implements CartService {
             oi.setVariantId(cartItem.getVariantId());
             oi.setModifiers(cartItem.getModifiers());
             oi.setQuantity(cartItem.getQuantity());
+            oi.setSellUnit(cartItem.getSellUnit());
+            oi.setUnitFactor(cartItem.getUnitFactor());
             oi.setUnitPrice(cartItem.getUnitPrice());
             oi.setUnitCost(cartItem.getUnitCost());
             oi.setItemType(OrderItem.ItemType.valueOf(cartItem.getItemType().name()));
             oi.setMetadata(cartItem.getMetadata());
             oi.setNote(cartItem.getNotes());
+            oi.setPrescriptionRequired(Boolean.TRUE.equals(cartItem.getPrescriptionRequired()));
             oi.setStatus((inProgress || preorder) ? OrderItem.ItemStatus.PENDING : OrderItem.ItemStatus.COMPLETED);
             oi.setAssignedEmployeeId(cartItem.getAssignedEmployeeId());
             oi.setAssignedEmployeeName(cartItem.getAssignedEmployeeName());
@@ -1095,7 +1224,7 @@ public class CartServiceImpl implements CartService {
             //   UNIQUE   → flip status to INACTIVE ("Đã bán"); never decrement qty
             //   NO_INVENTORY → skip entirely
             // Pre-orders defer all stock deduction to settle/pickup (Option A, made-to-order).
-            if (!preorder && cartItem.getItemType() == CartItemEntity.ItemType.STANDARD) {
+            if (!preorder && !quote && cartItem.getItemType() == CartItemEntity.ItemType.STANDARD) {
                 try {
                     ProductDTO soldProduct = productService.getProductById(cartItem.getProductId());
                     String mode = soldProduct.getInventoryMode();
@@ -1106,7 +1235,7 @@ public class CartServiceImpl implements CartService {
                                 ? inventoryService.getInventoryByProductIdAndVariantId(cartItem.getProductId(), cartItem.getVariantId(), pageable)
                                 : inventoryService.getInventoryByProductId(cartItem.getProductId(), pageable);
                         if (!inventoryPage.isEmpty()) {
-                            inventoryService.removeStock(inventoryPage.getContent().get(0).getId(), (long) cartItem.getQuantity().intValue());
+                            inventoryService.removeStock(inventoryPage.getContent().get(0).getId(), cartItem.baseQuantity());
                         } else {
                             log.warn("No inventory found for product {} variant {} — stock not deducted",
                                     cartItem.getProductId(), cartItem.getVariantId());
@@ -1203,6 +1332,22 @@ public class CartServiceImpl implements CartService {
                 loyaltyService.backfillRedemptionOrderId(resolvedCustomerId, savedOrder.getId());
             } catch (Exception e) {
                 log.warn("Failed to back-fill loyalty order ID: {}", e.getMessage());
+            }
+        }
+
+        // Accrue stamp-card stamps on a completed sale ("mua N ly tặng 1"). No-op unless the
+        // tenant opted into the stamp card, so other shop types are unaffected. The stamps_awarded
+        // flag makes accrual exactly-once per order (guards against retries).
+        if (!inProgress && !preorder && !quote && resolvedCustomerId != null && !savedOrder.isStampsAwarded()) {
+            try {
+                int stampQty = cart.getItems().stream()
+                        .mapToInt(ci -> ci.getQuantity() != null ? ci.getQuantity() : 0)
+                        .sum();
+                loyaltyService.awardStampsForOrder(resolvedCustomerId, savedOrder.getId(), stampQty);
+                savedOrder.setStampsAwarded(true);
+                orderRepository.save(savedOrder);
+            } catch (Exception e) {
+                log.warn("Failed to award stamp-card stamps for order {}: {}", savedOrder.getId(), e.getMessage());
             }
         }
 
@@ -1377,6 +1522,8 @@ public class CartServiceImpl implements CartService {
                 .sku(item.getSku())
                 .barcode(item.getBarcode())
                 .quantity(item.getQuantity())
+                .sellUnit(item.getSellUnit())
+                .unitFactor(item.getUnitFactor())
                 .unitPrice(item.getUnitPrice())
                 .basePrice(item.getBasePrice())
                 .unitCost(item.getUnitCost())
@@ -1396,7 +1543,21 @@ public class CartServiceImpl implements CartService {
                 .assignedEmployeeName(item.getAssignedEmployeeName())
                 .commissionRate(item.getCommissionRate())
                 .commissionAmount(item.getCommissionAmount())
+                .prescriptionRequired(Boolean.TRUE.equals(item.getPrescriptionRequired()))
                 .build();
+    }
+
+    /**
+     * Reads a product's `prescription_required` EAV attribute (a DRUG attribute seeded by
+     * pharmacy.sql). Returns true only when the stored value is truthy. Any other shop type /
+     * product simply has no such attribute, so this is false and the POS flow is unchanged.
+     */
+    private boolean isPrescriptionRequired(ProductDTO product) {
+        if (product == null || product.getAttributes() == null) return false;
+        Object v = product.getAttributes().get("prescription_required");
+        if (v == null) return false;
+        String s = v.toString().trim();
+        return "true".equalsIgnoreCase(s) || "1".equals(s) || "yes".equalsIgnoreCase(s);
     }
 
     /**

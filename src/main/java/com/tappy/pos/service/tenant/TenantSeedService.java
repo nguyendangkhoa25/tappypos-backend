@@ -38,6 +38,8 @@ public class TenantSeedService {
     private static final Map<ShopType, String> DML_FILES = Map.ofEntries(
         Map.entry(ShopType.PAWN_SHOP,          "db/tenant/pawn_store.sql"),
         Map.entry(ShopType.CONVENIENCE_STORE,  "db/tenant/convenience_store.sql"),
+        Map.entry(ShopType.BUILDING_MATERIALS, "db/tenant/building_materials.sql"),
+        Map.entry(ShopType.PHARMACY,           "db/tenant/pharmacy.sql"),
         Map.entry(ShopType.BAKERY,             "db/tenant/bakery.sql"),
         Map.entry(ShopType.FASHION,            "db/tenant/fashion.sql"),
         Map.entry(ShopType.ELECTRONICS,        "db/tenant/electronics.sql"),
@@ -110,6 +112,9 @@ public class TenantSeedService {
         } else if (shopType == ShopType.CONVENIENCE_STORE) {
             templateName = "Hóa đơn siêu thị";
             configJson = "{\"headerText\":\"\",\"footerText\":\"Cảm ơn quý khách!\\nHẹn gặp lại!\",\"showAddress\":true,\"showTaxId\":false,\"showOrderNumber\":true,\"showDateTime\":true,\"showCustomer\":false,\"showTaxBreakdown\":false,\"showCashDetails\":true,\"paperWidth\":\"80mm\",\"autoClose\":true,\"showVietQr\":true}";
+        } else if (shopType == ShopType.BUILDING_MATERIALS) {
+            templateName = "Hóa đơn vật liệu xây dựng";
+            configJson = "{\"headerText\":\"\",\"footerText\":\"Cảm ơn quý khách!\\nHẹn gặp lại!\",\"showAddress\":true,\"showTaxId\":true,\"showOrderNumber\":true,\"showDateTime\":true,\"showCustomer\":true,\"showTaxBreakdown\":false,\"showCashDetails\":true,\"paperWidth\":\"80mm\",\"autoClose\":true,\"showVietQr\":true}";
         } else if (shopType == ShopType.FASHION || shopType == ShopType.ELECTRONICS) {
             templateName = "Phiếu bảo hành";
             configJson = "{\"headerText\":\"\",\"footerText\":\"Cảm ơn quý khách!\\nVui lòng giữ hóa đơn để bảo hành.\",\"showAddress\":true,\"showTaxId\":true,\"showOrderNumber\":true,\"showDateTime\":true,\"showCustomer\":true,\"showTaxBreakdown\":true,\"showCashDetails\":true,\"paperWidth\":\"80mm\",\"autoClose\":true,\"showVietQr\":false}";

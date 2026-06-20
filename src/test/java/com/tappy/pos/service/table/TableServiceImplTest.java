@@ -3,24 +3,34 @@ package com.tappy.pos.service.table;
 import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.table.CreateTableRequest;
+import com.tappy.pos.model.dto.table.CreateTableReservationRequest;
 import com.tappy.pos.model.dto.table.SetTableStatusRequest;
 import com.tappy.pos.model.dto.table.TableDTO;
+import com.tappy.pos.model.dto.table.TableReservationDTO;
 import com.tappy.pos.model.dto.table.UpdateTableRequest;
 import com.tappy.pos.model.entity.order.Order;
 import com.tappy.pos.model.entity.table.ShopTable;
+import com.tappy.pos.model.entity.table.TableReservation;
 import com.tappy.pos.model.enums.TableStatus;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.order.OrderRepository;
 import com.tappy.pos.repository.table.TableRepository;
+import com.tappy.pos.repository.table.TableReservationRepository;
 import com.tappy.pos.service.MessageService;
+import com.tappy.pos.service.audit.ActivityLogService;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -28,6 +38,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -37,9 +48,11 @@ import static org.mockito.Mockito.when;
 class TableServiceImplTest {
 
     @Mock private TableRepository tableRepository;
+    @Mock private TableReservationRepository tableReservationRepository;
     @Mock private OrderRepository orderRepository;
     @Mock private TenantContext tenantContext;
     @Mock private MessageService messageService;
+    @Mock private ActivityLogService activityLogService;
 
     @InjectMocks
     private TableServiceImpl service;
@@ -215,5 +228,87 @@ class TableServiceImplTest {
         req.setStatus(TableStatus.AVAILABLE);
 
         assertThatThrownBy(() -> service.setStatus(1L, req)).isInstanceOf(BadRequestException.class);
+    }
+
+    // ── Reservations ──────────────────────────────────────────────────────────
+
+    @BeforeEach
+    void authSetUp() {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("owner", null));
+    }
+
+    @AfterEach
+    void authTearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    @DisplayName("createReservation: snapshots the table label and defaults party size")
+    void createReservation_ok() {
+        when(tenantContext.getCurrentTenantId()).thenReturn(TENANT);
+        when(tableRepository.findById(1L)).thenReturn(Optional.of(table(1L, TableStatus.AVAILABLE, null)));
+        when(tableReservationRepository.save(any(TableReservation.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        CreateTableReservationRequest req = new CreateTableReservationRequest();
+        req.setTableId(1L);
+        req.setReservedAt(LocalDateTime.now().plusHours(3));
+        req.setCustomerName("Anh Ba");
+
+        TableReservationDTO dto = service.createReservation(req);
+
+        assertThat(dto.getTableLabel()).isEqualTo("B1");
+        assertThat(dto.getPartySize()).isEqualTo(2);
+        assertThat(dto.getStatus()).isEqualTo("RESERVED");
+        verify(activityLogService).logAsync(any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("seatReservation: marks SEATED and flags a free table RESERVED")
+    void seatReservation_flagsTable() {
+        lenient().when(tenantContext.getCurrentTenantId()).thenReturn(TENANT);
+        TableReservation r = TableReservation.builder()
+                .tenantId(TENANT).tableId(1L).tableLabel("B1").reservedAt(LocalDateTime.now().plusHours(1))
+                .partySize(4).status("RESERVED").createdBy("owner").build();
+        r.setId(9L);
+        ShopTable freeTable = table(1L, TableStatus.AVAILABLE, null);
+        when(tableReservationRepository.findById(9L)).thenReturn(Optional.of(r));
+        when(tableReservationRepository.save(any(TableReservation.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(tableRepository.findById(1L)).thenReturn(Optional.of(freeTable));
+
+        TableReservationDTO dto = service.seatReservation(9L);
+
+        assertThat(dto.getStatus()).isEqualTo("SEATED");
+        assertThat(freeTable.getStatus()).isEqualTo(TableStatus.RESERVED);
+        verify(tableRepository).save(freeTable);
+    }
+
+    @Test
+    @DisplayName("cancelReservation: refuses a reservation that is not active")
+    void cancelReservation_notActive() {
+        TableReservation r = TableReservation.builder()
+                .tenantId(TENANT).tableId(1L).tableLabel("B1").reservedAt(LocalDateTime.now())
+                .status("SEATED").createdBy("owner").build();
+        r.setId(9L);
+        when(tableReservationRepository.findById(9L)).thenReturn(Optional.of(r));
+        when(messageService.getMessage("error.table.reservation.not.active")).thenReturn("hết hiệu lực");
+
+        assertThatThrownBy(() -> service.cancelReservation(9L)).isInstanceOf(BadRequestException.class);
+        verify(tableReservationRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("listReservations: queries the day window and maps results")
+    void listReservations_ok() {
+        TableReservation r = TableReservation.builder()
+                .tenantId(TENANT).tableId(1L).tableLabel("B1").reservedAt(LocalDateTime.now())
+                .partySize(2).status("RESERVED").createdBy("owner").build();
+        r.setId(9L);
+        when(tableReservationRepository.findInRange(any(), any())).thenReturn(List.of(r));
+
+        List<TableReservationDTO> list = service.listReservations(LocalDate.now(), LocalDate.now());
+
+        assertThat(list).hasSize(1);
+        assertThat(list.get(0).getTableLabel()).isEqualTo("B1");
     }
 }

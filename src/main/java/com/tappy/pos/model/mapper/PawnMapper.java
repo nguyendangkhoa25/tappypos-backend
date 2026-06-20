@@ -69,6 +69,8 @@ public class PawnMapper {
         response.setInterestCalcMode(PawnInterestCalculation.fromCode(entity.getInterestCalcMode()).name());
         response.setVisible(entity.getVisible());
         response.setPawnCategory(entity.getPawnCategory());
+        response.setCustomerSignatureUrl(entity.getCustomerSignatureUrl());
+        response.setSignedAt(entity.getSignedAt());
         // customerName and phone set separately from CustomerService
         return response;
     }

@@ -165,6 +165,73 @@ public class ZaloZnsService {
     }
 
     /**
+     * Send a pawn-contract due-date reminder to the borrower via Zalo ZNS. Fire-and-forget (@Async).
+     * Template variables: {{customer_name}}, {{amount}}, {{date}}.
+     *
+     * @param phone              borrower phone (0XXXXXXXXX or 84XXXXXXXXX)
+     * @param customerName       borrower's display name
+     * @param amount             formatted pawn amount, e.g. "5.000.000 ₫"
+     * @param date               formatted due date, e.g. "25/06/2026"
+     * @param pawnId             DB row id — logged for correlation
+     * @param templateId         the Zalo ZNS template ID to use (tenant default or global fallback)
+     * @param tenantAccessToken  tenant's own OA access token, or {@code null} to use the platform global token
+     */
+    @Async
+    public void sendPawnDueReminderAsync(
+            String phone, String customerName, String amount,
+            String date, Long pawnId, String templateId, String tenantAccessToken) {
+        if (!enabled) {
+            log.info("[ZNS-DISABLED] Pawn due reminder for pawnId={} would be sent to {} — {} due {} (templateId={})",
+                    pawnId, maskPhone(phone), amount, date, templateId);
+            return;
+        }
+
+        // Resolve which access token to use: tenant-specific > global platform
+        String effectiveToken = (tenantAccessToken != null && !tenantAccessToken.isBlank())
+                ? tenantAccessToken : accessToken;
+
+        if (effectiveToken.isBlank() || templateId == null || templateId.isBlank()) {
+            log.warn("[ZNS] accessToken or templateId not configured — pawn reminder NOT sent (pawnId={})", pawnId);
+            return;
+        }
+
+        String intlPhone = normalizePhone(phone);
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("access_token", effectiveToken);
+
+            Map<String, Object> body = Map.of(
+                    "phone", intlPhone,
+                    "template_id", templateId,
+                    "template_data", Map.of(
+                            "customer_name", customerName,
+                            "amount", amount,
+                            "date", date
+                    ),
+                    "tracking_id", "tappy-pawn-due-" + pawnId
+            );
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = restTemplate.postForObject(
+                    ZNS_URL,
+                    new HttpEntity<>(body, headers),
+                    Map.class
+            );
+
+            if (result != null && Integer.valueOf(0).equals(result.get("error"))) {
+                log.info("[ZNS] Pawn reminder sent — phone={} pawnId={}", maskPhone(intlPhone), pawnId);
+            } else {
+                log.warn("[ZNS] Non-zero error for pawn reminder phone={} pawnId={}: {}",
+                        maskPhone(intlPhone), pawnId, result);
+            }
+        } catch (Exception e) {
+            log.error("[ZNS] Pawn reminder failed for phone={} pawnId={}: {}",
+                    maskPhone(intlPhone), pawnId, e.getMessage(), e);
+        }
+    }
+
+    /**
      * Converts 0XXXXXXXXX → 84XXXXXXXXX.
      * Numbers already starting with 84 pass through unchanged.
      */

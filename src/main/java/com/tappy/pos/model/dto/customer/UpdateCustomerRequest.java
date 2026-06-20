@@ -13,6 +13,7 @@ public class UpdateCustomerRequest {
     private String name;
     private String phone;
     private String email;
+    private String customerType;
     private String notes;
     private String idNumber;
 

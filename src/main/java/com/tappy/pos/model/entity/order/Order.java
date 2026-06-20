@@ -79,6 +79,14 @@ public class Order extends TenantAwareEntity {
     @Column(length = 500)
     private String notes;
 
+    /** Pharmacy dispensing record (PHARMACY §4d): who prescribed + a free-text note,
+     *  captured at checkout when the cart contains a prescription-required drug. Nullable. */
+    @Column(name = "prescriber_name", length = 255)
+    private String prescriberName;
+
+    @Column(name = "prescription_note", length = 1000)
+    private String prescriptionNote;
+
     @Column(name = "created_by", length = 100)
     private String createdBy;
 
@@ -120,6 +128,15 @@ public class Order extends TenantAwareEntity {
     private Long tableId;
 
     /**
+     * For a split child check (tách bill): the id of the source order it was split from.
+     * NULL for every normal order and for the source order itself. A split group is the
+     * source order plus all orders whose {@code parentOrderId} equals the source's id —
+     * the table is released only once every member of the group is settled.
+     */
+    @Column(name = "parent_order_id")
+    private Long parentOrderId;
+
+    /**
      * Target pickup time for takeaway orders (null for dine-in / non-F&B orders).
      * Set by staff at order creation; displayed on kitchen tickets and the takeaway queue.
      */
@@ -138,6 +155,14 @@ public class Order extends TenantAwareEntity {
     @Builder.Default
     @Column(name = "is_preorder", nullable = false, columnDefinition = "BOOLEAN DEFAULT FALSE")
     private boolean preorder = false;
+
+    /** Quotation (báo giá): holds items + totals but defers all stock deduction until converted. */
+    @Builder.Default
+    @Column(name = "is_quote", nullable = false, columnDefinition = "BOOLEAN DEFAULT FALSE")
+    private boolean quote = false;
+
+    @Column(name = "quote_number", length = 50)
+    private String quoteNumber;
 
     /**
      * Deposit (tiền cọc) taken at pre-order creation, kept as a distinct figure for the
@@ -162,6 +187,38 @@ public class Order extends TenantAwareEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "order_channel", length = 20, nullable = false, columnDefinition = "VARCHAR(20) DEFAULT 'DINE_IN'")
     private OrderChannel orderChannel = OrderChannel.DINE_IN;
+
+    // ── Delivery details — populated only when orderChannel = DELIVERY ───────────
+
+    /** Delivery platform: GRAB_FOOD / SHOPEE_FOOD / BE_FOOD / SELF (shop's own shipper). */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "delivery_platform", length = 30)
+    private DeliveryPlatform deliveryPlatform;
+
+    @Column(name = "delivery_recipient", length = 150)
+    private String deliveryRecipient;
+
+    @Column(name = "delivery_phone", length = 50)
+    private String deliveryPhone;
+
+    @Column(name = "delivery_address", length = 500)
+    private String deliveryAddress;
+
+    @Builder.Default
+    @Column(name = "delivery_fee", precision = 15, scale = 2, columnDefinition = "DECIMAL(15,2) DEFAULT 0")
+    private BigDecimal deliveryFee = BigDecimal.ZERO;
+
+    @Column(name = "delivery_note", length = 500)
+    private String deliveryNote;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "delivery_status", length = 20)
+    private DeliveryStatus deliveryStatus;
+
+    /** Exactly-once guard for loyalty stamp-card accrual; set after stamps are awarded. */
+    @Builder.Default
+    @Column(name = "stamps_awarded", nullable = false)
+    private boolean stampsAwarded = false;
 
     /** Total value of GOLD_OUT + STANDARD items (what shop sells to customer). */
     @Builder.Default
@@ -215,6 +272,20 @@ public class Order extends TenantAwareEntity {
         DINE_IN,
         TAKEAWAY,
         DELIVERY
+    }
+
+    public enum DeliveryPlatform {
+        GRAB_FOOD,
+        SHOPEE_FOOD,
+        BE_FOOD,
+        SELF
+    }
+
+    public enum DeliveryStatus {
+        PENDING,     // awaiting pickup by driver
+        DELIVERING,  // out for delivery
+        DELIVERED,   // handed to customer
+        CANCELLED
     }
 
     public enum OrderType {
