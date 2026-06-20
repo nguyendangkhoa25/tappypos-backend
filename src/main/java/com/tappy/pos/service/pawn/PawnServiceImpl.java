@@ -767,6 +767,7 @@ public class PawnServiceImpl implements PawnService {
                 .extendedPawnAmount(extended.getExtendedPawnAmount())
                 .interestPawnAmount(getInterestPawnAmount(fromDate, toDate, visibleFlag))
                 .closedPawnPureAmount(redeemPawn.getClosedPawnPureAmount() + forfeited.getClosedPawnPureAmount())
+                .unsignedContractCount(pawnRepository.countUnsignedActivePawnContracts().intValue())
                 .build();
     }
 

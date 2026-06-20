@@ -7,7 +7,9 @@ import com.tappy.pos.model.entity.booking.Booking;
 import com.tappy.pos.model.entity.booking.BookingResource;
 import com.tappy.pos.model.entity.order.Order;
 import com.tappy.pos.multitenant.TenantContext;
+import com.tappy.pos.model.entity.booking.BookingResourceRate;
 import com.tappy.pos.repository.booking.BookingRepository;
+import com.tappy.pos.repository.booking.BookingResourceRateRepository;
 import com.tappy.pos.repository.booking.BookingResourceRepository;
 import com.tappy.pos.repository.order.OrderRepository;
 import com.tappy.pos.service.MessageService;
@@ -16,6 +18,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -43,6 +46,7 @@ class BookingServiceImplTest {
 
     @Mock private BookingRepository bookingRepository;
     @Mock private BookingResourceRepository resourceRepository;
+    @Mock private BookingResourceRateRepository rateRepository;
     @Mock private OrderRepository orderRepository;
     @Mock private TenantContext tenantContext;
     @Mock private MessageService messageService;
@@ -253,5 +257,127 @@ class BookingServiceImplTest {
                 .hasMessageContaining("error.booking.invalid.status");
 
         verify(orderRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Checkout floors a short session at the resource's minimum charge")
+    void checkout_flooredAtMinimumCharge() {
+        BookingResource r = resource(new BigDecimal("60000"));
+        r.setMinimumCharge(new BigDecimal("50000"));
+        Booking running = Booking.builder()
+                .tenantId(TENANT).bookingNumber("BKG-1").resourceId(10L).resourceName("Bàn 1")
+                .bookingType("WALK_IN").status("IN_PROGRESS")
+                .hourlyRate(new BigDecimal("60000"))
+                .startedAt(LocalDateTime.now().minusMinutes(15))   // 15 min × 60k/h = 15,000 → floored to 50,000
+                .createdBy("staff").build();
+        running.setId(5L);
+
+        when(bookingRepository.findByIdAndTenantIdAndDeletedFalse(5L, TENANT)).thenReturn(Optional.of(running));
+        when(resourceRepository.findByIdAndTenantIdAndDeletedFalse(10L, TENANT)).thenReturn(Optional.of(r));
+        when(rateRepository.findByResource(TENANT, 10L)).thenReturn(List.of());
+        Order savedOrder = new Order();
+        savedOrder.setId(777L);
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        BookingDTO result = service.checkout(5L);
+
+        assertThat(result.getTimeAmount()).isEqualByComparingTo("50000");
+    }
+
+    @Test
+    @DisplayName("Checkout uses the peak rate window when the session start falls inside it")
+    void checkout_appliesPeakRateWindow() {
+        BookingResource r = resource(new BigDecimal("60000"));
+        // Peak window covering all day → 100,000/h.
+        BookingResourceRate peak = BookingResourceRate.builder()
+                .tenantId(TENANT).resourceId(10L).dayKind("ALL")
+                .startTime(LocalTime.of(0, 0)).endTime(LocalTime.of(23, 59))
+                .rate(new BigDecimal("100000")).build();
+        Booking running = Booking.builder()
+                .tenantId(TENANT).bookingNumber("BKG-1").resourceId(10L).resourceName("Sân 1")
+                .bookingType("WALK_IN").status("IN_PROGRESS")
+                .hourlyRate(new BigDecimal("60000"))
+                .startedAt(LocalDateTime.now().withHour(19).withMinute(0).minusMinutes(0).minusHours(0))
+                .createdBy("staff").build();
+        // 60 minutes ago, inside the all-day window.
+        running.setStartedAt(LocalDateTime.now().minusMinutes(60));
+        running.setId(5L);
+
+        when(bookingRepository.findByIdAndTenantIdAndDeletedFalse(5L, TENANT)).thenReturn(Optional.of(running));
+        when(resourceRepository.findByIdAndTenantIdAndDeletedFalse(10L, TENANT)).thenReturn(Optional.of(r));
+        when(rateRepository.findByResource(TENANT, 10L)).thenReturn(List.of(peak));
+        Order savedOrder = new Order();
+        savedOrder.setId(777L);
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        BookingDTO result = service.checkout(5L);
+
+        // 60 min × 100,000/h (peak) = 100,000, not 60,000.
+        assertThat(result.getTimeAmount()).isEqualByComparingTo("100000");
+        assertThat(result.getHourlyRate()).isEqualByComparingTo("100000");
+    }
+
+    @Test
+    @DisplayName("Checkout nets a paid deposit against the order total")
+    void checkout_netsPaidDeposit() {
+        BookingResource r = resource(new BigDecimal("60000"));
+        Booking running = Booking.builder()
+                .tenantId(TENANT).bookingNumber("BKG-1").resourceId(10L).resourceName("Sân 1")
+                .bookingType("RESERVATION").status("IN_PROGRESS")
+                .hourlyRate(new BigDecimal("60000"))
+                .depositAmount(new BigDecimal("30000")).depositPaid(true)
+                .startedAt(LocalDateTime.now().minusMinutes(60))   // 60,000 time charge
+                .createdBy("staff").build();
+        running.setId(5L);
+
+        when(bookingRepository.findByIdAndTenantIdAndDeletedFalse(5L, TENANT)).thenReturn(Optional.of(running));
+        when(resourceRepository.findByIdAndTenantIdAndDeletedFalse(10L, TENANT)).thenReturn(Optional.of(r));
+        when(rateRepository.findByResource(TENANT, 10L)).thenReturn(List.of());
+        ArgumentCaptor<Order> orderCaptor = ArgumentCaptor.forClass(Order.class);
+        Order savedOrder = new Order();
+        savedOrder.setId(777L);
+        when(orderRepository.save(orderCaptor.capture())).thenReturn(savedOrder);
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.checkout(5L);
+
+        Order order = orderCaptor.getValue();
+        // 60,000 charge − 30,000 paid deposit = 30,000 payable.
+        assertThat(order.getTotalAmount()).isEqualByComparingTo("30000");
+        assertThat(order.getDiscountAmount()).isEqualByComparingTo("30000");
+    }
+
+    @Test
+    @DisplayName("Recurring weekly reservation materializes N rows sharing a recurrence group id")
+    void create_recurringWeekly_materializesRows() {
+        when(resourceRepository.findByIdAndTenantIdAndDeletedFalse(10L, TENANT))
+                .thenReturn(Optional.of(resource(new BigDecimal("60000"))));
+        when(bookingRepository.findReservationsByResourceAndDate(eq(TENANT), eq(10L), any(), anyLong()))
+                .thenReturn(List.of());
+        when(bookingRepository.saveAndFlush(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        CreateBookingRequest req = new CreateBookingRequest();
+        req.setResourceId(10L);
+        req.setBookingType("RESERVATION");
+        req.setScheduledDate(LocalDate.of(2026, 6, 20));
+        req.setScheduledStartTime(LocalTime.of(18, 0));
+        req.setScheduledEndTime(LocalTime.of(20, 0));
+        req.setRecurrenceWeekly(true);
+        req.setRecurrenceCount(4);
+
+        BookingDTO result = service.create(req);
+
+        ArgumentCaptor<Booking> captor = ArgumentCaptor.forClass(Booking.class);
+        verify(bookingRepository, times(4)).saveAndFlush(captor.capture());
+        // All four rows share one non-null recurrence group id.
+        List<Booking> saved = captor.getAllValues();
+        String groupId = saved.get(0).getRecurrenceGroupId();
+        assertThat(groupId).isNotNull();
+        assertThat(saved).allMatch(b -> groupId.equals(b.getRecurrenceGroupId()));
+        // The four weekly dates are consecutive Saturdays.
+        assertThat(saved.get(3).getScheduledDate()).isEqualTo(LocalDate.of(2026, 7, 11));
+        assertThat(result.getRecurrenceGroupId()).isEqualTo(groupId);
     }
 }

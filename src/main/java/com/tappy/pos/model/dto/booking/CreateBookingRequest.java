@@ -29,5 +29,14 @@ public class CreateBookingRequest {
     private LocalTime scheduledStartTime;
     private LocalTime scheduledEndTime;
 
+    // Đặt cọc giữ sân — deposit to hold the reservation (netted at checkout).
+    private java.math.BigDecimal depositAmount;
+    private Boolean depositPaid;
+
+    // Sân cố định — repeat this reservation weekly. recurrenceCount = total occurrences
+    // (including the first); materializes N weekly rows sharing a recurrence group id.
+    private Boolean recurrenceWeekly;
+    private Integer recurrenceCount;
+
     private String note;
 }

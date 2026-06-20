@@ -85,6 +85,19 @@ public class Booking extends TenantAwareEntity {
     @Column(name = "status", nullable = false, length = 20)
     private String status = "RESERVED";
 
+    /** Đặt cọc giữ sân — deposit collected to hold the reservation; netted at checkout. */
+    @Builder.Default
+    @Column(name = "deposit_amount", nullable = false, precision = 15, scale = 2)
+    private BigDecimal depositAmount = BigDecimal.ZERO;
+
+    @Builder.Default
+    @Column(name = "deposit_paid", nullable = false)
+    private boolean depositPaid = false;
+
+    /** Links the materialized rows of a recurring weekly reservation (sân cố định). NULL = one-off. */
+    @Column(name = "recurrence_group_id", length = 36)
+    private String recurrenceGroupId;
+
     @Column(name = "note", columnDefinition = "TEXT")
     private String note;
 

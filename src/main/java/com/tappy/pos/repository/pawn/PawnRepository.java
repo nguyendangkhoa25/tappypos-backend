@@ -111,6 +111,10 @@ public interface PawnRepository extends JpaRepository<PawnEntity, Long> {
     @Query("SELECT COUNT(p.pawnId) FROM PawnEntity p WHERE p.pawnStatus = 'PAWNED' AND (p.visible IS NULL OR p.visible = true)")
     Long countActivePawnContracts();
 
+    /** Active (PAWNED) contracts with no borrower signature yet — for the "Hợp đồng chưa ký" dashboard count (§4d). */
+    @Query("SELECT COUNT(p.pawnId) FROM PawnEntity p WHERE p.pawnStatus = 'PAWNED' AND (p.visible IS NULL OR p.visible = true) AND p.signedAt IS NULL")
+    Long countUnsignedActivePawnContracts();
+
     @Query("SELECT COALESCE(SUM(p.pawnAmount), 0) FROM PawnEntity p WHERE p.pawnStatus = 'PAWNED' AND (p.visible IS NULL OR p.visible = true)")
     java.math.BigDecimal sumActivePawnAmount();
 

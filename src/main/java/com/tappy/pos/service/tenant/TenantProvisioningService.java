@@ -114,7 +114,7 @@ public class TenantProvisioningService {
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "STOCK_TAKE", "POS",
             "TABLE_SERVICE", "ACTIVITY_LOG", "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
             "COMMISSION", "COMMISSION_VIEW_ALL", "GOOGLE_DRIVE", "NOTIFICATION", "FEEDBACK", "APPOINTMENT", "BOOKING", "ROOM",
-            "REPAIR", "REPAIR_VIEW_ALL"
+            "REPAIR", "REPAIR_VIEW_ALL", "BUYBACK"
         ));
         m.put(RoleEnum.MANAGER.getCode(), Arrays.asList(
             "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "PROMOTION", "RECIPE",
@@ -123,7 +123,7 @@ public class TenantProvisioningService {
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "STOCK_TAKE", "POS",
             "TABLE_SERVICE", "ACTIVITY_LOG", "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
             "COMMISSION", "COMMISSION_VIEW_ALL", "NOTIFICATION", "FEEDBACK", "BOOKING",
-            "REPAIR", "REPAIR_VIEW_ALL"
+            "REPAIR", "REPAIR_VIEW_ALL", "BUYBACK"
         ));
         m.put(RoleEnum.CASHIER.getCode(), Arrays.asList(
             "DASHBOARD", "MY_WORK", "ORDER", "POS", "TABLE_SERVICE",
@@ -211,7 +211,7 @@ public class TenantProvisioningService {
 
         m.put("JEWELRY", Arrays.asList(
             "DASHBOARD", "MY_WORK",
-            "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
+            "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART", "BUYBACK",
             "ORDER", "ORDER_VIEW_ALL", "POS", "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION",
             "CUSTOMER", "LOYALTY", "APPOINTMENT",
             "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
@@ -294,6 +294,21 @@ public class TenantProvisioningService {
             "NOTIFICATION", "FEEDBACK"
         ));
 
+        // Rental (sân thể thao / quán bida): a time-rental vertical — bill court/table time
+        // via the BOOKING engine, sell drinks + rent equipment (needs INVENTORY), and keep
+        // APPOINTMENT for coaching/HLV scheduling. Leaner than FNB: no TABLE_SERVICE, no
+        // kitchen/combos/recipe. Shared by BILLIARDS_HALL + SPORT_COURT.
+        m.put("RENTAL", Arrays.asList(
+            "DASHBOARD", "MY_WORK",
+            "ORDER", "ORDER_VIEW_ALL", "POS", "BOOKING",
+            "PRODUCT", "INVENTORY", "PROMOTION",
+            "CUSTOMER", "LOYALTY", "APPOINTMENT",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
+            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
+            "NOTIFICATION", "FEEDBACK"
+        ));
+
         // Lodging (hotel / motel / homestay): ROOM board + folio sales + the usual back office.
         m.put("LODGING", Arrays.asList(
             "DASHBOARD", "MY_WORK", "ROOM",
@@ -345,8 +360,8 @@ public class TenantProvisioningService {
         m.put(ShopType.PUB_SEAFOOD,        "FNB");
         m.put(ShopType.PUB_GOAT,           "FNB");
         m.put(ShopType.PUB_BEEF,           "FNB");
-        m.put(ShopType.BILLIARDS_HALL,     "FNB");      // POS + drinks/food orders; booking model TBD
-        m.put(ShopType.SPORT_COURT,        "SERVICE");  // service-style; booking model TBD
+        m.put(ShopType.BILLIARDS_HALL,     "RENTAL");   // time-rental: BOOKING engine + drinks/equipment
+        m.put(ShopType.SPORT_COURT,        "RENTAL");   // time-rental: BOOKING engine + drinks/equipment
         m.put(ShopType.HOTEL,              "LODGING");
         m.put(ShopType.MOTEL,              "LODGING");
         m.put(ShopType.HOMESTAY,           "LODGING");

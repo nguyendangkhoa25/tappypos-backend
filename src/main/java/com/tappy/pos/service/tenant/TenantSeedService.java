@@ -57,6 +57,7 @@ public class TenantSeedService {
         Map.entry(ShopType.COFFEE_SHOP,        "db/tenant/coffee_shop.sql"),
         Map.entry(ShopType.FOOD_BEVERAGE,      "db/tenant/food_beverage.sql"),
         Map.entry(ShopType.BILLIARDS_HALL,     "db/tenant/billiards_hall.sql"),
+        Map.entry(ShopType.SPORT_COURT,        "db/tenant/tennis_court.sql"),
         Map.entry(ShopType.PUB,                "db/tenant/pub.sql"),
         Map.entry(ShopType.PUB_SEAFOOD,        "db/tenant/pub_seafood.sql"),
         Map.entry(ShopType.PUB_GOAT,           "db/tenant/pub_goat.sql"),
