@@ -57,7 +57,9 @@ public enum FeatureEnum {
     TRADE_IN("Thu Cũ Đổi Mới", "Định giá xe cũ của khách và quy đổi vào đơn bán xe mới hoặc mua đứt; dùng cho cửa hàng xe"),
     TRADE_IN_VIEW_ALL("Xem Tất Cả Phiếu Thu Cũ", "Xem phiếu thu cũ đổi mới của tất cả nhân viên; nếu không có quyền này, chỉ xem được phiếu tự tạo"),
     INSTALLMENT("Bán Trả Góp", "Bán hàng trả góp theo nhiều kỳ: lập lịch trả, theo dõi kỳ đến hạn và thu tiền từng kỳ"),
-    INSTALLMENT_VIEW_ALL("Xem Tất Cả Hợp Đồng Trả Góp", "Xem hợp đồng trả góp của tất cả nhân viên; nếu không có quyền này, chỉ xem được hợp đồng tự tạo");
+    INSTALLMENT_VIEW_ALL("Xem Tất Cả Hợp Đồng Trả Góp", "Xem hợp đồng trả góp của tất cả nhân viên; nếu không có quyền này, chỉ xem được hợp đồng tự tạo"),
+    CONSIGNMENT("Ký Gửi Hàng", "Nhận hàng ký gửi từ nhà cung cấp/NXB, theo dõi số lượng đã bán và thanh toán theo doanh số; dùng cho nhà sách, cửa hàng ký gửi"),
+    CONSIGNMENT_VIEW_ALL("Xem Tất Cả Phiếu Ký Gửi", "Xem phiếu ký gửi của tất cả nhân viên; nếu không có quyền này, chỉ xem được phiếu tự tạo");
 
     /**
      * -- GETTER --

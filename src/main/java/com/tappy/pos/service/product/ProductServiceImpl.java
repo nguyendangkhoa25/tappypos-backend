@@ -27,6 +27,7 @@ import java.util.stream.Collectors;
 import com.tappy.pos.service.audit.ActivityLogService;
 import com.tappy.pos.service.storage.R2StorageService;
 import com.tappy.pos.service.storage.R2CleanupService;
+import com.tappy.pos.client.GoogleBooksClient;
 import com.tappy.pos.client.OpenFoodFactsClient;
 import com.tappy.pos.util.BarcodeValidator;
 import net.coobird.thumbnailator.Thumbnails;
@@ -50,6 +51,7 @@ public class ProductServiceImpl implements ProductService {
     private final TenantContext tenantContext;
     private final ProductCatalogRepository productCatalogRepository;
     private final OpenFoodFactsClient openFoodFactsClient;
+    private final GoogleBooksClient googleBooksClient;
     private final ProductCatalogService productCatalogService;
     private final InventoryRepository inventoryRepository;
     private final ProductVariantRepository productVariantRepository;
@@ -800,6 +802,28 @@ public class ProductServiceImpl implements ProductService {
                             .description(c.getDescription())
                             .build())
                     .build();
+        }
+
+        // Layer 3a: live book lookup — an ISBN-13 (978/979 EAN-13) is a book and won't be in
+        // Open Food Facts, so route it to Google Books before the OFF fetch.
+        if (googleBooksClient.isEnabled() && BarcodeValidator.isIsbn13(barcode)) {
+            var bookHit = googleBooksClient.fetchByIsbn(barcode);
+            if (bookHit.isPresent()) {
+                var b = bookHit.get();
+                // Persist asynchronously so the caller gets a fast response
+                productCatalogService.saveFromBookAsync(b);
+                return BarcodeLookupResult.builder()
+                        .source(BarcodeLookupResult.Source.CATALOG)
+                        .catalog(BarcodeLookupResult.CatalogHint.builder()
+                                .barcode(barcode)
+                                .name(b.title != null ? b.title.trim() : barcode)
+                                .brand(b.publisher != null ? b.publisher.trim() : b.author)
+                                .categoryHint(b.category)
+                                .unit("Cuốn")
+                                .imageUrl(b.imageUrl)
+                                .build())
+                        .build();
+            }
         }
 
         // Layer 3: live Open Food Facts lookup — only when enabled and barcode is structurally valid

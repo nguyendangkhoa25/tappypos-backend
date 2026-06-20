@@ -1,5 +1,6 @@
 package com.tappy.pos.service.product;
 
+import com.tappy.pos.client.GoogleBooksClient;
 import com.tappy.pos.client.OpenFoodFactsClient;
 import com.tappy.pos.exception.DuplicateResourceException;
 import com.tappy.pos.exception.ResourceNotFoundException;
@@ -87,6 +88,9 @@ class ProductServiceImplTest {
 
     @Mock
     private OpenFoodFactsClient openFoodFactsClient;
+
+    @Mock
+    private GoogleBooksClient googleBooksClient;
 
     @Mock
     private ProductCatalogService productCatalogService;

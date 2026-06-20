@@ -1,5 +1,6 @@
 package com.tappy.pos.service.product;
 
+import com.tappy.pos.client.GoogleBooksClient.BookInfo;
 import com.tappy.pos.client.OpenFoodFactsClient;
 import com.tappy.pos.client.OpenFoodFactsClient.OffProduct;
 import com.tappy.pos.client.OpenFoodFactsClient.OffSearchResponse;
@@ -24,6 +25,7 @@ import java.util.Optional;
 public class ProductCatalogServiceImpl implements ProductCatalogService {
 
     private static final String SOURCE_OFF = "OPEN_FOOD_FACTS";
+    private static final String SOURCE_BOOKS = "GOOGLE_BOOKS";
     private static final int PAGE_SIZE = 200;
 
     private final ProductCatalogRepository productCatalogRepository;
@@ -184,6 +186,31 @@ public class ProductCatalogServiceImpl implements ProductCatalogService {
             log.info("Saved OFF product to catalog: barcode={} name={}", barcode, catalog.getName());
         } catch (Exception e) {
             log.warn("Failed to save OFF product barcode={} to catalog: {}", barcode, e.getMessage());
+        }
+    }
+
+    @Override
+    @Async
+    @Transactional
+    public void saveFromBookAsync(BookInfo book) {
+        if (book == null || book.isbn == null || book.isbn.isBlank()) return;
+        String barcode = book.isbn.trim();
+        if (productCatalogRepository.findByBarcode(barcode).isPresent()) return; // already stored
+        try {
+            ProductCatalog catalog = ProductCatalog.builder()
+                    .barcode(barcode)
+                    .isbn(barcode)
+                    .name(book.title != null ? book.title.trim() : barcode)
+                    .brand(book.publisher != null ? book.publisher.trim() : book.author)
+                    .categoryHint(book.category)
+                    .imageUrl(book.imageUrl)
+                    .unit("Cuốn")
+                    .source(SOURCE_BOOKS)
+                    .build();
+            productCatalogRepository.save(catalog);
+            log.info("Saved Google Books volume to catalog: isbn={} name={}", barcode, catalog.getName());
+        } catch (Exception e) {
+            log.warn("Failed to save book isbn={} to catalog: {}", barcode, e.getMessage());
         }
     }
 

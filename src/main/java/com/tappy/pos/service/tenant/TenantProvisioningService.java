@@ -117,7 +117,8 @@ public class TenantProvisioningService {
             "TABLE_SERVICE", "ACTIVITY_LOG", "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
             "COMMISSION", "COMMISSION_VIEW_ALL", "GOOGLE_DRIVE", "NOTIFICATION", "FEEDBACK", "APPOINTMENT", "BOOKING", "ROOM",
             "REPAIR", "REPAIR_VIEW_ALL", "BUYBACK",
-            "TRADE_IN", "TRADE_IN_VIEW_ALL", "INSTALLMENT", "INSTALLMENT_VIEW_ALL"
+            "TRADE_IN", "TRADE_IN_VIEW_ALL", "INSTALLMENT", "INSTALLMENT_VIEW_ALL",
+            "CONSIGNMENT", "CONSIGNMENT_VIEW_ALL"
         ));
         m.put(RoleEnum.MANAGER.getCode(), Arrays.asList(
             "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "PROMOTION", "RECIPE",
@@ -127,13 +128,14 @@ public class TenantProvisioningService {
             "TABLE_SERVICE", "ACTIVITY_LOG", "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
             "COMMISSION", "COMMISSION_VIEW_ALL", "NOTIFICATION", "FEEDBACK", "BOOKING",
             "REPAIR", "REPAIR_VIEW_ALL", "BUYBACK",
-            "TRADE_IN", "TRADE_IN_VIEW_ALL", "INSTALLMENT", "INSTALLMENT_VIEW_ALL"
+            "TRADE_IN", "TRADE_IN_VIEW_ALL", "INSTALLMENT", "INSTALLMENT_VIEW_ALL",
+            "CONSIGNMENT", "CONSIGNMENT_VIEW_ALL"
         ));
         m.put(RoleEnum.CASHIER.getCode(), Arrays.asList(
             "DASHBOARD", "MY_WORK", "ORDER", "POS", "TABLE_SERVICE",
             "CUSTOMER", "LOYALTY", "PROMOTION", "COMMISSION",
             "NOTIFICATION", "FEEDBACK", "BOOKING",
-            "TRADE_IN", "INSTALLMENT"
+            "TRADE_IN", "INSTALLMENT", "CONSIGNMENT"
         ));
         m.put(RoleEnum.ACCOUNTANT.getCode(), Arrays.asList(
             "DASHBOARD", "MY_WORK", "REVENUE", "EXPENSE", "SALARY", "INVOICE", "ACCOUNTING", "CUSTOMER", "CUSTOMER_DEBT",
@@ -141,7 +143,7 @@ public class TenantProvisioningService {
         ));
         m.put(RoleEnum.WAREHOUSE_STAFF.getCode(), Arrays.asList(
             "DASHBOARD", "MY_WORK", "INVENTORY", "STOCK_TAKE", "PRODUCT", "VENDOR", "RECIPE",
-            "NOTIFICATION", "FEEDBACK"
+            "NOTIFICATION", "FEEDBACK", "CONSIGNMENT"
         ));
         m.put(RoleEnum.PAWN_OFFICER.getCode(), Arrays.asList(
             // PAWN_VIEW_ALL intentionally absent: PAWN_OFFICER sees only their own contracts.
@@ -235,6 +237,21 @@ public class TenantProvisioningService {
             "DASHBOARD", "MY_WORK",
             "ORDER", "ORDER_VIEW_ALL", "POS",
             "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION",
+            "CUSTOMER", "LOYALTY", "CUSTOMER_DEBT", "APPOINTMENT",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
+            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
+            "NOTIFICATION", "FEEDBACK"
+        ));
+
+        // Book store (nhà sách): shared retail back office PLUS ký gửi / consignment
+        // (CONSIGNMENT) — a publisher/NXB places stock and the shop settles by sales.
+        // CONSIGNMENT is deliberately NOT in the shared RETAIL profile — only nhà sách get it.
+        m.put("BOOK_STORE", Arrays.asList(
+            "DASHBOARD", "MY_WORK",
+            "ORDER", "ORDER_VIEW_ALL", "POS",
+            "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION",
+            "CONSIGNMENT", "CONSIGNMENT_VIEW_ALL",
             "CUSTOMER", "LOYALTY", "CUSTOMER_DEBT", "APPOINTMENT",
             "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
@@ -370,7 +387,7 @@ public class TenantProvisioningService {
         m.put(ShopType.PHARMACY,           "RETAIL");
         m.put(ShopType.ELECTRONICS,        "ELECTRONICS");
         m.put(ShopType.FASHION,            "RETAIL");
-        m.put(ShopType.BOOK_STORE,         "RETAIL");
+        m.put(ShopType.BOOK_STORE,         "BOOK_STORE");
         m.put(ShopType.BARBER_SHOP,        "SERVICE");
         m.put(ShopType.BARBER_SHOP_MEN,    "SERVICE");
         m.put(ShopType.HAIR_SALON,         "SERVICE");

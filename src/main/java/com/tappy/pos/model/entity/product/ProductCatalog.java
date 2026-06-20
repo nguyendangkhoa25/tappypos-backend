@@ -23,6 +23,10 @@ public class ProductCatalog {
     @Column(nullable = false, unique = true, length = 100)
     private String barcode;
 
+    /** Book identifier (ISBN-10/13) for catalog rows sourced from a book provider. */
+    @Column(length = 20)
+    private String isbn;
+
     @Column(nullable = false, length = 200)
     private String name;
 

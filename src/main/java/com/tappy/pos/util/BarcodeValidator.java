@@ -21,6 +21,20 @@ public final class BarcodeValidator {
     }
 
     /**
+     * Returns true if the barcode is an ISBN-13: a valid 13-digit EAN-13 whose
+     * GS1 prefix is the "Bookland" range 978 or 979. Such codes are books and
+     * will not be in Open Food Facts, so the lookup chain routes them to the
+     * book provider instead.
+     */
+    public static boolean isIsbn13(String barcode) {
+        if (barcode == null) return false;
+        String code = barcode.trim();
+        if (code.length() != 13 || !code.matches("\\d+")) return false;
+        if (!code.startsWith("978") && !code.startsWith("979")) return false;
+        return hasValidChecksum(code);
+    }
+
+    /**
      * GS1 checksum: digit just left of the check digit always has weight 3,
      * then alternates 1, 3, 1, 3 going further left. Works for EAN-8/13 and UPC-A.
      */

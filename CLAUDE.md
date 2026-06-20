@@ -266,7 +266,8 @@ Each shop type gets its own seed data file under `src/main/resources/db/tenant/`
 | `CONVENIENCE_STORE` | `db/tenant/convenience_store.sql` |
 | `RESTAURANT`, `COFFEE_SHOP`, `PUB`, `PUB_SEAFOOD`, `PUB_GOAT`, `PUB_BEEF` | one F&B file each (`restaurant.sql`, …) |
 | `BARBER_SHOP`, `BARBER_SHOP_MEN`, `HAIR_SALON`, `NAIL_SHOP`, `LASH_PMU_STUDIO`, `SPA_SHOP`, `MASSAGE_SHOP`, `BEAUTY_CLINIC`, `MAKEUP_STUDIO` | one service file each (`nail_shop.sql`, …) |
-| Unmapped (`PHARMACY`, `ELECTRONICS`, `FASHION`, `FOOD_BEVERAGE`, `BOOK_STORE`, `OTHER`) | `db/tenant/general.sql` (fallback) |
+| `PHARMACY`, `ELECTRONICS`, `FASHION`, `BAKERY`, `BUILDING_MATERIALS`, `BOOK_STORE`, `VEHICLE_SHOP`, `BILLIARDS_HALL`, `SPORT_COURT`, `HOTEL`/`MOTEL`/`HOMESTAY` | one retail file each (`pharmacy.sql`, `book_store.sql`, `lodging.sql`, …) |
+| Unmapped (`FOOD_BEVERAGE`, `OTHER`) | `db/tenant/general.sql` (fallback) |
 
 `TenantSeedService` also categorizes types into two `EnumSet`s used by `seedShopTypeTemplates()`: `SERVICE_SHOP_TYPES` (beauty/personal-service → "Phiếu dịch vụ" template, no table) and `FOOD_SHOP_TYPES` (F&B → "Phiếu dịch vụ" with `showTable`). A plain retail type is in neither and gets the default RECEIPT template.
 
@@ -420,6 +421,22 @@ Groups: `Thông tin sản phẩm` · `Kích thước & Màu sắc`
 | `season` | Mùa vụ | STRING | FALSE | FALSE | TRUE |
 | `care_instruction` | Hướng dẫn giặt | TEXT | FALSE | FALSE | FALSE |
 | `country_of_origin` | Xuất xứ | STRING | FALSE | TRUE | TRUE |
+
+**BOOK_STORE (`BOOKS` product type)**
+
+Groups: `Thông tin sách` · `Phân loại & Ấn bản`
+
+| Code | Name (VI) | Type | required | searchable | filterable |
+|------|-----------|------|----------|------------|------------|
+| `isbn` | ISBN / Mã sách | STRING | TRUE | TRUE | FALSE |
+| `author` | Tác giả | STRING | TRUE | TRUE | TRUE |
+| `publisher` | Nhà xuất bản (NXB) | STRING | TRUE | TRUE | TRUE |
+| `translator` | Người dịch | STRING | FALSE | TRUE | FALSE |
+| `genre` | Thể loại | STRING | FALSE | TRUE | TRUE |
+| `publish_year` | Năm xuất bản | NUMBER | FALSE | FALSE | TRUE |
+| `language` | Ngôn ngữ | STRING | FALSE | FALSE | TRUE |
+| `cover_type` | Loại bìa (cứng/mềm) | STRING | FALSE | FALSE | TRUE |
+| `page_count` | Số trang | NUMBER | FALSE | FALSE | FALSE |
 
 #### SQL pattern to use
 
