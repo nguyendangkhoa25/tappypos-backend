@@ -2,6 +2,8 @@ package com.tappy.pos.repository.finance;
 
 import com.tappy.pos.model.entity.finance.CustomerDebt;
 import com.tappy.pos.model.enums.DebtStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -46,4 +48,14 @@ public interface CustomerDebtRepository extends JpaRepository<CustomerDebt, Long
            "WHERE deleted = FALSE AND tenant_id = :tenantId AND customer_id = :customerId AND status <> 'PAID'",
            nativeQuery = true)
     BigDecimal sumOutstandingByCustomer(@Param("tenantId") String tenantId, @Param("customerId") Long customerId);
+
+    // ── Installment (trả góp) contracts — a debt with installmentCount NOT NULL. ──
+    @Query("SELECT d FROM CustomerDebt d WHERE d.deleted = false AND d.tenantId = :tenantId " +
+           "AND d.installmentCount IS NOT NULL ORDER BY d.createdAt DESC")
+    Page<CustomerDebt> findInstallments(@Param("tenantId") String tenantId, Pageable pageable);
+
+    @Query("SELECT d FROM CustomerDebt d WHERE d.deleted = false AND d.tenantId = :tenantId " +
+           "AND d.createdBy = :createdBy AND d.installmentCount IS NOT NULL ORDER BY d.createdAt DESC")
+    Page<CustomerDebt> findInstallmentsByCreatedBy(@Param("tenantId") String tenantId,
+                                                   @Param("createdBy") String createdBy, Pageable pageable);
 }

@@ -53,7 +53,11 @@ public enum FeatureEnum {
     UTILITIES("Tiện Ích", "Bộ công cụ tính toán: tính lãi, khoản vay, thuế, ngân sách, đổi tiền, giá vàng thị trường, chia hóa đơn, điểm hòa vốn"),
     REPAIR("Sửa Chữa", "Quản lý phiếu sửa chữa thiết bị: tiếp nhận máy, ghi lỗi, báo giá, giao thợ, theo dõi tình trạng và bảo hành sửa chữa"),
     REPAIR_VIEW_ALL("Xem Tất Cả Phiếu Sửa Chữa", "Xem phiếu sửa chữa của tất cả nhân viên; nếu không có quyền này, chỉ xem được phiếu tự tạo"),
-    BUYBACK("Mua Bán Đồ Cũ", "Mua đồ cũ của khách rồi bán lại; dùng cho tiệm vàng, cửa hàng xe máy, đồ cũ");
+    BUYBACK("Mua Bán Đồ Cũ", "Mua đồ cũ của khách rồi bán lại; dùng cho tiệm vàng, cửa hàng xe máy, đồ cũ"),
+    TRADE_IN("Thu Cũ Đổi Mới", "Định giá xe cũ của khách và quy đổi vào đơn bán xe mới hoặc mua đứt; dùng cho cửa hàng xe"),
+    TRADE_IN_VIEW_ALL("Xem Tất Cả Phiếu Thu Cũ", "Xem phiếu thu cũ đổi mới của tất cả nhân viên; nếu không có quyền này, chỉ xem được phiếu tự tạo"),
+    INSTALLMENT("Bán Trả Góp", "Bán hàng trả góp theo nhiều kỳ: lập lịch trả, theo dõi kỳ đến hạn và thu tiền từng kỳ"),
+    INSTALLMENT_VIEW_ALL("Xem Tất Cả Hợp Đồng Trả Góp", "Xem hợp đồng trả góp của tất cả nhân viên; nếu không có quyền này, chỉ xem được hợp đồng tự tạo");
 
     /**
      * -- GETTER --

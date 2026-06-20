@@ -64,7 +64,8 @@ public class TenantSeedService {
         Map.entry(ShopType.PUB_BEEF,           "db/tenant/pub_beef.sql"),
         Map.entry(ShopType.HOTEL,              "db/tenant/lodging.sql"),
         Map.entry(ShopType.MOTEL,              "db/tenant/lodging.sql"),
-        Map.entry(ShopType.HOMESTAY,           "db/tenant/lodging.sql")
+        Map.entry(ShopType.HOMESTAY,           "db/tenant/lodging.sql"),
+        Map.entry(ShopType.VEHICLE_SHOP,       "db/tenant/vehicle_shop.sql")
     );
     private static final String DEFAULT_DML = "db/tenant/general.sql";
 
@@ -119,6 +120,12 @@ public class TenantSeedService {
         } else if (shopType == ShopType.FASHION || shopType == ShopType.ELECTRONICS) {
             templateName = "Phiếu bảo hành";
             configJson = "{\"headerText\":\"\",\"footerText\":\"Cảm ơn quý khách!\\nVui lòng giữ hóa đơn để bảo hành.\",\"showAddress\":true,\"showTaxId\":true,\"showOrderNumber\":true,\"showDateTime\":true,\"showCustomer\":true,\"showTaxBreakdown\":true,\"showCashDetails\":true,\"paperWidth\":\"80mm\",\"autoClose\":true,\"showVietQr\":false}";
+        } else if (shopType == ShopType.VEHICLE_SHOP) {
+            // "Phiếu giao xe": handover slip — shows buyer + bảo hành note; số khung/số máy/biển số
+            // are captured on the vehicle_unit and printed from there. Does not auto-close so staff
+            // can confirm the giấy tờ bàn giao before printing. (VEHICLE_SHOP_SHOP_TYPE_PLAN §4f)
+            templateName = "Phiếu giao xe";
+            configJson = "{\"headerText\":\"PHIẾU GIAO XE\",\"footerText\":\"Cảm ơn quý khách!\\nVui lòng giữ phiếu để bảo hành và sang tên.\",\"showAddress\":true,\"showTaxId\":true,\"showOrderNumber\":true,\"showDateTime\":true,\"showCustomer\":true,\"showTaxBreakdown\":true,\"showCashDetails\":true,\"paperWidth\":\"80mm\",\"autoClose\":false,\"showVietQr\":true}";
         } else if (shopType == ShopType.JEWELRY) {
             // Jewelry shops get: PAWN_STAMP contract + Gold Guarantee Certificate (POS_RECEIPT variant)
             seedPawnContractTemplates();

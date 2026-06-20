@@ -76,6 +76,7 @@ public class TenantProvisioningService {
         m.put(ShopType.SPA_SHOP,           "ORDERS,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.COFFEE_SHOP,        "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.RESTAURANT,         "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
+        m.put(ShopType.VEHICLE_SHOP,       "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.OTHER,              "ORDERS,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");
         SHOP_TYPE_WIDGET_DEFAULTS = Collections.unmodifiableMap(m);
     }
@@ -97,6 +98,7 @@ public class TenantProvisioningService {
         m.put(ShopType.SPA_SHOP,           "home,orders,customers,dashboard,users");
         m.put(ShopType.COFFEE_SHOP,        "home,orders,pos,customers,dashboard,users");
         m.put(ShopType.RESTAURANT,         "home,orders,pos,customers,dashboard,users");
+        m.put(ShopType.VEHICLE_SHOP,       "home,pos,orders,customers,dashboard,users");
         m.put(ShopType.OTHER,              "home,pos,orders,customers,dashboard,users");
         SHOP_TYPE_NAV_DEFAULTS = Collections.unmodifiableMap(m);
     }
@@ -114,7 +116,8 @@ public class TenantProvisioningService {
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "STOCK_TAKE", "POS",
             "TABLE_SERVICE", "ACTIVITY_LOG", "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
             "COMMISSION", "COMMISSION_VIEW_ALL", "GOOGLE_DRIVE", "NOTIFICATION", "FEEDBACK", "APPOINTMENT", "BOOKING", "ROOM",
-            "REPAIR", "REPAIR_VIEW_ALL", "BUYBACK"
+            "REPAIR", "REPAIR_VIEW_ALL", "BUYBACK",
+            "TRADE_IN", "TRADE_IN_VIEW_ALL", "INSTALLMENT", "INSTALLMENT_VIEW_ALL"
         ));
         m.put(RoleEnum.MANAGER.getCode(), Arrays.asList(
             "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "PROMOTION", "RECIPE",
@@ -123,16 +126,18 @@ public class TenantProvisioningService {
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "STOCK_TAKE", "POS",
             "TABLE_SERVICE", "ACTIVITY_LOG", "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
             "COMMISSION", "COMMISSION_VIEW_ALL", "NOTIFICATION", "FEEDBACK", "BOOKING",
-            "REPAIR", "REPAIR_VIEW_ALL", "BUYBACK"
+            "REPAIR", "REPAIR_VIEW_ALL", "BUYBACK",
+            "TRADE_IN", "TRADE_IN_VIEW_ALL", "INSTALLMENT", "INSTALLMENT_VIEW_ALL"
         ));
         m.put(RoleEnum.CASHIER.getCode(), Arrays.asList(
             "DASHBOARD", "MY_WORK", "ORDER", "POS", "TABLE_SERVICE",
             "CUSTOMER", "LOYALTY", "PROMOTION", "COMMISSION",
-            "NOTIFICATION", "FEEDBACK", "BOOKING"
+            "NOTIFICATION", "FEEDBACK", "BOOKING",
+            "TRADE_IN", "INSTALLMENT"
         ));
         m.put(RoleEnum.ACCOUNTANT.getCode(), Arrays.asList(
             "DASHBOARD", "MY_WORK", "REVENUE", "EXPENSE", "SALARY", "INVOICE", "ACCOUNTING", "CUSTOMER", "CUSTOMER_DEBT",
-            "NOTIFICATION", "FEEDBACK"
+            "NOTIFICATION", "FEEDBACK", "INSTALLMENT", "INSTALLMENT_VIEW_ALL"
         ));
         m.put(RoleEnum.WAREHOUSE_STAFF.getCode(), Arrays.asList(
             "DASHBOARD", "MY_WORK", "INVENTORY", "STOCK_TAKE", "PRODUCT", "VENDOR", "RECIPE",
@@ -188,6 +193,12 @@ public class TenantProvisioningService {
         m.put(ShopType.HOTEL,     lodgingRoles);
         m.put(ShopType.MOTEL,     lodgingRoles);
         m.put(ShopType.HOMESTAY,  lodgingRoles);
+        // Vehicle shop: sales floor (CASHIER) + workshop (TECHNICIAN) + warehouse + back office.
+        List<String> vehicleRoles = Arrays.asList(
+                RoleEnum.SHOP_OWNER.getCode(), RoleEnum.MANAGER.getCode(),
+                RoleEnum.CASHIER.getCode(), RoleEnum.TECHNICIAN.getCode(),
+                RoleEnum.WAREHOUSE_STAFF.getCode(), RoleEnum.ACCOUNTANT.getCode());
+        m.put(ShopType.VEHICLE_SHOP, vehicleRoles);
         SHOP_TYPE_ROLE_WHITELIST = Collections.unmodifiableMap(m);
     }
 
@@ -309,6 +320,23 @@ public class TenantProvisioningService {
             "NOTIFICATION", "FEEDBACK"
         ));
 
+        // Vehicle shop (cửa hàng xe — xe máy / xe đạp điện / xe đạp, mới & cũ): the shared retail
+        // back office PLUS the repair/service module (REPAIR), thu-cũ-đổi-mới (TRADE_IN), and
+        // trả-góp (INSTALLMENT). CUSTOMER_DEBT underpins INSTALLMENT. = PROFILE_RETAIL + those.
+        m.put("VEHICLE", Arrays.asList(
+            "DASHBOARD", "MY_WORK",
+            "ORDER", "ORDER_VIEW_ALL", "POS",
+            "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION",
+            "CUSTOMER", "LOYALTY", "CUSTOMER_DEBT", "APPOINTMENT",
+            "REPAIR", "REPAIR_VIEW_ALL",
+            "TRADE_IN", "TRADE_IN_VIEW_ALL",
+            "INSTALLMENT", "INSTALLMENT_VIEW_ALL",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
+            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
+            "NOTIFICATION", "FEEDBACK", "UTILITIES"
+        ));
+
         // Lodging (hotel / motel / homestay): ROOM board + folio sales + the usual back office.
         m.put("LODGING", Arrays.asList(
             "DASHBOARD", "MY_WORK", "ROOM",
@@ -365,6 +393,7 @@ public class TenantProvisioningService {
         m.put(ShopType.HOTEL,              "LODGING");
         m.put(ShopType.MOTEL,              "LODGING");
         m.put(ShopType.HOMESTAY,           "LODGING");
+        m.put(ShopType.VEHICLE_SHOP,       "VEHICLE");
         // ShopType.OTHER → no entry → all features (safe default)
         SHOP_TYPE_FEATURE_PROFILE = Collections.unmodifiableMap(m);
     }

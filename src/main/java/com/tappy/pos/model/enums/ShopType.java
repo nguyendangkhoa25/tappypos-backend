@@ -34,6 +34,7 @@ public enum ShopType {
     HOTEL("Khách sạn",                       "Hotel"),
     MOTEL("Nhà nghỉ",                        "Motel"),
     HOMESTAY("Homestay / Nhà nghỉ dưỡng",    "Homestay"),
+    VEHICLE_SHOP("Mua bán xe máy / xe đạp điện / xe đạp", "Vehicle Shop"),
     OTHER("Khác",                           "Other");
 
     private final String displayName;

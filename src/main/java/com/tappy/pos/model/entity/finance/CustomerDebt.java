@@ -58,6 +58,14 @@ public class CustomerDebt extends TenantAwareEntity {
     @Column(name = "note", columnDefinition = "TEXT")
     private String note;
 
+    /** When NOT NULL this debt is a trả-góp contract paid over this many kỳ (see installment_schedule). */
+    @Column(name = "installment_count")
+    private Integer installmentCount;
+
+    /** Optional trả-trước (down payment) recorded at contract creation. */
+    @Column(name = "down_payment", precision = 15, scale = 2)
+    private BigDecimal downPayment;
+
     @Column(name = "legacy_id", length = 50)
     private String legacyId;
 
