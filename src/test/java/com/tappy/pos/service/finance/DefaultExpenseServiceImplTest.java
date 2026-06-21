@@ -1,5 +1,9 @@
 package com.tappy.pos.service.finance;
 
+import com.tappy.pos.service.audit.ActivityLogService;
+
+import com.tappy.pos.config.AuthContext;
+
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.finance.DefaultExpenseDTO;
 import com.tappy.pos.model.dto.finance.DefaultExpenseRequest;
@@ -39,6 +43,12 @@ class DefaultExpenseServiceImplTest {
     @Mock private ShopExpenseService shopExpenseService;
     @Mock private TenantContext tenantContext;
     @Mock private com.tappy.pos.service.MessageService messageService;
+
+    @Mock
+    private AuthContext authContext;
+
+    @Mock
+    private ActivityLogService activityLogService;
 
     @InjectMocks
     private DefaultExpenseServiceImpl service;

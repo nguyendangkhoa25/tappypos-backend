@@ -1,5 +1,11 @@
 package com.tappy.pos.service.product;
 
+import com.tappy.pos.multitenant.TenantContext;
+
+import com.tappy.pos.service.audit.ActivityLogService;
+
+import com.tappy.pos.config.AuthContext;
+
 import com.tappy.pos.exception.DuplicateResourceException;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.product.BulkVariantUpdateRequest;
@@ -43,6 +49,15 @@ class ProductVariantServiceImplTest {
     @Mock private VariantTypeRepository    variantTypeRepository;
     @Mock private InventoryRepository      inventoryRepository;
     @Mock private MessageService           messageService;
+
+    @Mock
+    private AuthContext authContext;
+
+    @Mock
+    private ActivityLogService activityLogService;
+
+    @Mock
+    private TenantContext tenantContext;
 
     @InjectMocks
     private ProductVariantServiceImpl variantService;

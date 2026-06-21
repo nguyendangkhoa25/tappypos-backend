@@ -1,5 +1,9 @@
 package com.tappy.pos.service.contact;
 
+import com.tappy.pos.service.audit.ActivityLogService;
+
+import com.tappy.pos.config.AuthContext;
+
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.contact.ContactLeadDTO;
 import com.tappy.pos.model.dto.contact.ContactLeadRequest;
@@ -38,6 +42,12 @@ class ContactLeadServiceImplTest {
     @Mock private ContactLeadRepository contactLeadRepository;
     @Mock private NotificationService notificationService;
     @Mock private com.tappy.pos.service.MessageService messageService;
+
+    @Mock
+    private AuthContext authContext;
+
+    @Mock
+    private ActivityLogService activityLogService;
 
     @InjectMocks
     private ContactLeadServiceImpl contactLeadService;

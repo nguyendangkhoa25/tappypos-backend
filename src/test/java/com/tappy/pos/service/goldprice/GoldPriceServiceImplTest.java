@@ -1,5 +1,9 @@
 package com.tappy.pos.service.goldprice;
 
+import com.tappy.pos.service.audit.ActivityLogService;
+
+import com.tappy.pos.config.AuthContext;
+
 import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.goldprice.GoldPriceDTO;
@@ -47,6 +51,12 @@ class GoldPriceServiceImplTest {
     @Mock private ShopConfigService shopConfigService;
     @Mock private MessageService messageService;
     @Mock private TenantContext tenantContext;
+
+    @Mock
+    private AuthContext authContext;
+
+    @Mock
+    private ActivityLogService activityLogService;
 
     @InjectMocks
     private GoldPriceServiceImpl service;

@@ -1,5 +1,9 @@
 package com.tappy.pos.service.booking;
 
+import com.tappy.pos.service.audit.ActivityLogService;
+
+import com.tappy.pos.config.AuthContext;
+
 import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.model.dto.booking.BookingDTO;
 import com.tappy.pos.model.dto.booking.CreateBookingRequest;
@@ -50,6 +54,12 @@ class BookingServiceImplTest {
     @Mock private OrderRepository orderRepository;
     @Mock private TenantContext tenantContext;
     @Mock private MessageService messageService;
+
+    @Mock
+    private AuthContext authContext;
+
+    @Mock
+    private ActivityLogService activityLogService;
 
     @InjectMocks private BookingServiceImpl service;
 

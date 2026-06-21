@@ -1,5 +1,9 @@
 package com.tappy.pos.service.appointment;
 
+import com.tappy.pos.service.audit.ActivityLogService;
+
+import com.tappy.pos.config.AuthContext;
+
 import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.appointment.AppointmentDTO;
@@ -53,6 +57,12 @@ class AppointmentServiceImplTest {
     @Mock private TenantContext tenantContext;
     @Mock private NotificationService notificationService;
     @Mock private MessageService messageService;
+
+    @Mock
+    private AuthContext authContext;
+
+    @Mock
+    private ActivityLogService activityLogService;
 
     @InjectMocks
     private AppointmentServiceImpl service;

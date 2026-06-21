@@ -1,5 +1,9 @@
 package com.tappy.pos.service.report;
 
+import com.tappy.pos.service.audit.ActivityLogService;
+
+import com.tappy.pos.config.AuthContext;
+
 import com.tappy.pos.config.FeatureContext;
 import com.tappy.pos.model.dto.report.CashDrawerDTO;
 import com.tappy.pos.model.dto.report.CloseDrawerRequest;
@@ -43,6 +47,12 @@ class CashDrawerServiceImplTest {
     @Mock private CashDrawerCloseRepository cashDrawerCloseRepository;
     @Mock private FeatureContext featureContext;
     @Mock private TenantContext tenantContext;
+
+    @Mock
+    private AuthContext authContext;
+
+    @Mock
+    private ActivityLogService activityLogService;
 
     @InjectMocks private CashDrawerServiceImpl service;
 

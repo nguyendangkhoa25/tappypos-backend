@@ -1,5 +1,9 @@
 package com.tappy.pos.service.modifier;
 
+import com.tappy.pos.service.audit.ActivityLogService;
+
+import com.tappy.pos.config.AuthContext;
+
 import com.tappy.pos.model.dto.modifier.ModifierGroupDTO;
 import com.tappy.pos.model.dto.modifier.SaveModifierGroupRequest;
 import com.tappy.pos.model.entity.modifier.ModifierGroup;
@@ -35,6 +39,12 @@ class ModifierServiceImplTest {
     @Mock private ProductModifierGroupRepository productModifierGroupRepository;
     @Mock private TenantContext tenantContext;
     @Mock private MessageService messageService;
+
+    @Mock
+    private AuthContext authContext;
+
+    @Mock
+    private ActivityLogService activityLogService;
 
     @InjectMocks private ModifierServiceImpl service;
 
