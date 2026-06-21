@@ -20,10 +20,10 @@ public interface RepairTicketRepository extends JpaRepository<RepairTicket, Long
         WHERE t.tenantId = :tenantId
           AND t.deleted = false
           AND (:status IS NULL OR t.status = :status)
-          AND (:keyword IS NULL OR LOWER(t.ticketNumber) LIKE LOWER(CONCAT('%', :keyword, '%'))
-               OR LOWER(t.customerName) LIKE LOWER(CONCAT('%', :keyword, '%'))
-               OR LOWER(COALESCE(t.customerPhone, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
-               OR LOWER(COALESCE(t.serialImei, '')) LIKE LOWER(CONCAT('%', :keyword, '%')))
+          AND (:keyword IS NULL OR LOWER(t.ticketNumber) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%'))
+               OR LOWER(t.customerName) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%'))
+               OR LOWER(COALESCE(t.customerPhone, '')) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%'))
+               OR LOWER(COALESCE(t.serialImei, '')) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%')))
         ORDER BY t.createdAt DESC
         """)
     Page<RepairTicket> search(@Param("tenantId") String tenantId,
@@ -38,10 +38,10 @@ public interface RepairTicketRepository extends JpaRepository<RepairTicket, Long
           AND t.deleted = false
           AND t.createdBy = :createdBy
           AND (:status IS NULL OR t.status = :status)
-          AND (:keyword IS NULL OR LOWER(t.ticketNumber) LIKE LOWER(CONCAT('%', :keyword, '%'))
-               OR LOWER(t.customerName) LIKE LOWER(CONCAT('%', :keyword, '%'))
-               OR LOWER(COALESCE(t.customerPhone, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
-               OR LOWER(COALESCE(t.serialImei, '')) LIKE LOWER(CONCAT('%', :keyword, '%')))
+          AND (:keyword IS NULL OR LOWER(t.ticketNumber) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%'))
+               OR LOWER(t.customerName) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%'))
+               OR LOWER(COALESCE(t.customerPhone, '')) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%'))
+               OR LOWER(COALESCE(t.serialImei, '')) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%')))
         ORDER BY t.createdAt DESC
         """)
     Page<RepairTicket> searchByCreatedBy(@Param("tenantId") String tenantId,
@@ -70,10 +70,10 @@ public interface RepairTicketRepository extends JpaRepository<RepairTicket, Long
           AND t.deliveredAt IS NOT NULL
           AND t.warrantyDays > 0
           AND (:createdBy IS NULL OR t.createdBy = :createdBy)
-          AND (:keyword IS NULL OR LOWER(COALESCE(t.serialImei, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
-               OR LOWER(t.customerName) LIKE LOWER(CONCAT('%', :keyword, '%'))
-               OR LOWER(COALESCE(t.customerPhone, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
-               OR LOWER(t.ticketNumber) LIKE LOWER(CONCAT('%', :keyword, '%')))
+          AND (:keyword IS NULL OR LOWER(COALESCE(t.serialImei, '')) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%'))
+               OR LOWER(t.customerName) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%'))
+               OR LOWER(COALESCE(t.customerPhone, '')) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%'))
+               OR LOWER(t.ticketNumber) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%')))
         ORDER BY t.deliveredAt DESC
         """)
     java.util.List<RepairTicket> searchDeliveredUnderWarranty(@Param("tenantId") String tenantId,

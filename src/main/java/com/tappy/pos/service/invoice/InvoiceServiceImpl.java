@@ -11,10 +11,13 @@ import com.tappy.pos.model.entity.order.*;
 import com.tappy.pos.model.entity.customer.*;
 import com.tappy.pos.model.entity.tenant.*;
 import com.tappy.pos.model.enums.InvoiceDirection;
+import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.repository.finance.InvoiceRepository;
 import com.tappy.pos.repository.order.OrderRepository;
 import com.tappy.pos.model.enums.ShopConfigKey;
 import com.tappy.pos.service.tenant.ShopConfigService;
+import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.config.AuthContext;
 import com.tappy.pos.multitenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -48,6 +51,8 @@ public class InvoiceServiceImpl implements InvoiceService {
     private final AsyncInvoiceService asyncInvoiceService;
     private final MessageService messageService;
     private final TenantContext tenantContext;
+    private final ActivityLogService activityLogService;
+    private final AuthContext authContext;
 
     @Override
     public Page<InvoiceDTO> getAllInvoices(Pageable pageable) {
@@ -217,6 +222,9 @@ public class InvoiceServiceImpl implements InvoiceService {
         }
 
         log.info("Invoice {} created successfully", saved.getInvoiceNumber());
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.INVOICE_CREATED, "INVOICE", String.valueOf(saved.getId()),
+                "Tạo hóa đơn " + saved.getInvoiceNumber(), null);
         return mapToDTO(saved);
     }
 
@@ -250,6 +258,9 @@ public class InvoiceServiceImpl implements InvoiceService {
 
         Invoice saved = invoiceRepository.save(invoice);
         log.info("Invoice {} updated", saved.getInvoiceNumber());
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.INVOICE_UPDATED, "INVOICE", String.valueOf(saved.getId()),
+                "Cập nhật hóa đơn " + saved.getInvoiceNumber(), null);
         return mapToDTO(saved);
     }
 
@@ -288,6 +299,9 @@ public class InvoiceServiceImpl implements InvoiceService {
         invoice.cancel();
         Invoice saved = invoiceRepository.save(invoice);
         log.info("Invoice {} cancelled", saved.getInvoiceNumber());
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.INVOICE_CANCELLED, "INVOICE", String.valueOf(saved.getId()),
+                "Hủy hóa đơn " + saved.getInvoiceNumber(), null);
         return mapToDTO(saved);
     }
 
@@ -310,6 +324,9 @@ public class InvoiceServiceImpl implements InvoiceService {
         invoice.softDelete();
         invoiceRepository.save(invoice);
         log.info("Invoice {} deleted", invoice.getInvoiceNumber());
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.INVOICE_DELETED, "INVOICE", String.valueOf(invoice.getId()),
+                "Xóa hóa đơn " + invoice.getInvoiceNumber(), null);
     }
 
     @Override
@@ -385,6 +402,9 @@ public class InvoiceServiceImpl implements InvoiceService {
 
         Invoice saved = invoiceRepository.save(invoice);
         log.info("Input invoice {} created", saved.getInvoiceNumber());
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.INVOICE_INPUT_CREATED, "INVOICE", String.valueOf(saved.getId()),
+                "Tạo hóa đơn đầu vào " + saved.getInvoiceNumber(), null);
         return mapToDTO(saved);
     }
 
@@ -405,6 +425,9 @@ public class InvoiceServiceImpl implements InvoiceService {
         invoice.setIssuedDate(LocalDateTime.now());
         Invoice saved = invoiceRepository.save(invoice);
         log.info("Input invoice {} confirmed", saved.getInvoiceNumber());
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.INVOICE_INPUT_CONFIRMED, "INVOICE", String.valueOf(saved.getId()),
+                "Xác nhận hóa đơn đầu vào " + saved.getInvoiceNumber(), null);
         return mapToDTO(saved);
     }
 

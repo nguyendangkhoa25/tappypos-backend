@@ -1,6 +1,9 @@
 package com.tappy.pos.service.goldprice;
 
 import com.tappy.pos.multitenant.TenantContext;
+import com.tappy.pos.config.AuthContext;
+import com.tappy.pos.model.enums.ActivityAction;
+import com.tappy.pos.service.audit.ActivityLogService;
 import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.goldprice.GoldPriceDTO;
@@ -39,6 +42,8 @@ public class GoldPriceServiceImpl implements GoldPriceService {
     private final ShopConfigService shopConfigService;
     private final MessageService messageService;
     private final TenantContext tenantContext;
+    private final ActivityLogService activityLogService;
+    private final AuthContext authContext;
 
     @Override
     public List<GoldPriceDTO> getAllPrices() {
@@ -86,6 +91,9 @@ public class GoldPriceServiceImpl implements GoldPriceService {
         GoldPrice saved = goldPriceRepository.save(price);
         recordHistory(saved);
         log.info("Gold price created id={} for category '{}' by {}", saved.getId(), catName, currentUser);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.GOLD_PRICE_CREATED, "GOLD_PRICE", String.valueOf(saved.getId()),
+                "Tạo giá vàng " + saved.getLabel(), null);
 
         Map<Long, Category> catMap = buildCategoryMap();
         return toDTO(saved, catMap);
@@ -112,6 +120,9 @@ public class GoldPriceServiceImpl implements GoldPriceService {
         GoldPrice saved = goldPriceRepository.save(price);
         recordHistory(saved);
         log.info("Gold price {} updated by {}", id, currentUser);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.GOLD_PRICE_UPDATED, "GOLD_PRICE", String.valueOf(saved.getId()),
+                "Cập nhật giá vàng " + saved.getLabel(), null);
 
         Map<Long, Category> catMap = buildCategoryMap();
         return toDTO(saved, catMap);
@@ -162,6 +173,9 @@ public class GoldPriceServiceImpl implements GoldPriceService {
         price.softDelete();
         goldPriceRepository.save(price);
         log.info("Gold price {} soft-deleted by {}", id, getCurrentUsername());
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.GOLD_PRICE_DELETED, "GOLD_PRICE", String.valueOf(price.getId()),
+                "Xóa giá vàng " + price.getLabel(), null);
     }
 
     @Override

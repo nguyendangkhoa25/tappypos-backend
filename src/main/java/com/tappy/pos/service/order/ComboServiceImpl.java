@@ -4,9 +4,12 @@ import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.entity.order.Combo;
 import com.tappy.pos.model.entity.order.ComboItem;
 import com.tappy.pos.multitenant.TenantContext;
+import com.tappy.pos.config.AuthContext;
+import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.repository.order.ComboRepository;
 import com.tappy.pos.repository.order.OrderItemRepository;
 import com.tappy.pos.service.MessageService;
+import com.tappy.pos.service.audit.ActivityLogService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -27,6 +30,8 @@ public class ComboServiceImpl implements ComboService {
     private final OrderItemRepository orderItemRepository;
     private final TenantContext       tenantContext;
     private final MessageService      messageService;
+    private final ActivityLogService  activityLogService;
+    private final AuthContext         authContext;
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -92,6 +97,9 @@ public class ComboServiceImpl implements ComboService {
         buildItems(combo, body);
         comboRepository.save(combo);
         log.info("Combo created — id: {}", combo.getId());
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.COMBO_CREATED, "COMBO", String.valueOf(combo.getId()),
+                "Tạo combo", null);
         return toDto(combo);
     }
 
@@ -110,6 +118,9 @@ public class ComboServiceImpl implements ComboService {
         }
         comboRepository.save(combo);
         log.info("Combo updated — id: {}", id);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.COMBO_UPDATED, "COMBO", String.valueOf(id),
+                "Cập nhật combo", null);
         return toDto(combo);
     }
 
@@ -121,6 +132,9 @@ public class ComboServiceImpl implements ComboService {
         combo.setDeleted(true);
         comboRepository.save(combo);
         log.info("Combo deleted — id: {}", id);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.COMBO_DELETED, "COMBO", String.valueOf(id),
+                "Xóa combo", null);
     }
 
     // ── Analytics ─────────────────────────────────────────────────────────────

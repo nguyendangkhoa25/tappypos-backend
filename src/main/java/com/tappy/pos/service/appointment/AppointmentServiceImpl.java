@@ -7,9 +7,12 @@ import com.tappy.pos.model.entity.appointment.Appointment;
 import com.tappy.pos.model.entity.appointment.AppointmentServiceItem;
 import com.tappy.pos.model.entity.notification.Notification;
 import com.tappy.pos.model.enums.RoleEnum;
+import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.multitenant.TenantContext;
+import com.tappy.pos.config.AuthContext;
 import com.tappy.pos.repository.appointment.AppointmentRepository;
 import com.tappy.pos.service.MessageService;
+import com.tappy.pos.service.audit.ActivityLogService;
 import com.tappy.pos.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,6 +45,8 @@ public class AppointmentServiceImpl implements AppointmentService {
     private final TenantContext tenantContext;
     private final NotificationService notificationService;
     private final MessageService messageService;
+    private final ActivityLogService activityLogService;
+    private final AuthContext authContext;
 
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
@@ -98,6 +103,10 @@ public class AppointmentServiceImpl implements AppointmentService {
         Appointment saved = appointmentRepository.save(appointment);
         pushAppointmentNotification("notification.appointment.booked.title",
                 "notification.appointment.booked.message", saved, tenantId, username);
+
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.APPOINTMENT_CREATED, "APPOINTMENT", String.valueOf(saved.getId()),
+                "Tạo lịch hẹn", null);
 
         List<String> warnings = buildConflictWarnings(
                 request.getServices(),
@@ -157,6 +166,9 @@ public class AppointmentServiceImpl implements AppointmentService {
         }
 
         Appointment saved = appointmentRepository.save(appointment);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.APPOINTMENT_UPDATED, "APPOINTMENT", String.valueOf(saved.getId()),
+                "Cập nhật lịch hẹn", null);
         // Only re-check conflicts when services (and thus employee assignments) changed.
         List<String> warnings = request.getServices() != null
                 ? buildConflictWarnings(request.getServices(), saved.getScheduledDate(),
@@ -173,7 +185,11 @@ public class AppointmentServiceImpl implements AppointmentService {
             throw new BadRequestException(messageService.getMessage("error.appointment.confirm.invalid.status"));
         }
         appointment.setStatus("CONFIRMED");
-        return mapToDTO(appointmentRepository.save(appointment));
+        Appointment saved = appointmentRepository.save(appointment);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.APPOINTMENT_CONFIRMED, "APPOINTMENT", String.valueOf(saved.getId()),
+                "Xác nhận lịch hẹn", null);
+        return mapToDTO(saved);
     }
 
     @Override
@@ -210,6 +226,9 @@ public class AppointmentServiceImpl implements AppointmentService {
         Appointment saved = appointmentRepository.save(appointment);
         pushAppointmentNotification("notification.appointment.cancelled.title",
                 "notification.appointment.cancelled.message", saved, tenantId, null);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.APPOINTMENT_CANCELLED, "APPOINTMENT", String.valueOf(saved.getId()),
+                "Hủy lịch hẹn", null);
         return mapToDTO(saved);
     }
 
@@ -230,6 +249,9 @@ public class AppointmentServiceImpl implements AppointmentService {
         Appointment appointment = findOrThrow(id);
         appointment.softDelete();
         appointmentRepository.save(appointment);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.APPOINTMENT_DELETED, "APPOINTMENT", String.valueOf(id),
+                "Xóa lịch hẹn", null);
     }
 
     @Override

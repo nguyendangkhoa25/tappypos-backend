@@ -7,9 +7,12 @@ import com.tappy.pos.model.entity.modifier.ModifierGroup;
 import com.tappy.pos.model.entity.modifier.ModifierOption;
 import com.tappy.pos.model.entity.modifier.ProductModifierGroup;
 import com.tappy.pos.multitenant.TenantContext;
+import com.tappy.pos.config.AuthContext;
+import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.repository.modifier.ModifierGroupRepository;
 import com.tappy.pos.repository.modifier.ProductModifierGroupRepository;
 import com.tappy.pos.service.MessageService;
+import com.tappy.pos.service.audit.ActivityLogService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -31,6 +34,8 @@ public class ModifierServiceImpl implements ModifierService {
     private final ProductModifierGroupRepository productModifierGroupRepository;
     private final TenantContext tenantContext;
     private final MessageService messageService;
+    private final ActivityLogService activityLogService;
+    private final AuthContext authContext;
 
     @Override
     @Transactional(readOnly = true)
@@ -64,6 +69,9 @@ public class ModifierServiceImpl implements ModifierService {
         applyGroupFields(group, req);
         ModifierGroup saved = modifierGroupRepository.save(group);
         log.info("Created modifier group {} with {} options", saved.getId(), saved.getOptions().size());
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.MODIFIER_GROUP_CREATED, "MODIFIER_GROUP", String.valueOf(saved.getId()),
+                "Tạo nhóm tùy chọn", null);
         return mapToDTO(saved);
     }
 
@@ -72,7 +80,11 @@ public class ModifierServiceImpl implements ModifierService {
         ModifierGroup group = requireGroup(id);
         group.getOptions().clear(); // orphanRemoval deletes the old options
         applyGroupFields(group, req);
-        return mapToDTO(modifierGroupRepository.save(group));
+        ModifierGroup saved = modifierGroupRepository.save(group);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.MODIFIER_GROUP_UPDATED, "MODIFIER_GROUP", String.valueOf(id),
+                "Cập nhật nhóm tùy chọn", null);
+        return mapToDTO(saved);
     }
 
     @Override
@@ -81,6 +93,9 @@ public class ModifierServiceImpl implements ModifierService {
         group.softDelete();
         modifierGroupRepository.save(group);
         log.info("Soft-deleted modifier group {}", id);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.MODIFIER_GROUP_DELETED, "MODIFIER_GROUP", String.valueOf(id),
+                "Xóa nhóm tùy chọn", null);
     }
 
     @Override
@@ -112,6 +127,9 @@ public class ModifierServiceImpl implements ModifierService {
                     .build();
             productModifierGroupRepository.save(link);
         }
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.MODIFIER_GROUP_PRODUCT_SET, "MODIFIER_GROUP", String.valueOf(productId),
+                "Gán nhóm tùy chọn cho sản phẩm", null);
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

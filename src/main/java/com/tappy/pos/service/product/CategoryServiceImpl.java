@@ -9,6 +9,9 @@ import com.tappy.pos.model.entity.tenant.GoldPrice;
 import com.tappy.pos.repository.product.CategoryRepository;
 import com.tappy.pos.repository.tenant.GoldPriceRepository;
 import com.tappy.pos.service.MessageService;
+import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.config.AuthContext;
+import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.multitenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +34,8 @@ public class CategoryServiceImpl implements CategoryService {
     private final GoldPriceRepository goldPriceRepository;
     private final MessageService messageService;
     private final TenantContext tenantContext;
+    private final ActivityLogService activityLogService;
+    private final AuthContext authContext;
 
     @Override
     @Transactional(readOnly = true)
@@ -84,6 +89,9 @@ public class CategoryServiceImpl implements CategoryService {
 
         Category saved = categoryRepository.save(category);
         log.info("Category created: {} (id={})", saved.getName(), saved.getId());
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.CATEGORY_CREATED, "CATEGORY", String.valueOf(saved.getId()),
+                "Tạo danh mục " + saved.getName(), null);
         return mapToDTO(saved, null);
     }
 
@@ -119,6 +127,9 @@ public class CategoryServiceImpl implements CategoryService {
         }
 
         log.info("Category updated: {} (id={})", updated.getName(), updated.getId());
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.CATEGORY_UPDATED, "CATEGORY", String.valueOf(updated.getId()),
+                "Cập nhật danh mục " + updated.getName(), null);
         return mapToDTO(updated, null);
     }
 
@@ -147,6 +158,9 @@ public class CategoryServiceImpl implements CategoryService {
         category.softDelete();
         categoryRepository.save(category);
         log.info("Category deleted: {} (id={})", category.getName(), id);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.CATEGORY_DELETED, "CATEGORY", String.valueOf(category.getId()),
+                "Xóa danh mục " + category.getName(), null);
     }
 
     @Override

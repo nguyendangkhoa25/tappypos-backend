@@ -16,6 +16,10 @@ import com.tappy.pos.repository.product.ProductRepository;
 import com.tappy.pos.repository.product.ProductVariantRepository;
 import com.tappy.pos.repository.product.VariantTypeRepository;
 import com.tappy.pos.service.MessageService;
+import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.config.AuthContext;
+import com.tappy.pos.model.enums.ActivityAction;
+import com.tappy.pos.multitenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -39,6 +43,9 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     private final VariantTypeRepository variantTypeRepository;
     private final InventoryRepository inventoryRepository;
     private final MessageService messageService;
+    private final ActivityLogService activityLogService;
+    private final TenantContext tenantContext;
+    private final AuthContext authContext;
 
     @Override
     @Transactional(readOnly = true)
@@ -115,6 +122,9 @@ public class ProductVariantServiceImpl implements ProductVariantService {
             zeroOutProductLevelInventory(productId);
         }
         log.info("Created variant {} for product {}", saved.getId(), productId);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.PRODUCT_VARIANT_CREATED, "PRODUCT_VARIANT", String.valueOf(saved.getId()),
+                "Tạo biến thể sản phẩm " + saved.getSku(), null);
         return mapToDTO(saved, product.getPrice());
     }
 
@@ -139,6 +149,9 @@ public class ProductVariantServiceImpl implements ProductVariantService {
 
         ProductVariant saved = productVariantRepository.save(variant);
         log.info("Updated variant {} for product {}", variantId, productId);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.PRODUCT_VARIANT_UPDATED, "PRODUCT_VARIANT", String.valueOf(saved.getId()),
+                "Cập nhật biến thể sản phẩm " + saved.getSku(), null);
         return mapToDTO(saved, product.getPrice());
     }
 
@@ -159,6 +172,9 @@ public class ProductVariantServiceImpl implements ProductVariantService {
         variant.setDeleted(true);
         productVariantRepository.save(variant);
         log.info("Deleted variant {} for product {}", variantId, productId);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.PRODUCT_VARIANT_DELETED, "PRODUCT_VARIANT", String.valueOf(variant.getId()),
+                "Xóa biến thể sản phẩm " + variant.getSku(), null);
     }
 
     @Override
@@ -221,6 +237,9 @@ public class ProductVariantServiceImpl implements ProductVariantService {
         }
 
         log.info("Generated {} variants for product {}", created.size(), productId);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.PRODUCT_VARIANT_GENERATED, "PRODUCT_VARIANT", String.valueOf(productId),
+                "Tạo " + created.size() + " biến thể cho sản phẩm " + product.getName(), null);
         return created;
     }
 

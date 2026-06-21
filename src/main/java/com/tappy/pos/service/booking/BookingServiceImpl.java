@@ -13,11 +13,14 @@ import com.tappy.pos.model.entity.booking.BookingResourceRate;
 import com.tappy.pos.model.entity.order.Order;
 import com.tappy.pos.model.entity.order.OrderItem;
 import com.tappy.pos.multitenant.TenantContext;
+import com.tappy.pos.config.AuthContext;
+import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.repository.booking.BookingRepository;
 import com.tappy.pos.repository.booking.BookingResourceRateRepository;
 import com.tappy.pos.repository.booking.BookingResourceRepository;
 import com.tappy.pos.repository.order.OrderRepository;
 import com.tappy.pos.service.MessageService;
+import com.tappy.pos.service.audit.ActivityLogService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -61,6 +64,8 @@ public class BookingServiceImpl implements BookingService {
     private final OrderRepository orderRepository;
     private final TenantContext tenantContext;
     private final MessageService messageService;
+    private final ActivityLogService activityLogService;
+    private final AuthContext authContext;
 
     // ── Resources ────────────────────────────────────────────────────────────
 
@@ -94,6 +99,9 @@ public class BookingServiceImpl implements BookingService {
                 .build();
         BookingResource saved = resourceRepository.save(resource);
         List<BookingResourceRate> rates = replaceRates(saved, request.getRates());
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.BOOKING_RESOURCE_CREATED, "BOOKING_RESOURCE", String.valueOf(saved.getId()),
+                "Tạo tài nguyên đặt chỗ", null);
         return mapResource(saved, null, rates);
     }
 
@@ -109,6 +117,9 @@ public class BookingServiceImpl implements BookingService {
         if (request.getNote() != null) resource.setNote(request.getNote());
         if (request.getSortOrder() != null) resource.setSortOrder(request.getSortOrder());
         BookingResource saved = resourceRepository.save(resource);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.BOOKING_RESOURCE_UPDATED, "BOOKING_RESOURCE", String.valueOf(saved.getId()),
+                "Cập nhật tài nguyên đặt chỗ", null);
         // null = leave windows unchanged; non-null = full replace.
         List<BookingResourceRate> rates = (request.getRates() != null)
                 ? replaceRates(saved, request.getRates())
@@ -148,6 +159,9 @@ public class BookingServiceImpl implements BookingService {
         });
         resource.softDelete();
         resourceRepository.save(resource);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.BOOKING_RESOURCE_DELETED, "BOOKING_RESOURCE", String.valueOf(id),
+                "Xóa tài nguyên đặt chỗ", null);
     }
 
     // ── Bookings ─────────────────────────────────────────────────────────────
@@ -187,6 +201,9 @@ public class BookingServiceImpl implements BookingService {
             // index is the real guard; translate its violation into the friendly "busy" message.
             Booking saved = persistDetectingConflicts(booking);
             log.info("Booking created: {} resource={} type=WALK_IN", saved.getBookingNumber(), resource.getName());
+            activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                    ActivityAction.BOOKING_CREATED, "BOOKING", String.valueOf(saved.getId()),
+                    "Tạo lượt đặt chỗ", null);
             return mapBooking(saved);
         }
 
@@ -218,6 +235,9 @@ public class BookingServiceImpl implements BookingService {
             if (first == null) first = saved;
         }
         log.info("Reservation created: {} resource={} occurrences={}", first.getBookingNumber(), resource.getName(), occurrences);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.BOOKING_CREATED, "BOOKING", String.valueOf(first.getId()),
+                "Tạo lượt đặt chỗ", null);
         return mapBooking(first);
     }
 
@@ -294,6 +314,9 @@ public class BookingServiceImpl implements BookingService {
 
         Booking saved = bookingRepository.save(booking);
         log.info("Booking checked out: {} minutes={} amount={} order={}", saved.getBookingNumber(), minutes, amount, orderId);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.BOOKING_CHECKOUT, "BOOKING", String.valueOf(saved.getId()),
+                "Trả chỗ đặt", null);
         return mapBooking(saved);
     }
 
@@ -305,7 +328,11 @@ public class BookingServiceImpl implements BookingService {
             throw new BadRequestException(messageService.getMessage("error.booking.invalid.status", booking.getStatus()));
         }
         booking.setStatus("CANCELLED");
-        return mapBooking(bookingRepository.save(booking));
+        Booking saved = bookingRepository.save(booking);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.BOOKING_CANCELLED, "BOOKING", String.valueOf(saved.getId()),
+                "Hủy lượt đặt chỗ", null);
+        return mapBooking(saved);
     }
 
     @Override
@@ -325,6 +352,9 @@ public class BookingServiceImpl implements BookingService {
         Booking booking = findOrThrow(id);
         booking.softDelete();
         bookingRepository.save(booking);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.BOOKING_DELETED, "BOOKING", String.valueOf(id),
+                "Xóa lượt đặt chỗ", null);
     }
 
     // ── Order creation on checkout ───────────────────────────────────────────

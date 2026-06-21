@@ -109,6 +109,7 @@ public class MobileShopConfigController {
     }
 
     @GetMapping("/loyalty")
+    @RequiresFeature("LOYALTY")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getLoyalty() {
         log.info("Endpoint: GET /shop-config/loyalty");
         return ResponseEntity.ok(ApiResponse.success(

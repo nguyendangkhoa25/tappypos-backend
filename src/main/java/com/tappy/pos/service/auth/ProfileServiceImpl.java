@@ -10,6 +10,7 @@ import com.tappy.pos.model.dto.auth.UserProfile;
 import com.tappy.pos.model.entity.auth.Role;
 import com.tappy.pos.model.entity.auth.User;
 import com.tappy.pos.model.enums.ActivityAction;
+import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.auth.UserRepository;
 import com.tappy.pos.service.audit.ActivityLogService;
 import com.tappy.pos.service.storage.R2CleanupService;
@@ -43,6 +44,7 @@ public class ProfileServiceImpl implements ProfileService {
     private final R2StorageService r2StorageService;
     private final R2CleanupService r2CleanupService;
     private final ActivityLogService activityLogService;
+    private final TenantContext tenantContext;
 
     /**
      * Get user profile by username
@@ -307,9 +309,10 @@ public class ProfileServiceImpl implements ProfileService {
         r2CleanupService.deleteAsync(oldAvatarKey);
 
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
-        activityLogService.logAsync(null, actor, null,
+        String tid = tenantContext.getCurrentTenantId() != null ? tenantContext.getCurrentTenantId() : "master";
+        activityLogService.logAsync(tid, actor, null,
                 ActivityAction.USER_AVATAR_UPDATED, "USER", user.getId().toString(),
-                "Updated avatar for user: " + username, null);
+                "Cập nhật ảnh đại diện: " + username, null);
 
         log.info("Avatar uploaded — userId: {}, key: {}", user.getId(), key);
         return mapToUserProfile(saved);
@@ -334,9 +337,10 @@ public class ProfileServiceImpl implements ProfileService {
         r2CleanupService.deleteAsync(oldAvatarKey);
 
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
-        activityLogService.logAsync(null, actor, null,
+        String tid = tenantContext.getCurrentTenantId() != null ? tenantContext.getCurrentTenantId() : "master";
+        activityLogService.logAsync(tid, actor, null,
                 ActivityAction.USER_AVATAR_DELETED, "USER", user.getId().toString(),
-                "Deleted avatar for user: " + username, null);
+                "Xóa ảnh đại diện: " + username, null);
 
         log.info("Avatar deleted — userId: {}", user.getId());
     }

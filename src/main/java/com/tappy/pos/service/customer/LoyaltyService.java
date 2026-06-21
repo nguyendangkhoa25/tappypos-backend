@@ -14,6 +14,9 @@ import com.tappy.pos.repository.customer.LoyaltyTierRepository;
 import com.tappy.pos.repository.customer.LoyaltyTransactionRepository;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.multitenant.TenantContext;
+import com.tappy.pos.config.AuthContext;
+import com.tappy.pos.model.enums.ActivityAction;
+import com.tappy.pos.service.audit.ActivityLogService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -38,6 +41,8 @@ public class LoyaltyService {
     private final CustomerRepository customerRepository;
     private final MessageService messageService;
     private final TenantContext tenantContext;
+    private final ActivityLogService activityLogService;
+    private final AuthContext authContext;
 
     // ── Program ──────────────────────────────────────────────────────────────
 
@@ -274,6 +279,10 @@ public class LoyaltyService {
                 .description(description != null ? description : "Điều chỉnh điểm thủ công")
                 .build());
 
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.LOYALTY_ADJUSTED, "LOYALTY", String.valueOf(customerId),
+                "Điều chỉnh điểm khách hàng", null);
+
         return mapTransactionToDTO(tx);
     }
 
@@ -314,6 +323,10 @@ public class LoyaltyService {
                 .balanceAfter(balanceAfter)
                 .description("Đổi " + pointsToRedeem + " điểm lấy " + discountAmount.toPlainString() + " VND")
                 .build());
+
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.LOYALTY_REDEEMED, "LOYALTY", String.valueOf(customerId),
+                "Đổi điểm lấy ưu đãi", null);
 
         return discountAmount;
     }
