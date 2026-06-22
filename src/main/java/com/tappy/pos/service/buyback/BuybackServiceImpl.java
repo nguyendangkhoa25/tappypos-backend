@@ -69,7 +69,7 @@ public class BuybackServiceImpl implements BuybackService {
         BuybackEntity saved = buybackRepository.save(entity);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.BUYBACK_CREATED, "BUYBACK", String.valueOf(saved.getBuybackId()),
-                messageService.getMessage("activity.buyback.created", saved.getItemName()), null);
+                "activity.buyback.created", null, saved.getItemName());
         return toResponse(saved);
     }
 
@@ -101,7 +101,7 @@ public class BuybackServiceImpl implements BuybackService {
         buybackRepository.save(entity);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.BUYBACK_SOLD, "BUYBACK", String.valueOf(buybackId),
-                messageService.getMessage("activity.buyback.sold", entity.getItemName()), null);
+                "activity.buyback.sold", null, entity.getItemName());
         return toResponse(entity);
     }
 
@@ -119,7 +119,7 @@ public class BuybackServiceImpl implements BuybackService {
         buybackRepository.save(entity);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.BUYBACK_CANCELLED, "BUYBACK", String.valueOf(buybackId),
-                messageService.getMessage("activity.buyback.cancelled", entity.getItemName()), null);
+                "activity.buyback.cancelled", null, entity.getItemName());
         return toResponse(entity);
     }
 

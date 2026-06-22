@@ -21,6 +21,7 @@ import com.tappy.pos.repository.finance.CustomerDebtRepository;
 import com.tappy.pos.repository.installment.InstallmentScheduleRepository;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -120,7 +121,8 @@ public class InstallmentServiceImpl implements InstallmentService {
 
         activityLogService.logAsync(tid, actor, null,
                 ActivityAction.INSTALLMENT_CREATED, "INSTALLMENT", String.valueOf(savedDebt.getId()),
-                "Lập hợp đồng trả góp cho " + customer.getName() + ": " + financed + "đ / " + n + " kỳ", null);
+                "activity.installment.created", null,
+                customer.getName(), String.valueOf(financed), n);
         return toDTO(savedDebt);
     }
 
@@ -169,7 +171,8 @@ public class InstallmentServiceImpl implements InstallmentService {
 
         activityLogService.logAsync(tid, authContext.getCurrentUsername(), null,
                 ActivityAction.INSTALLMENT_PAYMENT, "INSTALLMENT", String.valueOf(debt.getId()),
-                "Thu kỳ " + row.getInstallmentNo() + " trả góp của " + debt.getCustomerName() + ": " + amount + "đ", null);
+                "activity.installment.payment", null,
+                row.getInstallmentNo(), debt.getCustomerName(), String.valueOf(amount));
         return toDTO(debt);
     }
 
@@ -187,7 +190,7 @@ public class InstallmentServiceImpl implements InstallmentService {
         debtRepository.save(debt);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.INSTALLMENT_CANCELLED, "INSTALLMENT", String.valueOf(debtId),
-                "Hủy hợp đồng trả góp #" + debtId, null);
+                "activity.installment.cancelled", null, debtId);
         return toDTO(debt);
     }
 
@@ -198,11 +201,10 @@ public class InstallmentServiceImpl implements InstallmentService {
         List<InstallmentScheduleEntity> overdue = scheduleRepository.findOverdue(LocalDate.now());
         if (overdue.isEmpty()) return;
         long contracts = overdue.stream().map(InstallmentScheduleEntity::getDebtId).distinct().count();
-        String title = messageService.getMessage("notification.installment.overdue.title", new java.util.Locale("vi"), contracts);
-        String message = messageService.getMessage("notification.installment.overdue.message",
-                new java.util.Locale("vi"), overdue.size(), contracts);
-        notificationService.pushToRoles(Notification.NotificationType.INFO, title, message,
-                "INSTALLMENT", null, List.of(RoleEnum.SHOP_OWNER.getCode(), RoleEnum.MANAGER.getCode()));
+        notificationService.pushToRoles(Notification.NotificationType.INFO,
+                LocalizedText.of("notification.installment.overdue.title", contracts),
+                LocalizedText.of("notification.installment.overdue.message", overdue.size(), contracts),
+                "INSTALLMENT", null, List.of(RoleEnum.SHOP_OWNER.getCode()));
         log.info("Installment overdue notification sent for tenant {}: {} kỳ across {} contract(s)",
                 tid, overdue.size(), contracts);
     }

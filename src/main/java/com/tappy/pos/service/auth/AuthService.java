@@ -186,6 +186,8 @@ public class AuthService {
                 ? tenantContext.getCurrentTenant().getShopType().name()
                 : null;
         String tenantId = isMasterUser ? "master" : tenantContext.getCurrentTenant().getTenantId();
+        Integer featuresVersion = tenantContext.getCurrentTenant() != null
+                ? tenantContext.getCurrentTenant().getFeaturesVersion() : null;
         String accessToken = jwtTokenProvider.generateTokenWithSession(
                 user.getUsername(),
                 roleNames,
@@ -193,7 +195,8 @@ public class AuthService {
                 isMasterUser,
                 sessionId,
                 shopType,
-                tenantId
+                tenantId,
+                featuresVersion
         );
         log.info("Access token generated for user: {} with roles: {}, features: {}, isMasterUser: {}",
                 loginRequest.getUsername(), roleNames, featureNames.size(), isMasterUser);
@@ -202,7 +205,7 @@ public class AuthService {
                 new SessionInfo(sessionId, clientIp, userAgent, LocalDateTime.now()));
 
         activityLogService.logAsync(tenantKey, user.getUsername(), user.getFullName(),
-                ActivityAction.LOGIN, null, null, messageService.getMessage("activity.login"), clientIp);
+                ActivityAction.LOGIN, null, null, "activity.login", clientIp);
 
         boolean setupComplete = isMasterUser
                 || (tenantContext.getCurrentTenant() != null && tenantContext.getCurrentTenant().isSetupComplete());
@@ -350,13 +353,16 @@ public class AuthService {
                 ? tenantContext.getCurrentTenant().getShopType().name()
                 : null;
         String refreshTenantId = isMasterUser ? "master" : tenantContext.getCurrentTenant().getTenantId();
+        Integer refreshFeaturesVersion = tenantContext.getCurrentTenant() != null
+                ? tenantContext.getCurrentTenant().getFeaturesVersion() : null;
         String accessToken = jwtTokenProvider.generateTokenWithRolesAndFeatures(
                 username,
                 roleNames,
                 featureNames,
                 isMasterUser,
                 refreshShopType,
-                refreshTenantId
+                refreshTenantId,
+                refreshFeaturesVersion
         );
         log.info("New access token generated for user: {} with roles: {}, features: {}, isMasterUser: {}",
                 username, roleNames, featureNames.size(), isMasterUser);
@@ -399,7 +405,7 @@ public class AuthService {
         sessionRegistry.remove(tenantKey, username);
 
         activityLogService.logAsync(tenantKey, username, user.getFullName(),
-                ActivityAction.LOGOUT, null, null, messageService.getMessage("activity.logout"), null);
+                ActivityAction.LOGOUT, null, null, "activity.logout", null);
 
         log.info("User logged out: {}", username);
     }
@@ -469,7 +475,9 @@ public class AuthService {
         String shopType = tenantContext.getCurrentTenant() != null && tenantContext.getCurrentTenant().getShopType() != null
                 ? tenantContext.getCurrentTenant().getShopType().name() : null;
         String tenantId = isMasterUser ? "master" : tenantContext.getCurrentTenant().getTenantId();
-        String accessToken = jwtTokenProvider.generateTokenWithSession(user.getUsername(), roleNames, featureNames, isMasterUser, sessionId, shopType, tenantId);
+        Integer featuresVersion = tenantContext.getCurrentTenant() != null
+                ? tenantContext.getCurrentTenant().getFeaturesVersion() : null;
+        String accessToken = jwtTokenProvider.generateTokenWithSession(user.getUsername(), roleNames, featureNames, isMasterUser, sessionId, shopType, tenantId, featuresVersion);
         String tenantKey = isMasterUser ? SessionRegistry.MASTER_KEY : tenantContext.getCurrentTenant().getTenantId();
         sessionRegistry.register(tenantKey, user.getUsername(), new SessionInfo(sessionId, clientIp, userAgent, java.time.LocalDateTime.now()));
         String refreshToken = generateRefreshToken(user);
@@ -517,7 +525,9 @@ public class AuthService {
         String shopType = tenantContext.getCurrentTenant() != null && tenantContext.getCurrentTenant().getShopType() != null
                 ? tenantContext.getCurrentTenant().getShopType().name() : null;
         String tenantId = isMasterUser ? "master" : tenantContext.getCurrentTenant().getTenantId();
-        String accessToken = jwtTokenProvider.generateTokenWithRolesAndFeatures(user.getUsername(), roleNames, featureNames, isMasterUser, shopType, tenantId);
+        Integer featuresVersion = tenantContext.getCurrentTenant() != null
+                ? tenantContext.getCurrentTenant().getFeaturesVersion() : null;
+        String accessToken = jwtTokenProvider.generateTokenWithRolesAndFeatures(user.getUsername(), roleNames, featureNames, isMasterUser, shopType, tenantId, featuresVersion);
         String refreshToken = generateRefreshToken(user);
         // Registration creates a user with no shop yet; routing will direct them to the onboarding wizard.
         AuthResponse response = AuthResponse.of(accessToken, refreshToken, jwtTokenProvider.getTokenExpirationMs(), user.getUsername(), null, false, null);

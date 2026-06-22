@@ -4,13 +4,16 @@ import com.tappy.pos.model.dto.auth.PermissionsMatrixDTO;
 import com.tappy.pos.model.entity.auth.Feature;
 import com.tappy.pos.model.entity.auth.Role;
 import com.tappy.pos.model.enums.RoleEnum;
+import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.auth.RoleFeatureRepository;
 import com.tappy.pos.repository.auth.RoleRepository;
+import com.tappy.pos.repository.tenant.TenantRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -27,11 +30,13 @@ public class RoleFeatureService {
 
     private final RoleFeatureRepository roleFeatureRepository;
     private final RoleRepository roleRepository;
+    private final TenantRepository tenantRepository;
+    private final TenantContext tenantContext;
 
     /**
      * Get all active features accessible by a specific role
      *
-     * @param roleName the name of the role (e.g., 'SHOP_OWNER', 'MANAGER')
+     * @param roleName the name of the role (e.g., 'SHOP_OWNER', 'CASHIER')
      * @return list of Feature objects accessible by the role
      */
     public List<Feature> getActiveFeaturesByRoleName(String roleName) {
@@ -184,10 +189,23 @@ public class RoleFeatureService {
      */
     public void setRoleFeatures(String roleName, List<String> featureNames) {
         log.info("Setting features for role {}: {}", roleName, featureNames);
+        Set<String> before = new HashSet<>(roleFeatureRepository.findActiveFeatureNamesByRoleName(roleName));
         roleFeatureRepository.removeAllFeaturesFromRole(roleName);
         if (featureNames != null) {
             for (String featureName : featureNames) {
                 roleFeatureRepository.assignFeatureToRole(roleName, featureName);
+            }
+        }
+        Set<String> after = featureNames != null ? new HashSet<>(featureNames) : Set.of();
+        // Changing a role's features changes the JWT feature intersection for everyone with that
+        // role. Bump features_version (stale-token signal) so those users refresh within seconds —
+        // but only when the set actually changed, so a no-op re-save doesn't force a tenant-wide
+        // refresh. The master-admin path bumps separately in TenantService.updateTenant.
+        if (!before.equals(after)) {
+            String tenantId = tenantContext.getCurrentTenantId();
+            if (tenantId != null) {
+                tenantRepository.bumpFeaturesVersion(tenantId);
+                log.info("Bumped features_version for tenant {} after role-feature change", tenantId);
             }
         }
     }

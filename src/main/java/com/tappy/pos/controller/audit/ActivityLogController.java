@@ -52,8 +52,10 @@ public class ActivityLogController {
         String username = authContext.getCurrentUsername();
         String tenantId = tenantContext.getCurrentTenant() != null
                 ? tenantContext.getCurrentTenant().getTenantId() : null;
+        // Mobile events carry client-supplied free text, not a fixed action. Use the pass-through
+        // key activity.mobile.event ("{0}") so the text is stored as an arg and rendered verbatim.
         activityLogService.logAsync(tenantId, username, username,
-                ActivityAction.MOBILE_EVENT, "MOBILE_EVENT", null, description, null);
+                ActivityAction.MOBILE_EVENT, "MOBILE_EVENT", null, "activity.mobile.event", null, description);
         return ResponseEntity.ok(ApiResponse.success(null, "Event logged"));
     }
 }

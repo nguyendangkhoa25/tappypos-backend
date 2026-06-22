@@ -13,6 +13,7 @@ import com.tappy.pos.model.dto.finance.DefaultExpenseRequest;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.finance.DefaultExpenseService;
 import com.tappy.pos.service.finance.ShopExpenseService;
+import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.service.notification.NotificationService;
 import com.tappy.pos.service.tenant.TenantFeatureService;
 import com.tappy.pos.service.tenant.TenantProvisioningService;
@@ -357,7 +358,8 @@ public class OnboardingController {
             List<String> featureNames = tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(roleNames);
 
             String accessToken = jwtTokenProvider.generateTokenWithRolesAndFeatures(
-                    username, roleNames, featureNames, false, shopType.name(), tenantId);
+                    username, roleNames, featureNames, false, shopType.name(), tenantId,
+                    tenantEntity.getFeaturesVersion());
 
             log.info("Self-provisioned tenant {} for user {} with {} features",
                     tenantId, username, featureNames.size());
@@ -681,15 +683,14 @@ public class OnboardingController {
 
     private void sendWelcomeNotification(Tenant tenant, String username, String tenantId) {
         try {
-            Locale vi = new Locale("vi");
             String expiryFormatted = tenant.getExpirationDate() != null
                     ? tenant.getExpirationDate().format(VN_DATE)
                     : LocalDate.now().plusYears(1).format(VN_DATE);
-            String title = messageService.getMessage("notification.shop.welcome.title", vi);
-            String message = messageService.getMessage("notification.shop.welcome.self.message", vi,
-                    tenant.getName(), expiryFormatted);
             notificationService.pushSystemAsync(username, Notification.NotificationType.SYSTEM,
-                    title, message, "TENANT", tenant.getId(), tenantId);
+                    LocalizedText.of("notification.shop.welcome.title"),
+                    LocalizedText.of("notification.shop.welcome.self.message",
+                            tenant.getName(), expiryFormatted),
+                    "TENANT", tenant.getId(), tenantId);
         } catch (Exception e) {
             log.warn("Failed to send welcome notification to {}: {}", username, e.getMessage());
         }

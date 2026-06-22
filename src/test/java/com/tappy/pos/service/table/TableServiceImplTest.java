@@ -260,7 +260,7 @@ class TableServiceImplTest {
         assertThat(dto.getTableLabel()).isEqualTo("B1");
         assertThat(dto.getPartySize()).isEqualTo(2);
         assertThat(dto.getStatus()).isEqualTo("RESERVED");
-        verify(activityLogService).logAsync(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(activityLogService).logAsync(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test

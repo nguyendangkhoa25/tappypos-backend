@@ -56,7 +56,7 @@ public class DefaultExpenseServiceImpl implements DefaultExpenseService {
         DefaultExpense saved = defaultExpenseRepository.save(expense);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.DEFAULT_EXPENSE_CREATED, "DEFAULT_EXPENSE", String.valueOf(saved.getId()),
-                "Tạo chi phí định kỳ", null);
+                "activity.default.expense.created", null);
         return toDTO(saved);
     }
 
@@ -74,7 +74,7 @@ public class DefaultExpenseServiceImpl implements DefaultExpenseService {
         DefaultExpense saved = defaultExpenseRepository.save(expense);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.DEFAULT_EXPENSE_UPDATED, "DEFAULT_EXPENSE", String.valueOf(saved.getId()),
-                "Cập nhật chi phí định kỳ", null);
+                "activity.default.expense.updated", null);
         return toDTO(saved);
     }
 
@@ -86,7 +86,7 @@ public class DefaultExpenseServiceImpl implements DefaultExpenseService {
         defaultExpenseRepository.save(expense);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.DEFAULT_EXPENSE_DELETED, "DEFAULT_EXPENSE", String.valueOf(id),
-                "Xóa chi phí định kỳ", null);
+                "activity.default.expense.deleted", null);
     }
 
     @Override

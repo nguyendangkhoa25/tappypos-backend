@@ -730,6 +730,35 @@ class JwtTokenProviderTest {
         assertThat(jwtTokenProvider.getTenantIdsFromToken(token)).isEmpty();
     }
 
+    // ── features-version (fv) claim ────────────────────────────────────────────
+
+    @Test
+    @DisplayName("generateTokenWithSession: embeds fv claim, extractable via getFeaturesVersionFromToken")
+    void testGenerateTokenWithSession_EmbedsFeaturesVersion() {
+        String token = jwtTokenProvider.generateTokenWithSession(
+                "user1", List.of("SHOP_OWNER"), List.of("ORDER"), false, "sess-1", "PAWN_SHOP", "shop1", 7);
+
+        assertThat(jwtTokenProvider.getFeaturesVersionFromToken(token)).isEqualTo(7);
+    }
+
+    @Test
+    @DisplayName("generateTokenWithRolesAndFeatures: embeds fv claim")
+    void testGenerateTokenWithRolesAndFeatures_EmbedsFeaturesVersion() {
+        String token = jwtTokenProvider.generateTokenWithRolesAndFeatures(
+                "user1", List.of("SHOP_OWNER"), List.of("ORDER"), false, "GENERAL", "shop1", 3);
+
+        assertThat(jwtTokenProvider.getFeaturesVersionFromToken(token)).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("getFeaturesVersionFromToken: returns null when no fv claim (backward compatible)")
+    void testGetFeaturesVersionFromToken_NoClaim() {
+        String token = jwtTokenProvider.generateTokenWithSession(
+                "user1", List.of("SHOP_OWNER"), List.of("ORDER"), false, "sess-1");
+
+        assertThat(jwtTokenProvider.getFeaturesVersionFromToken(token)).isNull();
+    }
+
     @Test
     @DisplayName("validateToken: returns false for token signed with wrong secret (SignatureException)")
     void validateToken_WrongSignature_ReturnsFalse() {

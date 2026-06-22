@@ -56,7 +56,7 @@ public class BankAccountServiceImpl implements BankAccountService {
         BankAccount saved = repo.save(account);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.BANK_ACCOUNT_CREATED, "BANK_ACCOUNT", String.valueOf(saved.getId()),
-                "Tạo tài khoản ngân hàng", null);
+                "activity.bank.account.created", null);
         return toDTO(saved);
     }
 
@@ -79,7 +79,7 @@ public class BankAccountServiceImpl implements BankAccountService {
         BankAccount saved = repo.save(account);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.BANK_ACCOUNT_UPDATED, "BANK_ACCOUNT", String.valueOf(saved.getId()),
-                "Cập nhật tài khoản ngân hàng", null);
+                "activity.bank.account.updated", null);
         return toDTO(saved);
     }
 
@@ -91,7 +91,7 @@ public class BankAccountServiceImpl implements BankAccountService {
         repo.save(account);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.BANK_ACCOUNT_DELETED, "BANK_ACCOUNT", String.valueOf(id),
-                "Xóa tài khoản ngân hàng", null);
+                "activity.bank.account.deleted", null);
     }
 
     @Override
@@ -103,7 +103,7 @@ public class BankAccountServiceImpl implements BankAccountService {
         BankAccount saved = repo.save(account);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.BANK_ACCOUNT_SET_DEFAULT, "BANK_ACCOUNT", String.valueOf(saved.getId()),
-                "Đặt tài khoản ngân hàng mặc định", null);
+                "activity.bank.account.set.default", null);
         return toDTO(saved);
     }
 

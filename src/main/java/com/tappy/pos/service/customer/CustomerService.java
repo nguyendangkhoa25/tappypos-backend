@@ -100,7 +100,7 @@ public class CustomerService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.CUSTOMER_CREATED, "CUSTOMER", String.valueOf(saved.getId()),
-                "Thêm khách hàng: " + saved.getName(), null);
+                "activity.customer.created", null, saved.getName());
 
         return mapToDTO(saved);
     }
@@ -245,7 +245,7 @@ public class CustomerService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.CUSTOMER_UPDATED, "CUSTOMER", String.valueOf(updated.getId()),
-                "Cập nhật khách hàng: " + updated.getName(), null);
+                "activity.customer.updated", null, updated.getName());
 
         return mapToDTO(updated);
     }
@@ -264,6 +264,11 @@ public class CustomerService {
         customer.softDelete();
         customerRepository.save(customer);
         log.info("Customer deleted successfully (soft delete) - id: {}, name: {}", customer.getId(), customer.getName());
+
+        String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.CUSTOMER_DELETED, "CUSTOMER", String.valueOf(customer.getId()),
+                "activity.customer.deleted", null, customer.getName());
     }
 
     public List<CustomerDTO> getRecentCustomers(int limit) {

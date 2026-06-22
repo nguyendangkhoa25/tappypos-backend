@@ -30,8 +30,9 @@ public class VendorController {
         return ResponseEntity.ok(ApiResponse.success(vendorService.getAll(keyword, pageable), "Vendors retrieved"));
     }
 
-    // Open — used by POS brand picker and pawn form without requiring VENDOR feature
+    // Gated for the picker's real consumers (POS brand picker, product form, pawn form)
     @GetMapping("/all")
+    @RequiresFeature({"VENDOR", "PRODUCT", "PAWN"})
     public ResponseEntity<ApiResponse<List<VendorDTO>>> getAllForSelect() {
         return ResponseEntity.ok(ApiResponse.success(vendorService.getAllForSelect(), "Vendors retrieved"));
     }

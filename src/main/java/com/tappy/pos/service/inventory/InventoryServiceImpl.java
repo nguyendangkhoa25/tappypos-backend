@@ -13,6 +13,7 @@ import com.tappy.pos.repository.inventory.InventoryRepository;
 import com.tappy.pos.repository.product.ProductRepository;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.service.notification.NotificationService;
 import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.model.entity.notification.Notification;
@@ -198,7 +199,7 @@ public class InventoryServiceImpl implements InventoryService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.INVENTORY_ADJUSTED, "INVENTORY", String.valueOf(updated.getId()),
-                "Điều chỉnh tồn kho: " + updated.getProduct().getName() + " → " + updated.getQuantityInStock(), null);
+                "activity.inventory.adjusted", null, updated.getProduct().getName(), String.valueOf(updated.getQuantityInStock()));
 
         return InventoryDTO.fromEntity(updated);
     }
@@ -337,7 +338,7 @@ public class InventoryServiceImpl implements InventoryService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.INVENTORY_ADJUSTED, "INVENTORY", String.valueOf(updated.getId()),
-                "Nhập kho: " + updated.getProduct().getName() + " +" + quantity + " → " + updated.getQuantityInStock(), null);
+                "activity.inventory.adjusted.in", null, updated.getProduct().getName(), String.valueOf(quantity), String.valueOf(updated.getQuantityInStock()));
 
         return InventoryDTO.fromEntity(updated);
     }
@@ -372,18 +373,18 @@ public class InventoryServiceImpl implements InventoryService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.INVENTORY_ADJUSTED, "INVENTORY", String.valueOf(updated.getId()),
-                "Xuất kho: " + updated.getProduct().getName() + " -" + quantity + " → " + updated.getQuantityInStock(), null);
+                "activity.inventory.adjusted.out", null, updated.getProduct().getName(), String.valueOf(quantity), String.valueOf(updated.getQuantityInStock()));
 
         // Fire low-stock notification only when stock first crosses the reorder threshold.
         if (stockBefore > updated.getReorderLevel() && updated.getQuantityInStock() <= updated.getReorderLevel()) {
             String productName = updated.getProduct().getName();
             notificationService.pushToRolesAsync(
                     Notification.NotificationType.LOW_STOCK,
-                    messageService.getMessage("notification.inventory.low_stock.title", productName),
-                    messageService.getMessage("notification.inventory.low_stock.message",
+                    LocalizedText.of("notification.inventory.low_stock.title", productName),
+                    LocalizedText.of("notification.inventory.low_stock.message",
                             updated.getQuantityInStock(), updated.getReorderLevel()),
                     "INVENTORY", updated.getId(),
-                    List.of(RoleEnum.SHOP_OWNER.getCode(), RoleEnum.MANAGER.getCode()),
+                    List.of(RoleEnum.SHOP_OWNER.getCode()),
                     tenantContext.getCurrentTenantId());
         }
 

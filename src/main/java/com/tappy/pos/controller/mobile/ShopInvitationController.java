@@ -39,7 +39,7 @@ public class ShopInvitationController {
      * Shop owner generates a 6-character invitation code valid for 5 minutes.
      * POST /api/v1/shop-config/invitations
      *
-     * Requires: JWT with USER feature (SHOP_OWNER and MANAGER have this by default).
+     * Requires: JWT with USER feature (SHOP_OWNER has this by default).
      */
     @PostMapping("/shop-config/invitations")
     @RequiresFeature("USER")

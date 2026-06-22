@@ -1,11 +1,13 @@
 package com.tappy.pos.service.notification;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.notification.CreateNotificationRequest;
 import com.tappy.pos.model.dto.notification.NotificationDTO;
 import com.tappy.pos.model.entity.notification.Notification;
 import com.tappy.pos.model.entity.notification.NotificationPreference;
 import com.tappy.pos.model.entity.tenant.Tenant;
+import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.repository.auth.UserRepository;
 import com.tappy.pos.repository.notification.NotificationPreferenceRepository;
 import com.tappy.pos.repository.notification.NotificationRepository;
@@ -19,6 +21,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -48,6 +51,7 @@ class NotificationServiceTest {
     @Mock private com.tappy.pos.multitenant.TenantContext tenantContext;
     @Mock private MessageService messageService;
     @Mock private com.tappy.pos.config.FeatureContext featureContext;
+    @Spy private ObjectMapper objectMapper = new ObjectMapper();
 
     @InjectMocks
     private NotificationService notificationService;
@@ -198,7 +202,7 @@ class NotificationServiceTest {
         when(preferenceRepository.findByUserIdIn(List.of("user1"))).thenReturn(List.of(pref));
 
         notificationService.pushSystem("user1", Notification.NotificationType.SYSTEM,
-                "Title", "Body", null, null);
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.body"), null, null);
 
         verify(notificationRepository, never()).save(any());
     }
@@ -213,7 +217,8 @@ class NotificationServiceTest {
         when(tenantRepository.findByTenantId("shop-abc")).thenReturn(Optional.of(tenant));
         when(userRepository.findUsernamesByRoleNames(anyList(), any())).thenReturn(Collections.emptyList());
 
-        notificationService.pushToRolesAsync(Notification.NotificationType.INFO, "T", "M",
+        notificationService.pushToRolesAsync(Notification.NotificationType.INFO,
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.message"),
                 null, null, List.of("SHOP_OWNER"), "shop-abc");
 
         verify(tenantContext).setCurrentTenant(tenant);
@@ -225,7 +230,8 @@ class NotificationServiceTest {
     void pushToRolesAsync_withNullTenantId_noContextSetup() {
         when(userRepository.findUsernamesByRoleNames(anyList(), any())).thenReturn(Collections.emptyList());
 
-        notificationService.pushToRolesAsync(Notification.NotificationType.INFO, "T", "M",
+        notificationService.pushToRolesAsync(Notification.NotificationType.INFO,
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.message"),
                 null, null, List.of("MASTER_TENANT"), null);
 
         verify(tenantRepository, never()).findByTenantId(anyString());
@@ -238,7 +244,8 @@ class NotificationServiceTest {
         when(tenantRepository.findByTenantId("shop-err")).thenReturn(Optional.empty());
         when(userRepository.findUsernamesByRoleNames(anyList(), any())).thenThrow(new RuntimeException("DB error"));
 
-        notificationService.pushToRolesAsync(Notification.NotificationType.INFO, "T", "M",
+        notificationService.pushToRolesAsync(Notification.NotificationType.INFO,
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.message"),
                 null, null, List.of("SHOP_OWNER"), "shop-err");
 
         verify(tenantContext).clear();
@@ -424,7 +431,8 @@ class NotificationServiceTest {
         when(userRepository.findUsernamesByRoleNames(eq(List.of("MASTER_TENANT")), any())).thenReturn(List.of("admin1"));
         when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
 
-        notificationService.pushToMasterUsersAsync("T", "M", "TENANT", 1L);
+        notificationService.pushToMasterUsersAsync(
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.message"), "TENANT", 1L);
 
         verify(notificationRepository).saveAll(anyList());
     }
@@ -435,7 +443,8 @@ class NotificationServiceTest {
         when(userRepository.findUsernamesByRoleNames(anyList(), any())).thenThrow(new RuntimeException("db error"));
 
         // must not throw
-        notificationService.pushToMasterUsersAsync("T", "M", "TENANT", 1L);
+        notificationService.pushToMasterUsersAsync(
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.message"), "TENANT", 1L);
     }
 
     // ── pushSystemAsync ───────────────────────────────────────────────────────
@@ -449,7 +458,7 @@ class NotificationServiceTest {
         when(notificationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         notificationService.pushSystemAsync("user1", Notification.NotificationType.SYSTEM,
-                "Title", "Body", "ORDER", 1L, "shop1");
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.body"), "ORDER", 1L, "shop1");
 
         verify(tenantContext).setCurrentTenant(tenant);
         verify(tenantContext).clear();
@@ -462,7 +471,7 @@ class NotificationServiceTest {
         when(notificationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         notificationService.pushSystemAsync("user1", Notification.NotificationType.INFO,
-                "T", "M", null, null, null);
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.message"), null, null, null);
 
         verify(tenantRepository, never()).findByTenantId(anyString());
         verify(tenantContext, never()).clear();
@@ -475,7 +484,7 @@ class NotificationServiceTest {
         when(tenantRepository.findByTenantId("shop1")).thenThrow(new RuntimeException("db error"));
 
         notificationService.pushSystemAsync("user1", Notification.NotificationType.SYSTEM,
-                "T", "M", null, null, "shop1");
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.message"), null, null, "shop1");
 
         verify(tenantContext).clear();
     }
@@ -510,6 +519,27 @@ class NotificationServiceTest {
         verify(notificationRepository, never()).findByUserId(any(), any());
     }
 
+    @Test
+    @DisplayName("getForCurrentUser: renders system notification title/message from i18n key in reader's locale")
+    void getForCurrentUser_rendersKeyBackedNotification() {
+        Notification n = Notification.builder()
+                .userId("testuser")
+                .titleKey("notif.expiry.title")
+                .messageKey("notif.expiry.message")
+                .type(Notification.NotificationType.BILLING)
+                .isRead(false).createdBy("SYSTEM").build();
+        when(notificationRepository.findByUserId(eq("testuser"), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(n)));
+        when(messageService.getMessage(eq("notif.expiry.title"), any(Object[].class))).thenReturn("Sắp hết hạn");
+        when(messageService.getMessage(eq("notif.expiry.message"), any(Object[].class))).thenReturn("Cửa hàng sắp hết hạn");
+
+        Page<NotificationDTO> result = notificationService.getForCurrentUser(Pageable.unpaged(), null);
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getTitle()).isEqualTo("Sắp hết hạn");
+        assertThat(result.getContent().get(0).getMessage()).isEqualTo("Cửa hàng sắp hết hạn");
+    }
+
     // ── pushToRoles ───────────────────────────────────────────────────────────
 
     @Test
@@ -518,7 +548,8 @@ class NotificationServiceTest {
         when(userRepository.findUsernamesByRoleNames(eq(List.of("SHOP_OWNER")), any())).thenReturn(List.of("owner1", "owner2"));
         when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
 
-        notificationService.pushToRoles(Notification.NotificationType.INFO, "Title", "Msg",
+        notificationService.pushToRoles(Notification.NotificationType.INFO,
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.msg"),
                 "ORDER", 1L, List.of("SHOP_OWNER"));
 
         @SuppressWarnings("unchecked")
@@ -526,6 +557,11 @@ class NotificationServiceTest {
         verify(notificationRepository).saveAll(cap.capture());
         assertThat(cap.getValue()).hasSize(2);
         assertThat(cap.getValue().get(0).getType()).isEqualTo(Notification.NotificationType.INFO);
+        // System pushes store i18n key/args; literal title/message stay null
+        assertThat(cap.getValue().get(0).getTitleKey()).isEqualTo("notif.title");
+        assertThat(cap.getValue().get(0).getMessageKey()).isEqualTo("notif.msg");
+        assertThat(cap.getValue().get(0).getTitle()).isNull();
+        assertThat(cap.getValue().get(0).getMessage()).isNull();
     }
 
     @Test
@@ -533,7 +569,8 @@ class NotificationServiceTest {
     void pushToRoles_noUsers() {
         when(userRepository.findUsernamesByRoleNames(eq(List.of("CASHIER")), any())).thenReturn(Collections.emptyList());
 
-        notificationService.pushToRoles(Notification.NotificationType.INFO, "T", "M",
+        notificationService.pushToRoles(Notification.NotificationType.INFO,
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.message"),
                 null, null, List.of("CASHIER"));
 
         verify(notificationRepository, never()).saveAll(any());
@@ -547,13 +584,18 @@ class NotificationServiceTest {
         when(notificationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         notificationService.pushSystem("user1", Notification.NotificationType.SYSTEM,
-                "Title", "Body", "ORDER", 42L);
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.body"), "ORDER", 42L);
 
         ArgumentCaptor<Notification> cap = ArgumentCaptor.forClass(Notification.class);
         verify(notificationRepository).save(cap.capture());
         assertThat(cap.getValue().getUserId()).isEqualTo("user1");
         assertThat(cap.getValue().getReferenceId()).isEqualTo(42L);
         assertThat(cap.getValue().getCreatedBy()).isEqualTo("SYSTEM");
+        // System push stores i18n key, not literal text
+        assertThat(cap.getValue().getTitleKey()).isEqualTo("notif.title");
+        assertThat(cap.getValue().getMessageKey()).isEqualTo("notif.body");
+        assertThat(cap.getValue().getTitle()).isNull();
+        assertThat(cap.getValue().getMessage()).isNull();
     }
 
     // ── pushToMasterUsers ─────────────────────────────────────────────────────
@@ -564,7 +606,8 @@ class NotificationServiceTest {
         when(userRepository.findUsernamesByRoleNames(eq(List.of("MASTER_TENANT")), any())).thenReturn(List.of("admin1", "admin2"));
         when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
 
-        notificationService.pushToMasterUsers("Title", "Msg", "TENANT", 1L);
+        notificationService.pushToMasterUsers(
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.msg"), "TENANT", 1L);
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<Notification>> cap = ArgumentCaptor.forClass(List.class);
@@ -578,7 +621,8 @@ class NotificationServiceTest {
     void pushToMasterUsers_noUsers() {
         when(userRepository.findUsernamesByRoleNames(eq(List.of("MASTER_TENANT")), any())).thenReturn(Collections.emptyList());
 
-        notificationService.pushToMasterUsers("Title", "Msg", "TENANT", 1L);
+        notificationService.pushToMasterUsers(
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.msg"), "TENANT", 1L);
 
         verify(notificationRepository, never()).saveAll(any());
     }
@@ -592,7 +636,8 @@ class NotificationServiceTest {
         when(preferenceRepository.findByUserIdIn(List.of("admin1", "admin2"))).thenReturn(List.of(pref));
         when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
 
-        notificationService.pushToMasterUsers("Title", "Msg", "TENANT", 1L);
+        notificationService.pushToMasterUsers(
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.msg"), "TENANT", 1L);
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<Notification>> cap = ArgumentCaptor.forClass(List.class);

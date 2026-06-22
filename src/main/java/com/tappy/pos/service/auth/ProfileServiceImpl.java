@@ -312,7 +312,7 @@ public class ProfileServiceImpl implements ProfileService {
         String tid = tenantContext.getCurrentTenantId() != null ? tenantContext.getCurrentTenantId() : "master";
         activityLogService.logAsync(tid, actor, null,
                 ActivityAction.USER_AVATAR_UPDATED, "USER", user.getId().toString(),
-                "Cập nhật ảnh đại diện: " + username, null);
+                "activity.user.avatar.updated", null, username);
 
         log.info("Avatar uploaded — userId: {}, key: {}", user.getId(), key);
         return mapToUserProfile(saved);
@@ -340,7 +340,7 @@ public class ProfileServiceImpl implements ProfileService {
         String tid = tenantContext.getCurrentTenantId() != null ? tenantContext.getCurrentTenantId() : "master";
         activityLogService.logAsync(tid, actor, null,
                 ActivityAction.USER_AVATAR_DELETED, "USER", user.getId().toString(),
-                "Xóa ảnh đại diện: " + username, null);
+                "activity.user.avatar.deleted", null, username);
 
         log.info("Avatar deleted — userId: {}", user.getId());
     }

@@ -155,8 +155,10 @@ class AgentServiceTest {
         assertThat(result.getName()).isEqualTo("Đại lý Hà Nội");
         verify(agentRepository).save(any(Agent.class));
         verify(activityLogService).logAsync(anyString(), anyString(), anyString(),
-                any(), anyString(), anyString(), anyString(), any());
-        verify(notificationService).pushToRolesAsync(any(), anyString(), anyString(),
+                any(), anyString(), anyString(), anyString(), any(), any());
+        verify(notificationService).pushToRolesAsync(any(),
+                any(com.tappy.pos.model.i18n.LocalizedText.class),
+                any(com.tappy.pos.model.i18n.LocalizedText.class),
                 anyString(), any(), any(), any());
     }
 
@@ -198,7 +200,7 @@ class AgentServiceTest {
         agentService.create(saveRequest);
 
         verify(activityLogService).logAsync(anyString(), eq("masteradmin"), eq("masteradmin"),
-                any(), anyString(), anyString(), anyString(), any());
+                any(), anyString(), anyString(), anyString(), any(), any());
     }
 
     // ── update ────────────────────────────────────────────────────────────────

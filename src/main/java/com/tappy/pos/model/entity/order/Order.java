@@ -79,6 +79,16 @@ public class Order extends TenantAwareEntity {
     @Column(length = 500)
     private String notes;
 
+    // i18n for system-generated notes/reasons (split/merge/reject). When set, these take precedence
+    // over the literal columns above and render in the reader's locale (OrderServiceImpl.mapToDTO).
+    // User-authored notes/reasons keep using the literal columns. See V038__order_notes_i18n.sql.
+
+    @Column(name = "notes_key", length = 150)
+    private String notesKey;
+
+    @Column(name = "notes_args", columnDefinition = "text")
+    private String notesArgs;
+
     /** Pharmacy dispensing record (PHARMACY §4d): who prescribed + a free-text note,
      *  captured at checkout when the cart contains a prescription-required drug. Nullable. */
     @Column(name = "prescriber_name", length = 255)
@@ -102,6 +112,12 @@ public class Order extends TenantAwareEntity {
     @Column(name = "cancel_reason", length = 500)
     private String cancelReason;
 
+    @Column(name = "cancel_reason_key", length = 150)
+    private String cancelReasonKey;
+
+    @Column(name = "cancel_reason_args", columnDefinition = "text")
+    private String cancelReasonArgs;
+
     @Column(name = "cancelled_by", length = 100)
     private String cancelledBy;
 
@@ -110,6 +126,12 @@ public class Order extends TenantAwareEntity {
 
     @Column(name = "void_reason", length = 500)
     private String voidReason;
+
+    @Column(name = "void_reason_key", length = 150)
+    private String voidReasonKey;
+
+    @Column(name = "void_reason_args", columnDefinition = "text")
+    private String voidReasonArgs;
 
     @Column(name = "voided_by", length = 100)
     private String voidedBy;
@@ -122,6 +144,15 @@ public class Order extends TenantAwareEntity {
 
     @Column(name = "table_label", length = 100)
     private String tableLabel;
+
+    // i18n for a system-generated table label (e.g. lodging "Phòng {0}"). When set, takes precedence
+    // over the literal column and renders in the reader's locale. Real F&B table / booking resource
+    // names stay in the literal column. See V039__order_table_label_i18n.sql.
+    @Column(name = "table_label_key", length = 150)
+    private String tableLabelKey;
+
+    @Column(name = "table_label_args", columnDefinition = "text")
+    private String tableLabelArgs;
 
     // Set for QR customer orders so the owner's confirm step can occupy the right table.
     @Column(name = "table_id")
@@ -311,6 +342,15 @@ public class Order extends TenantAwareEntity {
         this.cancelledBy = cancelledBy;
     }
 
+    /** Cancel with a system-generated, i18n reason (rendered in the reader's locale at read time). */
+    public void cancel(String reasonKey, String reasonArgsJson, String cancelledBy) {
+        this.status = OrderStatus.CANCELLED;
+        this.cancelledAt = LocalDateTime.now();
+        this.cancelReasonKey = reasonKey;
+        this.cancelReasonArgs = reasonArgsJson;
+        this.cancelledBy = cancelledBy;
+    }
+
     public void start() {
         this.status = OrderStatus.IN_PROGRESS;
     }
@@ -326,6 +366,15 @@ public class Order extends TenantAwareEntity {
         this.status = OrderStatus.VOIDED;
         this.voidedAt = LocalDateTime.now();
         this.voidReason = reason;
+        this.voidedBy = voidedBy;
+    }
+
+    /** Void with a system-generated, i18n reason (rendered in the reader's locale at read time). */
+    public void voidOrder(String reasonKey, String reasonArgsJson, String voidedBy) {
+        this.status = OrderStatus.VOIDED;
+        this.voidedAt = LocalDateTime.now();
+        this.voidReasonKey = reasonKey;
+        this.voidReasonArgs = reasonArgsJson;
         this.voidedBy = voidedBy;
     }
 }

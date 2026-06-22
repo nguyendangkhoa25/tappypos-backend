@@ -30,16 +30,20 @@ public class ReceiptHtmlBuilder {
 
     /** Build receipt HTML from a completed Order entity + shop info using default config. */
     public static String build(Order order, ShopInfo shopInfo) {
-        return build(order, shopInfo, ReceiptTemplateConfig.defaults(), null);
+        return build(order, order.getTableLabel(), shopInfo, ReceiptTemplateConfig.defaults(), null);
     }
 
     /** Build receipt HTML from a completed Order entity + shop info with custom config. */
     public static String build(Order order, ShopInfo shopInfo, ReceiptTemplateConfig cfg) {
-        return build(order, shopInfo, cfg, null);
+        return build(order, order.getTableLabel(), shopInfo, cfg, null);
     }
 
-    /** Build receipt HTML from a completed Order entity + shop info with custom config and optional VietQR bank account. */
-    public static String build(Order order, ShopInfo shopInfo, ReceiptTemplateConfig cfg, BankAccount bankAccount) {
+    /**
+     * Build receipt HTML from a completed Order entity + shop info with custom config and optional VietQR
+     * bank account. {@code tableLabel} is passed in already resolved (rendered in the reader's locale),
+     * because a system table label is stored as key+args (V039) and the entity's literal column is null.
+     */
+    public static String build(Order order, String tableLabel, ShopInfo shopInfo, ReceiptTemplateConfig cfg, BankAccount bankAccount) {
         List<ReceiptItem> items = order.getOrderItems().stream()
                 .map(oi -> new ReceiptItem(
                         oi.getProductName(),
@@ -69,7 +73,7 @@ public class ReceiptHtmlBuilder {
                 cfg.isShowOrderNumber() ? order.getOrderNumber() : null,
                 cfg.isShowDateTime() ? displayDate : null,
                 cfg.isShowCustomer() ? customerName : null,
-                cfg.isShowTable() ? order.getTableLabel() : null,
+                cfg.isShowTable() ? tableLabel : null,
                 items,
                 order.getDiscountAmount(),
                 order.getServiceChargeRate(),

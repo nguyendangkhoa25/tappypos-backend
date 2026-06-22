@@ -74,7 +74,7 @@ public class CashDrawerServiceImpl implements CashDrawerService {
 
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.CASH_DRAWER_CLOSED, "CASH_DRAWER", String.valueOf(entity.getId()),
-                "Chốt sổ quỹ ngày " + date, null);
+                "activity.cash.drawer.closed", null, date);
 
         applyClose(dto, entity);
         return dto;

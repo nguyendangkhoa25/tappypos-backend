@@ -53,6 +53,15 @@ public class Tenant {
     @Column(name = "subscription_type")
     private String subscriptionType;
 
+    /**
+     * Bumped whenever {@link #features} changes. Embedded as the JWT `fv` claim so a
+     * stale token (issued before a feature change) can be detected per-request and the
+     * client forced to refresh — see TenantInterceptor + JwtTokenProvider.
+     */
+    @Builder.Default
+    @Column(name = "features_version", nullable = false)
+    private Integer featuresVersion = 0;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "shop_type", length = 30)
     private ShopType shopType;

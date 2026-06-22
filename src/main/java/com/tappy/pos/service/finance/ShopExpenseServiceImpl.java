@@ -54,7 +54,7 @@ public class ShopExpenseServiceImpl implements ShopExpenseService {
         ShopExpenseDTO saved = toDTO(expenseRepository.save(expense));
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.EXPENSE_CREATED, "EXPENSE", String.valueOf(saved.getId()),
-                "Ghi chi phí: " + request.getDescription() + " — " + request.getAmount() + "đ", null);
+                "activity.expense.created", null, request.getDescription(), request.getAmount());
         return saved;
     }
 
@@ -69,7 +69,11 @@ public class ShopExpenseServiceImpl implements ShopExpenseService {
         expense.setPaymentMethod(request.getPaymentMethod());
         expense.setReferenceNumber(request.getReferenceNumber());
         expense.setUpdatedBy(authContext.getCurrentUsername());
-        return toDTO(expenseRepository.save(expense));
+        ShopExpenseDTO updated = toDTO(expenseRepository.save(expense));
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.EXPENSE_UPDATED, "EXPENSE", String.valueOf(updated.getId()),
+                "activity.expense.updated", null, request.getDescription(), request.getAmount());
+        return updated;
     }
 
     @Override
@@ -90,6 +94,9 @@ public class ShopExpenseServiceImpl implements ShopExpenseService {
         ShopExpense expense = findActive(id);
         expense.softDelete();
         expenseRepository.save(expense);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.EXPENSE_DELETED, "EXPENSE", String.valueOf(expense.getId()),
+                "activity.expense.deleted", null, expense.getDescription(), expense.getAmount());
     }
 
     @Override

@@ -124,7 +124,7 @@ public class EmployeeServiceImpl implements EmployeeService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.EMPLOYEE_CREATED, "EMPLOYEE", String.valueOf(saved.getId()),
-                "Thêm nhân viên: " + saved.getFullName(), null);
+                "activity.employee.created", null, saved.getFullName());
 
         return toDTO(saved);
     }
@@ -173,7 +173,7 @@ public class EmployeeServiceImpl implements EmployeeService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.EMPLOYEE_UPDATED, "EMPLOYEE", String.valueOf(updated.getId()),
-                "Cập nhật nhân viên: " + updated.getFullName(), null);
+                "activity.employee.updated", null, updated.getFullName());
 
         return toDTO(updated);
     }

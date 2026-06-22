@@ -64,6 +64,7 @@ public class ComboServiceImpl implements ComboService {
         for (Map<String, Object> d : itemsData) {
             combo.getItems().add(ComboItem.builder()
                     .combo(combo)
+                    .tenantId(combo.getTenantId())
                     .productId(Long.parseLong(d.get("productId").toString()))
                     .productName((String) d.get("productName"))
                     .quantity(((Number) d.getOrDefault("quantity", 1)).intValue())
@@ -99,7 +100,7 @@ public class ComboServiceImpl implements ComboService {
         log.info("Combo created — id: {}", combo.getId());
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.COMBO_CREATED, "COMBO", String.valueOf(combo.getId()),
-                "Tạo combo", null);
+                "activity.combo.created", null);
         return toDto(combo);
     }
 
@@ -120,7 +121,7 @@ public class ComboServiceImpl implements ComboService {
         log.info("Combo updated — id: {}", id);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.COMBO_UPDATED, "COMBO", String.valueOf(id),
-                "Cập nhật combo", null);
+                "activity.combo.updated", null);
         return toDto(combo);
     }
 
@@ -134,7 +135,7 @@ public class ComboServiceImpl implements ComboService {
         log.info("Combo deleted — id: {}", id);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.COMBO_DELETED, "COMBO", String.valueOf(id),
-                "Xóa combo", null);
+                "activity.combo.deleted", null);
     }
 
     // ── Analytics ─────────────────────────────────────────────────────────────

@@ -24,6 +24,7 @@ import com.tappy.pos.repository.room.RoomRequestRepository;
 import com.tappy.pos.repository.room.RoomStayItemRepository;
 import com.tappy.pos.repository.room.RoomStayRepository;
 import com.tappy.pos.service.MessageService;
+import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -136,8 +137,8 @@ public class PublicRoomServiceImpl implements PublicRoomService {
         }
 
         notifyReception(tenantId,
-                messageService.getMessage("notification.room.qr.order.title", room.getRoomNumber()),
-                messageService.getMessage("notification.room.qr.order.message", room.getRoomNumber(), count),
+                LocalizedText.of("notification.room.qr.order.title", room.getRoomNumber()),
+                LocalizedText.of("notification.room.qr.order.message", room.getRoomNumber(), count),
                 "ROOM_STAY", stay.getId());
         log.info("QR room order: room={} stay={} items={} total={}", room.getRoomNumber(), stay.getId(), count, added);
 
@@ -167,8 +168,8 @@ public class PublicRoomServiceImpl implements PublicRoomService {
         RoomRequestEntity saved = requestRepository.save(req);
 
         notifyReception(tenantId,
-                messageService.getMessage("notification.room.qr.request.title", room.getRoomNumber()),
-                messageService.getMessage("notification.room.qr.request.message", room.getRoomNumber(),
+                LocalizedText.of("notification.room.qr.request.title", room.getRoomNumber()),
+                LocalizedText.of("notification.room.qr.request.message", room.getRoomNumber(),
                         messageService.getMessage("room.requestType." + type)),
                 "ROOM_REQUEST", saved.getId());
         log.info("QR room request: room={} type={} id={}", room.getRoomNumber(), type, saved.getId());
@@ -178,11 +179,11 @@ public class PublicRoomServiceImpl implements PublicRoomService {
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
-    private void notifyReception(String tenantId, String title, String message, String targetType, Long targetId) {
+    private void notifyReception(String tenantId, LocalizedText title, LocalizedText message, String targetType, Long targetId) {
         try {
             notificationService.pushToRolesAsync(
                     Notification.NotificationType.ORDER, title, message, targetType, targetId,
-                    List.of(RoleEnum.SHOP_OWNER.getCode(), RoleEnum.RECEPTIONIST.getCode()),
+                    List.of(RoleEnum.SHOP_OWNER.getCode(), RoleEnum.CASHIER.getCode()),
                     tenantId);
         } catch (Exception e) {
             log.warn("Failed to push room QR notification (room target {}): {}", targetId, e.getMessage());

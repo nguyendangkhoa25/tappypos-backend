@@ -115,7 +115,7 @@ public class PawnServiceImpl implements PawnService {
         saveItemDetail(savedEntity.getPawnId(), tenantContext.getCurrentTenantId(), pawnRequest);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.PAWN_CREATED, "PAWN", String.valueOf(savedEntity.getPawnId()),
-                messageService.getMessage("activity.pawn.created", savedEntity.getItemName()), null);
+                "activity.pawn.created", null, savedEntity.getItemName());
         return getPawnDetails(savedEntity.getPawnId());
     }
 
@@ -153,12 +153,12 @@ public class PawnServiceImpl implements PawnService {
         if (StringUtils.isNotEmpty(pawnRequest.getRequestType()) && pawnRequest.getRequestType().equalsIgnoreCase("REDEEMED")) {
             activityAction = ActivityAction.PAWN_REDEEMED;
         }
-        String updateDesc = activityAction == ActivityAction.PAWN_REDEEMED
-                ? messageService.getMessage("activity.pawn.redeemed", savedEntity.getItemName())
-                : messageService.getMessage("activity.pawn.updated", savedEntity.getItemName());
+        String updateKey = activityAction == ActivityAction.PAWN_REDEEMED
+                ? "activity.pawn.redeemed"
+                : "activity.pawn.updated";
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 activityAction, "PAWN", String.valueOf(savedEntity.getPawnId()),
-                updateDesc, null);
+                updateKey, null, savedEntity.getItemName());
         return getPawnDetails(savedEntity.getPawnId());
     }
 
@@ -260,7 +260,7 @@ public class PawnServiceImpl implements PawnService {
 
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.PAWN_SIGNED, "PAWN", String.valueOf(pawnId),
-                messageService.getMessage("activity.pawn.signed", pawnId), null);
+                "activity.pawn.signed", null, pawnId);
 
         return getPawnDetails(pawnId);
     }
@@ -363,7 +363,7 @@ public class PawnServiceImpl implements PawnService {
             pawnEntities.forEach(pawnEntity -> activityLogService.logAsync(
                     tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                     ActivityAction.PAWN_DELETED, "PAWN", String.valueOf(pawnEntity.getPawnId()),
-                    messageService.getMessage("activity.pawn.deleted", pawnEntity.getItemName()), null));
+                    "activity.pawn.deleted", null, pawnEntity.getItemName()));
         }
     }
 
@@ -379,7 +379,7 @@ public class PawnServiceImpl implements PawnService {
         PawnEntity savedEntity = pawnRepository.save(pawnEntity);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.PAWN_CANCEL, "PAWN", String.valueOf(savedEntity.getPawnId()),
-                messageService.getMessage("activity.pawn.cancelled", savedEntity.getItemName()), null);
+                "activity.pawn.cancelled", null, savedEntity.getItemName());
         return getPawnDetails(savedEntity.getPawnId());
     }
 
@@ -415,7 +415,7 @@ public class PawnServiceImpl implements PawnService {
         PawnEntity savedEntity = pawnRepository.save(pawnEntity);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.PAWN_FORFEIT, "PAWN", String.valueOf(savedEntity.getPawnId()),
-                messageService.getMessage("activity.pawn.forfeited", savedEntity.getItemName()), null);
+                "activity.pawn.forfeited", null, savedEntity.getItemName());
         return getPawnDetails(savedEntity.getPawnId());
     }
 
@@ -636,7 +636,7 @@ public class PawnServiceImpl implements PawnService {
         pawnRepository.save(pawnEntity);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.PAWN_REQUEST_MONEY, "PAWN", String.valueOf(pawnEntity.getPawnId()),
-                messageService.getMessage("activity.pawn.request_money", pawnEntity.getItemName()), null);
+                "activity.pawn.request_money", null, pawnEntity.getItemName());
         return pawnMapper.fromReqMoneyEntity(reqMoneyEntity);
     }
 
@@ -686,10 +686,10 @@ public class PawnServiceImpl implements PawnService {
         }
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.PAWN_EXTEND, "PAWN", String.valueOf(redeemedPawn.getPawnId()),
-                messageService.getMessage("activity.pawn.extended", redeemedPawn.getItemName()), null);
+                "activity.pawn.extended", null, redeemedPawn.getItemName());
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.PAWN_CREATED, "PAWN", String.valueOf(savedExtendEntity.getPawnId()),
-                messageService.getMessage("activity.pawn.extended.new", savedExtendEntity.getItemName()), null);
+                "activity.pawn.extended.new", null, savedExtendEntity.getItemName());
         return getPawnDetails(savedExtendEntity.getPawnId());
     }
 

@@ -120,22 +120,18 @@ public class TenantProvisioningService {
             "TRADE_IN", "TRADE_IN_VIEW_ALL", "INSTALLMENT", "INSTALLMENT_VIEW_ALL",
             "CONSIGNMENT", "CONSIGNMENT_VIEW_ALL"
         ));
-        m.put(RoleEnum.MANAGER.getCode(), Arrays.asList(
-            "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "PROMOTION", "RECIPE",
-            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "CUSTOMER", "LOYALTY", "CUSTOMER_DEBT",
-            "INVOICE", "ACCOUNTING", "REVENUE", "EXPENSE",
-            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "STOCK_TAKE", "POS",
-            "TABLE_SERVICE", "ACTIVITY_LOG", "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
-            "COMMISSION", "COMMISSION_VIEW_ALL", "NOTIFICATION", "FEEDBACK", "BOOKING",
-            "REPAIR", "REPAIR_VIEW_ALL", "BUYBACK",
-            "TRADE_IN", "TRADE_IN_VIEW_ALL", "INSTALLMENT", "INSTALLMENT_VIEW_ALL",
-            "CONSIGNMENT", "CONSIGNMENT_VIEW_ALL"
-        ));
         m.put(RoleEnum.CASHIER.getCode(), Arrays.asList(
+            // CASHIER absorbs the former RECEPTIONIST (front desk: APPOINTMENT, ROOM, PRODUCT) and
+            // PAWN_OFFICER (PAWN, GOLD_PRICE, GOLD_PRICE_CHART) roles. Profile intersection trims
+            // per shop type, so a hotel cashier gets ROOM, a pawn/jewelry cashier gets PAWN, and a
+            // retail cashier gets neither. PAWN_VIEW_ALL intentionally absent: a cashier sees only
+            // their own pawn contracts (same scope the PAWN_OFFICER had).
             "DASHBOARD", "MY_WORK", "ORDER", "POS", "TABLE_SERVICE",
             "CUSTOMER", "LOYALTY", "PROMOTION", "COMMISSION",
             "NOTIFICATION", "FEEDBACK", "BOOKING",
-            "TRADE_IN", "INSTALLMENT", "CONSIGNMENT"
+            "TRADE_IN", "INSTALLMENT", "CUSTOMER_DEBT", "CONSIGNMENT",
+            "APPOINTMENT", "ROOM", "PRODUCT",
+            "PAWN", "GOLD_PRICE", "GOLD_PRICE_CHART"
         ));
         m.put(RoleEnum.ACCOUNTANT.getCode(), Arrays.asList(
             "DASHBOARD", "MY_WORK", "REVENUE", "EXPENSE", "SALARY", "INVOICE", "ACCOUNTING", "CUSTOMER", "CUSTOMER_DEBT",
@@ -145,27 +141,16 @@ public class TenantProvisioningService {
             "DASHBOARD", "MY_WORK", "INVENTORY", "STOCK_TAKE", "PRODUCT", "VENDOR", "RECIPE",
             "NOTIFICATION", "FEEDBACK", "CONSIGNMENT"
         ));
-        m.put(RoleEnum.PAWN_OFFICER.getCode(), Arrays.asList(
-            // PAWN_VIEW_ALL intentionally absent: PAWN_OFFICER sees only their own contracts.
-            "DASHBOARD", "MY_WORK", "PAWN", "GOLD_PRICE", "GOLD_PRICE_CHART",
-            "CUSTOMER", "LOYALTY", "ORDER", "POS", "PRODUCT",
-            "NOTIFICATION", "FEEDBACK"
-        ));
         m.put(RoleEnum.SERVICE_STAFF.getCode(), Arrays.asList(
+            // PRODUCT is required: POS (a required feature here) loads the product grid via
+            // GET /products (@RequiresFeature("PRODUCT")), so without it the POS screen 403s.
             "DASHBOARD", "MY_WORK", "ORDER", "POS", "TABLE_SERVICE",
-            "CUSTOMER", "COMMISSION", "NOTIFICATION", "FEEDBACK", "BOOKING"
+            "CUSTOMER", "PRODUCT", "COMMISSION", "NOTIFICATION", "FEEDBACK", "BOOKING"
         ));
         m.put(RoleEnum.TECHNICIAN.getCode(), Arrays.asList(
             // REPAIR_VIEW_ALL intentionally absent: a technician sees only their own repair tickets.
             "DASHBOARD", "MY_WORK", "ORDER", "PRODUCT", "CUSTOMER", "INVENTORY", "POS",
             "APPOINTMENT", "COMMISSION", "NOTIFICATION", "FEEDBACK", "REPAIR"
-        ));
-        m.put(RoleEnum.RECEPTIONIST.getCode(), Arrays.asList(
-            "DASHBOARD", "MY_WORK", "ORDER", "CUSTOMER", "POS", "TABLE_SERVICE",
-            "APPOINTMENT", "COMMISSION", "NOTIFICATION", "FEEDBACK", "BOOKING", "ROOM", "PRODUCT"
-        ));
-        m.put(RoleEnum.CLEANER.getCode(), Arrays.asList(
-            "DASHBOARD", "MY_WORK", "NOTIFICATION", "ROOM"
         ));
         // UTILITIES (client-side calculators/tools hub) is available to every role.
         // Which shop types actually expose it is decided by FEATURE_PROFILES below.
@@ -183,23 +168,28 @@ public class TenantProvisioningService {
     private static final Map<ShopType, List<String>> SHOP_TYPE_ROLE_WHITELIST;
     static {
         Map<ShopType, List<String>> m = new EnumMap<>(ShopType.class);
+        // Pawn / jewelry: the CASHIER now covers the former PAWN_OFFICER (it inherited the pawn
+        // features). ACCOUNTANT is available to every shop type.
         List<String> pawnRoles = Arrays.asList(
-                RoleEnum.SHOP_OWNER.getCode(), RoleEnum.PAWN_OFFICER.getCode());
+                RoleEnum.SHOP_OWNER.getCode(), RoleEnum.CASHIER.getCode(),
+                RoleEnum.ACCOUNTANT.getCode());
         List<String> jewelryRoles = Arrays.asList(
-                RoleEnum.SHOP_OWNER.getCode(), RoleEnum.MANAGER.getCode(),
-                RoleEnum.CASHIER.getCode(), RoleEnum.PAWN_OFFICER.getCode());
+                RoleEnum.SHOP_OWNER.getCode(), RoleEnum.CASHIER.getCode(),
+                RoleEnum.ACCOUNTANT.getCode());
         m.put(ShopType.PAWN_SHOP, pawnRoles);
         m.put(ShopType.JEWELRY,   jewelryRoles);
+        // Lodging: the CASHIER now covers the former RECEPTIONIST front desk (it inherited ROOM).
         List<String> lodgingRoles = Arrays.asList(
-                RoleEnum.SHOP_OWNER.getCode(), RoleEnum.RECEPTIONIST.getCode(), RoleEnum.CLEANER.getCode());
+                RoleEnum.SHOP_OWNER.getCode(), RoleEnum.CASHIER.getCode(),
+                RoleEnum.ACCOUNTANT.getCode());
         m.put(ShopType.HOTEL,     lodgingRoles);
         m.put(ShopType.MOTEL,     lodgingRoles);
         m.put(ShopType.HOMESTAY,  lodgingRoles);
         // Vehicle shop: sales floor (CASHIER) + workshop (TECHNICIAN) + warehouse + back office.
         List<String> vehicleRoles = Arrays.asList(
-                RoleEnum.SHOP_OWNER.getCode(), RoleEnum.MANAGER.getCode(),
-                RoleEnum.CASHIER.getCode(), RoleEnum.TECHNICIAN.getCode(),
-                RoleEnum.WAREHOUSE_STAFF.getCode(), RoleEnum.ACCOUNTANT.getCode());
+                RoleEnum.SHOP_OWNER.getCode(), RoleEnum.CASHIER.getCode(),
+                RoleEnum.TECHNICIAN.getCode(), RoleEnum.WAREHOUSE_STAFF.getCode(),
+                RoleEnum.ACCOUNTANT.getCode());
         m.put(ShopType.VEHICLE_SHOP, vehicleRoles);
         SHOP_TYPE_ROLE_WHITELIST = Collections.unmodifiableMap(m);
     }
@@ -314,7 +304,7 @@ public class TenantProvisioningService {
         m.put("FNB", Arrays.asList(
             "DASHBOARD", "MY_WORK",
             "ORDER", "ORDER_VIEW_ALL", "POS", "TABLE_SERVICE", "BOOKING",
-            "PRODUCT", "INVENTORY", "VENDOR", "PROMOTION",
+            "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION",
             "CUSTOMER", "LOYALTY", "APPOINTMENT",
             "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",

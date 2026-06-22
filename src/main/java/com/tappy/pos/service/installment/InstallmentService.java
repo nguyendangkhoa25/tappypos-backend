@@ -13,6 +13,6 @@ public interface InstallmentService {
     /** Record payment of one kỳ; returns the refreshed contract. */
     InstallmentDTO payPeriod(Long scheduleId, PayInstallmentRequest request);
     InstallmentDTO cancel(Long debtId, String reason);
-    /** Scheduler entry: push an overdue summary to SHOP_OWNER/MANAGER for the current tenant. */
+    /** Scheduler entry: push an overdue summary to SHOP_OWNER for the current tenant. */
     void notifyOverdue();
 }

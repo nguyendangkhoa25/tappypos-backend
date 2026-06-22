@@ -142,8 +142,10 @@ public class TradeInServiceImpl implements TradeInService {
 
         activityLogService.logAsync(tid, actor, null,
                 ActivityAction.TRADE_IN_CREATED, "TRADE_IN", String.valueOf(saved.getId()),
-                "Thu xe cũ: " + StringUtils.defaultString(request.getBrand()) + " "
-                        + StringUtils.defaultString(request.getModel()) + " — giá thu " + request.getTradeValue() + "đ", null);
+                "activity.trade.in.created", null,
+                StringUtils.defaultString(request.getBrand()),
+                StringUtils.defaultString(request.getModel()),
+                String.valueOf(request.getTradeValue()));
         return toDTO(saved);
     }
 
@@ -192,7 +194,7 @@ public class TradeInServiceImpl implements TradeInService {
         tradeInRepository.save(entity);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.TRADE_IN_CANCELLED, "TRADE_IN", String.valueOf(id),
-                "Hủy phiếu thu xe #" + id, null);
+                "activity.trade.in.cancelled", null, id);
         return toDTO(entity);
     }
 

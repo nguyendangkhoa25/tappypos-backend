@@ -3,6 +3,7 @@ package com.tappy.pos.controller.utilities;
 import com.tappy.pos.model.dto.ApiResponse;
 import com.tappy.pos.model.dto.exchangerate.ExchangeRateResponse;
 import com.tappy.pos.model.dto.marketgold.MarketGoldPriceResponse;
+import com.tappy.pos.annotation.RequiresFeature;
 import com.tappy.pos.service.exchangerate.ExchangeRateService;
 import com.tappy.pos.service.marketgold.MarketGoldPriceService;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/utilities")
 @RequiredArgsConstructor
+@RequiresFeature("UTILITIES")
 public class UtilitiesController {
 
     private final ExchangeRateService exchangeRateService;

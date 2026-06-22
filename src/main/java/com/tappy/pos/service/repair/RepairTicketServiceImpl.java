@@ -1,6 +1,7 @@
 package com.tappy.pos.service.repair;
 
 import com.tappy.pos.config.FeatureContext;
+import com.tappy.pos.util.MessageArgs;
 import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.repair.*;
@@ -107,7 +108,7 @@ public class RepairTicketServiceImpl implements RepairTicketService {
 
         activityLogService.logAsync(tenantId, username, null, ActivityAction.REPAIR_CREATED,
                 "REPAIR_TICKET", String.valueOf(saved.getId()),
-                messageService.getMessage("activity.repair.created", saved.getTicketNumber(), saved.getCustomerName()), null);
+                "activity.repair.created", null, saved.getTicketNumber(), saved.getCustomerName());
         return mapToDTO(saved);
     }
 
@@ -145,7 +146,7 @@ public class RepairTicketServiceImpl implements RepairTicketService {
         RepairTicket saved = repairTicketRepository.save(ticket);
         activityLogService.logAsync(tenantId, actor, null, ActivityAction.REPAIR_UPDATED,
                 "REPAIR_TICKET", String.valueOf(saved.getId()),
-                messageService.getMessage("activity.repair.updated", saved.getTicketNumber()), null);
+                "activity.repair.updated", null, saved.getTicketNumber());
         return mapToDTO(saved);
     }
 
@@ -190,8 +191,8 @@ public class RepairTicketServiceImpl implements RepairTicketService {
         RepairTicket saved = repairTicketRepository.save(ticket);
         activityLogService.logAsync(saved.getTenantId(), currentUsername(), null, action,
                 "REPAIR_TICKET", String.valueOf(saved.getId()),
-                messageService.getMessage("activity.repair.status", saved.getTicketNumber(),
-                        messageService.getMessage("repair.status." + target)), null);
+                "activity.repair.status", null, saved.getTicketNumber(),
+                messageService.getMessage("repair.status." + target));
         return mapToDTO(saved);
     }
 
@@ -205,8 +206,8 @@ public class RepairTicketServiceImpl implements RepairTicketService {
         RepairTicket saved = repairTicketRepository.save(ticket);
         activityLogService.logAsync(saved.getTenantId(), currentUsername(), null, ActivityAction.REPAIR_UPDATED,
                 "REPAIR_TICKET", String.valueOf(saved.getId()),
-                messageService.getMessage("activity.repair.assigned", saved.getTicketNumber(),
-                        request.getTechnicianName() != null ? request.getTechnicianName() : "—"), null);
+                "activity.repair.assigned", null, saved.getTicketNumber(),
+                request.getTechnicianName() != null ? request.getTechnicianName() : "—");
         return mapToDTO(saved);
     }
 
@@ -218,7 +219,7 @@ public class RepairTicketServiceImpl implements RepairTicketService {
         repairTicketRepository.save(ticket);
         activityLogService.logAsync(ticket.getTenantId(), currentUsername(), null, ActivityAction.REPAIR_DELETED,
                 "REPAIR_TICKET", String.valueOf(ticket.getId()),
-                messageService.getMessage("activity.repair.deleted", ticket.getTicketNumber()), null);
+                "activity.repair.deleted", null, ticket.getTicketNumber());
     }
 
     @Override
@@ -283,7 +284,7 @@ public class RepairTicketServiceImpl implements RepairTicketService {
         RepairTicket saved = repairTicketRepository.save(claim);
         activityLogService.logAsync(tenantId, username, null, ActivityAction.REPAIR_CREATED,
                 "REPAIR_TICKET", String.valueOf(saved.getId()),
-                messageService.getMessage("activity.repair.warranty", saved.getTicketNumber(), original.getTicketNumber()), null);
+                "activity.repair.warranty", null, saved.getTicketNumber(), original.getTicketNumber());
         return mapToDTO(saved);
     }
 
@@ -314,7 +315,9 @@ public class RepairTicketServiceImpl implements RepairTicketService {
         order.setOrderType(Order.OrderType.SELL);
         order.setPaymentMethod("CASH");
         order.setCreatedBy(actor);
-        order.setNotes(messageService.getMessage("repair.order.note", ticket.getTicketNumber()));
+        // i18n: store key + args so the note renders in the reader's locale (not frozen at write time).
+        order.setNotesKey("repair.order.note");
+        order.setNotesArgs(MessageArgs.toJson(ticket.getTicketNumber()));
         order.complete(actor); // → COMPLETED + completedAt + completedBy
 
         List<OrderItem> items = new ArrayList<>();
@@ -378,7 +381,7 @@ public class RepairTicketServiceImpl implements RepairTicketService {
         Order saved = orderRepository.save(order);
         activityLogService.logAsync(tenantId, actor, null, ActivityAction.ORDER_CREATED,
                 "ORDER", saved.getOrderNumber(),
-                messageService.getMessage("activity.repair.order", ticket.getTicketNumber(), saved.getOrderNumber()), null);
+                "activity.repair.order", null, ticket.getTicketNumber(), saved.getOrderNumber());
         return saved.getId();
     }
 

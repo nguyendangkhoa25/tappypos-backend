@@ -3,8 +3,10 @@ package com.tappy.pos.service.auth;
 import com.tappy.pos.model.dto.auth.PermissionsMatrixDTO;
 import com.tappy.pos.model.entity.auth.Feature;
 import com.tappy.pos.model.entity.auth.Role;
+import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.auth.RoleFeatureRepository;
 import com.tappy.pos.repository.auth.RoleRepository;
+import com.tappy.pos.repository.tenant.TenantRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -30,6 +32,10 @@ class RoleFeatureServiceTest {
     private RoleFeatureRepository roleFeatureRepository;
     @Mock
     private RoleRepository roleRepository;
+    @Mock
+    private TenantRepository tenantRepository;
+    @Mock
+    private TenantContext tenantContext;
 
     @InjectMocks
     private RoleFeatureService roleFeatureService;
@@ -690,6 +696,26 @@ class RoleFeatureServiceTest {
 
         verify(roleFeatureRepository).removeAllFeaturesFromRole("CASHIER");
         verify(roleFeatureRepository, never()).assignFeatureToRole(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("setRoleFeatures: bumps tenant features_version so stale tokens refresh")
+    void testSetRoleFeatures_BumpsFeaturesVersion() {
+        when(tenantContext.getCurrentTenantId()).thenReturn("shop-1");
+
+        roleFeatureService.setRoleFeatures("CASHIER", List.of("DASHBOARD"));
+
+        verify(tenantRepository).bumpFeaturesVersion("shop-1");
+    }
+
+    @Test
+    @DisplayName("setRoleFeatures: no version bump when there is no tenant context")
+    void testSetRoleFeatures_NoBumpWithoutTenant() {
+        when(tenantContext.getCurrentTenantId()).thenReturn(null);
+
+        roleFeatureService.setRoleFeatures("CASHIER", List.of("DASHBOARD"));
+
+        verify(tenantRepository, never()).bumpFeaturesVersion(anyString());
     }
 
     // ============= Helper Methods =============

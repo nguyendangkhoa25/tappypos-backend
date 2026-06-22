@@ -253,6 +253,9 @@ public class LoyaltyService {
         }
         customer.setStampRewards(rewards - 1);
         customerRepository.save(customer);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.LOYALTY_REDEEMED, "CUSTOMER", String.valueOf(customerId),
+                "activity.loyalty.redeemed", null);
         return getCustomerLoyalty(customerId);
     }
 
@@ -281,7 +284,7 @@ public class LoyaltyService {
 
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.LOYALTY_ADJUSTED, "LOYALTY", String.valueOf(customerId),
-                "Điều chỉnh điểm khách hàng", null);
+                "activity.loyalty.adjusted", null);
 
         return mapTransactionToDTO(tx);
     }
@@ -326,7 +329,7 @@ public class LoyaltyService {
 
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.LOYALTY_REDEEMED, "LOYALTY", String.valueOf(customerId),
-                "Đổi điểm lấy ưu đãi", null);
+                "activity.loyalty.redeemed", null);
 
         return discountAmount;
     }

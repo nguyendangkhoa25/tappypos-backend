@@ -11,6 +11,7 @@ import com.tappy.pos.repository.order.OrderRepository;
 import com.tappy.pos.repository.pawn.PawnRepository;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.auth.ZaloZnsService;
+import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.service.notification.NotificationService;
 import com.tappy.pos.service.tenant.ZaloMessageTemplateService;
 import com.tappy.pos.service.tenant.ZaloOaService;
@@ -76,14 +77,12 @@ public class SchedulerNotificationHelper {
             return;
         }
 
-        Locale vi = new Locale("vi");
         String dateStr = today.format(DATE_FMT);
         String revenueStr = NumberFormat.getNumberInstance(new Locale("vi")).format(revenue) + " ₫";
 
-        String title = messageService.getMessage("notification.revenue.daily.title", vi, dateStr);
-        String message = messageService.getMessage("notification.revenue.daily.message", vi, count, revenueStr);
-
-        notificationService.pushToRoles(Notification.NotificationType.INFO, title, message,
+        notificationService.pushToRoles(Notification.NotificationType.INFO,
+                LocalizedText.of("notification.revenue.daily.title", dateStr),
+                LocalizedText.of("notification.revenue.daily.message", count, revenueStr),
                 "REVENUE", null, List.of(RoleEnum.SHOP_OWNER.getCode()));
         log.info("Daily revenue summary sent for tenant {}: {} orders, {}", tenant.getTenantId(), count, revenue);
     }
@@ -91,7 +90,7 @@ public class SchedulerNotificationHelper {
     /**
      * Pawn due-date reminders. Two independent parts:
      * <ol>
-     *   <li>an in-app summary to SHOP_OWNER / MANAGER of contracts due <em>today</em>; and</li>
+     *   <li>an in-app summary to SHOP_OWNER of contracts due <em>today</em>; and</li>
      *   <li>a Zalo ZNS reminder to each borrower whose contract falls due in
      *       {@code reminderLeadDays} days (so they have time to redeem or extend).</li>
      * </ol>
@@ -108,13 +107,12 @@ public class SchedulerNotificationHelper {
 
         long count = result.isEmpty() ? 0 : ((Number) result.get(0)[1]).longValue();
         if (count > 0) {
-            Locale vi = new Locale("vi");
             String dateStr = today.format(DATE_FMT);
-            String title = messageService.getMessage("notification.pawn.due.title", vi, count);
-            String message = messageService.getMessage("notification.pawn.due.message", vi, count, dateStr);
 
-            notificationService.pushToRoles(Notification.NotificationType.INFO, title, message,
-                    "PAWN", null, List.of(RoleEnum.SHOP_OWNER.getCode(), RoleEnum.MANAGER.getCode()));
+            notificationService.pushToRoles(Notification.NotificationType.INFO,
+                    LocalizedText.of("notification.pawn.due.title", count),
+                    LocalizedText.of("notification.pawn.due.message", count, dateStr),
+                    "PAWN", null, List.of(RoleEnum.SHOP_OWNER.getCode()));
             log.info("Pawn due notification sent for tenant {}: {} contract(s)", tenant.getTenantId(), count);
         }
 

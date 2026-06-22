@@ -197,3 +197,45 @@ ON CONFLICT (code, product_type_id) DO UPDATE SET name = EXCLUDED.name;
 INSERT INTO shop_config (tenant_id, config_key, config_value, config_group, encrypted) VALUES
     (current_setting('app.current_tenant', true), 'cash_denominations', '1000,2000,5000,10000,20000,50000,100000,200000,500000', 'POS', FALSE)
 ON CONFLICT (config_key, tenant_id) DO NOTHING;
+
+-- ── 12. Modifier groups ───────────────────────────────────────
+-- Starter per-dish modifiers so a restaurant has ready-made groups to attach immediately
+-- (mirrors coffee_shop.sql). Idempotent via NOT EXISTS (no natural unique key for ON CONFLICT).
+INSERT INTO modifier_groups (tenant_id, name, min_select, max_select, required, sort_order)
+SELECT current_setting('app.current_tenant', true), v.name, v.min_select, v.max_select, v.required, v.sort_order
+FROM (VALUES
+    ('Mức cay',   1, 1, TRUE,  1),
+    ('Tùy chọn',  0, 5, FALSE, 2),
+    ('Thêm món',  0, 5, FALSE, 3),
+    ('Đóng gói',  1, 1, TRUE,  4)
+) AS v(name, min_select, max_select, required, sort_order)
+WHERE NOT EXISTS (
+    SELECT 1 FROM modifier_groups g
+    WHERE g.tenant_id = current_setting('app.current_tenant', true) AND g.name = v.name
+);
+
+INSERT INTO modifier_options (tenant_id, modifier_group_id, name, price_delta, sort_order)
+SELECT current_setting('app.current_tenant', true), g.id, o.name, o.price_delta, o.sort_order
+FROM modifier_groups g
+JOIN (VALUES
+    ('Mức cay',   'Không cay',        0,     1),
+    ('Mức cay',   'Cay nhẹ',          0,     2),
+    ('Mức cay',   'Cay vừa',          0,     3),
+    ('Mức cay',   'Cay nhiều',        0,     4),
+    ('Tùy chọn',  'Thêm hành',        0,     1),
+    ('Tùy chọn',  'Không hành',       0,     2),
+    ('Tùy chọn',  'Không rau',        0,     3),
+    ('Tùy chọn',  'Không mỡ',         0,     4),
+    ('Thêm món',  'Thêm trứng',       5000,  1),
+    ('Thêm món',  'Thêm thịt',        15000, 2),
+    ('Thêm món',  'Thêm rau',         5000,  3),
+    ('Thêm món',  'Cơm thêm',         5000,  4),
+    ('Đóng gói',  'Ăn tại chỗ',       0,     1),
+    ('Đóng gói',  'Mang đi',          0,     2)
+) AS o(group_name, name, price_delta, sort_order) ON o.group_name = g.name
+WHERE g.tenant_id = current_setting('app.current_tenant', true)
+  AND NOT EXISTS (
+    SELECT 1 FROM modifier_options mo
+    WHERE mo.tenant_id = current_setting('app.current_tenant', true)
+      AND mo.modifier_group_id = g.id AND mo.name = o.name
+  );

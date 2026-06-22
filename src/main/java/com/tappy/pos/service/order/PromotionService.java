@@ -6,14 +6,17 @@ import com.tappy.pos.model.dto.promotion.ApplyPromotionResponse;
 import com.tappy.pos.model.dto.promotion.PromotionDTO;
 import com.tappy.pos.model.dto.promotion.SavePromotionRequest;
 import com.tappy.pos.model.entity.order.Promotion;
+import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.model.enums.DiscountType;
 import com.tappy.pos.repository.order.PromotionRepository;
 import com.tappy.pos.service.MessageService;
+import com.tappy.pos.service.audit.ActivityLogService;
 import com.tappy.pos.multitenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +32,7 @@ public class PromotionService {
 
     private final PromotionRepository promotionRepository;
     private final MessageService messageService;
+    private final ActivityLogService activityLogService;
     private final TenantContext tenantContext;
 
     public Page<PromotionDTO> getAll(Pageable pageable) {
@@ -71,7 +75,12 @@ public class PromotionService {
                 .isActive(req.getIsActive() != null ? req.getIsActive() : true)
                 .description(req.getDescription())
                 .build();
-        return mapToDTO(promotionRepository.save(promo));
+        Promotion saved = promotionRepository.save(promo);
+        String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.PROMOTION_CREATED, "PROMOTION", String.valueOf(saved.getId()),
+                "activity.promotion.created", null, saved.getName());
+        return mapToDTO(saved);
     }
 
     @Transactional
@@ -99,7 +108,12 @@ public class PromotionService {
         if (req.getIsActive() != null) promo.setIsActive(req.getIsActive());
         promo.setDescription(req.getDescription());
 
-        return mapToDTO(promotionRepository.save(promo));
+        Promotion updated = promotionRepository.save(promo);
+        String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.PROMOTION_UPDATED, "PROMOTION", String.valueOf(updated.getId()),
+                "activity.promotion.updated", null, updated.getName());
+        return mapToDTO(updated);
     }
 
     @Transactional
@@ -109,6 +123,10 @@ public class PromotionService {
                 .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.promotion.not.found", id)));
         promo.softDelete();
         promotionRepository.save(promo);
+        String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.PROMOTION_DELETED, "PROMOTION", String.valueOf(promo.getId()),
+                "activity.promotion.deleted", null, promo.getName());
     }
 
     /**

@@ -172,7 +172,7 @@ public class TableServiceImpl implements TableService {
         TableReservation saved = tableReservationRepository.save(r);
         activityLogService.logAsync(tenantId, currentUsername(), null,
                 ActivityAction.TABLE_RESERVED, "TABLE_RESERVATION", String.valueOf(saved.getId()),
-                "Đặt bàn " + table.getTableNumber() + " lúc " + request.getReservedAt().format(HHMM), null);
+                "activity.table.reserved", null, table.getTableNumber(), request.getReservedAt().format(HHMM));
         return toResDTO(saved);
     }
 
@@ -206,7 +206,7 @@ public class TableServiceImpl implements TableService {
                 });
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), currentUsername(), null,
                 ActivityAction.TABLE_RESERVATION_SEATED, "TABLE_RESERVATION", String.valueOf(saved.getId()),
-                "Khách đã đến — bàn " + r.getTableLabel(), null);
+                "activity.table.reservation.seated", null, r.getTableLabel());
         return toResDTO(saved);
     }
 
@@ -219,7 +219,7 @@ public class TableServiceImpl implements TableService {
         TableReservation saved = tableReservationRepository.save(r);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), currentUsername(), null,
                 ActivityAction.TABLE_RESERVATION_CANCELLED, "TABLE_RESERVATION", String.valueOf(saved.getId()),
-                "Huỷ đặt bàn " + r.getTableLabel(), null);
+                "activity.table.reservation.cancelled", null, r.getTableLabel());
         return toResDTO(saved);
     }
 
@@ -232,7 +232,7 @@ public class TableServiceImpl implements TableService {
         TableReservation saved = tableReservationRepository.save(r);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), currentUsername(), null,
                 ActivityAction.TABLE_RESERVATION_NO_SHOW, "TABLE_RESERVATION", String.valueOf(saved.getId()),
-                "Khách không đến — bàn " + r.getTableLabel(), null);
+                "activity.table.reservation.no.show", null, r.getTableLabel());
         return toResDTO(saved);
     }
 

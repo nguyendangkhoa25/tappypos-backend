@@ -160,8 +160,10 @@ Every mutating service method must call `activityLogService.logAsync(...)` after
 
 **Signature:**
 ```java
-activityLogService.logAsync(tenantId, actorUsername, actorFullName, action, targetType, targetId, description, ipAddress);
+activityLogService.logAsync(tenantId, actorUsername, actorFullName, action, targetType, targetId, messageKey, ipAddress, args...);
 ```
+
+**The description is i18n (render at read time).** Pass an `activity.*` **message key + arguments**, never a rendered string. The key + JSON args are stored (`activity_log.description_key` / `description_args`, V036) and rendered in the **reader's** locale in `ActivityLogServiceImpl.toDto`, so the same row reads correctly in vi or en. Never pass a hardcoded Vietnamese/English literal or a `messageService.getMessage(...)` result as `messageKey` — that re-freezes the language. Pass already-formatted display strings as `args` for numbers/money so `MessageFormat` doesn't re-format them per locale. (Same principle applies to notifications via `LocalizedText` — see "Notification i18n" below.)
 
 **`tenantId` rules — critical for RLS correctness:**
 - Shop operations: pass `tenantContext.getCurrentTenantId()` — stored as the actual tenant ID in the DB.
@@ -179,7 +181,7 @@ For services that use `AuthContext`, use `authContext.getCurrentUsername()` inst
 **Checklist when adding a new service method:**
 1. Add the action to `ActivityAction` enum if it doesn't exist.
 2. Call `logAsync` after the successful repository save (not before, not in a finally block).
-3. Use Vietnamese for `description` — it appears directly in the UI.
+3. Pass an `activity.*` message key (by convention `activity.` + `ACTION.name().toLowerCase().replace('_','.')`, or reuse an existing one) + args. Add the key to **both** `messages_vi.properties` and `messages.properties` (vi/en in sync) — Vietnamese-first.
 4. Add the action to `ACTION_OPTIONS` and `ACTION_COLORS` in `ActivityLogPage.jsx` (frontend).
 5. Add Vietnamese + English translations in `src/i18n/features/activityLog.js`.
 
@@ -521,6 +523,13 @@ The `db/tenant/` files are executed by `TenantProvisioningService` at shop creat
 All user-facing strings go through `MessageService` (wraps Spring `MessageSource`). Never hardcode error messages. Locale files:
 - `src/main/resources/i18n/messages.properties` (English)
 - `src/main/resources/i18n/messages_vi.properties` (Vietnamese)
+
+**Never persist rendered localized text — render at read time.** A user-facing string saved to a DB column is frozen in whatever language it was rendered at write time; a reader in another locale can never see it translated. So never store a `messageService.getMessage(...)` result (or a localized literal) in a column that is later shown to a user. Store the **message key + arguments** and render in the reader's locale in the read path. Implemented examples:
+- **Activity log** — `activity_log.description_key` + `description_args` (V036), rendered in `ActivityLogServiceImpl.toDto` (see "Activity Logging" above).
+- **Notification i18n** — `notifications.title_key`/`message_key` + `*_args` (V037). System pushes pass `LocalizedText.of("notification.x.title", args)` to the `NotificationService` push API; `mapToDTO` renders in the reader's locale. The literal `title`/`message` columns are used only for **user-authored** notifications (`create()`) and legacy rows, as a fallback.
+- **Order notes/reasons/table label** — `orders.notes_key`/`cancel_reason_key`/`void_reason_key` + `*_args` (V038) for system-generated split/merge/reject text, and `table_label_key`/`table_label_args` (V039) for the lodging "Phòng {0}" label. `Order.cancel(...)`/`voidOrder(...)` have a 3-arg `(key, argsJson, by)` overload for system text alongside the literal 2-arg overload for user-entered reasons; `OrderServiceImpl.mapToDTO` renders each field, and `generateReceipt` passes the resolved table label into `ReceiptHtmlBuilder.build`. Real F&B table / booking resource names stay in the literal `table_label`. `MessageArgs.toJson/fromJson` (`com.tappy.pos.util`) is the shared codec for the `*_args` JSON.
+
+Genuinely user-authored free text (customer notes, feedback bodies, a reason typed by staff) is stored verbatim — it is not localized system text and must not be turned into a key.
 
 ### Audit Logging
 

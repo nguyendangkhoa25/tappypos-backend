@@ -1,11 +1,13 @@
 package com.tappy.pos.service.notification;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tappy.pos.config.FeatureContext;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.model.dto.notification.CreateNotificationRequest;
 import com.tappy.pos.model.dto.notification.NotificationDTO;
 import com.tappy.pos.model.entity.notification.Notification;
+import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.model.entity.notification.NotificationPreference;
 import com.tappy.pos.model.entity.tenant.Tenant;
 import com.tappy.pos.model.enums.RoleEnum;
@@ -31,7 +33,6 @@ import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -49,6 +50,9 @@ public class NotificationService {
     private final TenantContext tenantContext;
     private final MessageService messageService;
     private final FeatureContext featureContext;
+    private final ObjectMapper objectMapper;
+
+    private static final Object[] NO_ARGS = new Object[0];
 
     /**
      * Maps notification types that require a specific feature to receive by default.
@@ -186,13 +190,13 @@ public class NotificationService {
      * Respects per-user opt-out preferences.
      */
     @Transactional
-    public void pushToRoles(Notification.NotificationType type, String title, String message,
+    public void pushToRoles(Notification.NotificationType type, LocalizedText title, LocalizedText message,
                              String referenceType, Long referenceId, List<String> roleNames) {
         pushToRoles(type, title, message, referenceType, referenceId, roleNames, null);
     }
 
     @Transactional
-    public void pushToRoles(Notification.NotificationType type, String title, String message,
+    public void pushToRoles(Notification.NotificationType type, LocalizedText title, LocalizedText message,
                              String referenceType, Long referenceId, List<String> roleNames,
                              String excludeUsername) {
         // Explicit tenantId (from the ThreadLocal) — not current_tenant_id() — because async
@@ -209,8 +213,10 @@ public class NotificationService {
                 .filter(userId -> excludeUsername == null || !excludeUsername.equals(userId))
                 .map(userId -> Notification.builder()
                         .userId(userId)
-                        .title(title)
-                        .message(message)
+                        .titleKey(title.key())
+                        .titleArgs(serializeArgs(title.args()))
+                        .messageKey(message.key())
+                        .messageArgs(serializeArgs(message.args()))
                         .type(type)
                         .referenceType(referenceType)
                         .referenceId(referenceId)
@@ -235,7 +241,7 @@ public class NotificationService {
      */
     @Async
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public void pushToRolesAsync(Notification.NotificationType type, String title, String message,
+    public void pushToRolesAsync(Notification.NotificationType type, LocalizedText title, LocalizedText message,
                                   String referenceType, Long referenceId,
                                   List<String> roleNames, String tenantId) {
         pushToRolesAsync(type, title, message, referenceType, referenceId, roleNames, tenantId, null);
@@ -243,7 +249,7 @@ public class NotificationService {
 
     @Async
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public void pushToRolesAsync(Notification.NotificationType type, String title, String message,
+    public void pushToRolesAsync(Notification.NotificationType type, LocalizedText title, LocalizedText message,
                                   String referenceType, Long referenceId,
                                   List<String> roleNames, String tenantId, String excludeUsername) {
         try {
@@ -268,12 +274,10 @@ public class NotificationService {
      */
     @Transactional
     public void pushExpiryWarning(Tenant tenant, int daysRemaining) {
-        Locale vi = new Locale("vi");
         String expiryDate = tenant.getExpirationDate().format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
-        String title = messageService.getMessage("notification.expiry.warning.title", vi, daysRemaining);
-        String message = messageService.getMessage("notification.expiry.warning.message", vi,
-                tenant.getName(), expiryDate);
-        pushToRoles(Notification.NotificationType.BILLING, title, message,
+        pushToRoles(Notification.NotificationType.BILLING,
+                LocalizedText.of("notification.expiry.warning.title", daysRemaining),
+                LocalizedText.of("notification.expiry.warning.message", tenant.getName(), expiryDate),
                 "TENANT", tenant.getId(), List.of(RoleEnum.SHOP_OWNER.getCode()));
     }
 
@@ -282,12 +286,10 @@ public class NotificationService {
      */
     @Transactional
     public void pushExpiryExpired(Tenant tenant) {
-        Locale vi = new Locale("vi");
         String expiryDate = tenant.getExpirationDate().format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
-        String title = messageService.getMessage("notification.subscription.expired.title", vi);
-        String message = messageService.getMessage("notification.subscription.expired.message", vi,
-                tenant.getName(), expiryDate);
-        pushToRoles(Notification.NotificationType.BILLING, title, message,
+        pushToRoles(Notification.NotificationType.BILLING,
+                LocalizedText.of("notification.subscription.expired.title"),
+                LocalizedText.of("notification.subscription.expired.message", tenant.getName(), expiryDate),
                 "TENANT", tenant.getId(), List.of(RoleEnum.SHOP_OWNER.getCode()));
     }
 
@@ -295,7 +297,7 @@ public class NotificationService {
      * Broadcast a SYSTEM notification to all active MASTER_TENANT users.
      */
     @Transactional
-    public void pushToMasterUsers(String title, String message, String referenceType, Long referenceId) {
+    public void pushToMasterUsers(LocalizedText title, LocalizedText message, String referenceType, Long referenceId) {
         pushToRoles(Notification.NotificationType.SYSTEM, title, message,
                 referenceType, referenceId, List.of("MASTER_TENANT"));
     }
@@ -305,7 +307,7 @@ public class NotificationService {
      */
     @Async
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public void pushToMasterUsersAsync(String title, String message, String referenceType, Long referenceId) {
+    public void pushToMasterUsersAsync(LocalizedText title, LocalizedText message, String referenceType, Long referenceId) {
         try {
             pushToRoles(Notification.NotificationType.SYSTEM, title, message,
                     referenceType, referenceId, List.of("MASTER_TENANT"));
@@ -319,7 +321,7 @@ public class NotificationService {
      * feature-based defaults — skips the insert if the user has opted out of this type.
      */
     @Transactional
-    public void pushSystem(String userId, Notification.NotificationType type, String title, String message,
+    public void pushSystem(String userId, Notification.NotificationType type, LocalizedText title, LocalizedText message,
                            String referenceType, Long referenceId) {
         Set<String> optedOut = optedOutUsers(List.of(userId), type, tenantContext.getCurrentTenantId());
         if (optedOut.contains(userId)) {
@@ -328,8 +330,10 @@ public class NotificationService {
         }
         Notification n = Notification.builder()
                 .userId(userId)
-                .title(title)
-                .message(message)
+                .titleKey(title.key())
+                .titleArgs(serializeArgs(title.args()))
+                .messageKey(message.key())
+                .messageArgs(serializeArgs(message.args()))
                 .type(type)
                 .referenceType(referenceType)
                 .referenceId(referenceId)
@@ -347,7 +351,7 @@ public class NotificationService {
     @Async
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void pushSystemAsync(String userId, Notification.NotificationType type,
-                                String title, String message,
+                                LocalizedText title, LocalizedText message,
                                 String referenceType, Long referenceId, String tenantId) {
         try {
             if (tenantId != null) {
@@ -419,8 +423,8 @@ public class NotificationService {
         return NotificationDTO.builder()
                 .id(n.getId())
                 .userId(n.getUserId())
-                .title(n.getTitle())
-                .message(n.getMessage())
+                .title(render(n.getTitleKey(), n.getTitleArgs(), n.getTitle()))
+                .message(render(n.getMessageKey(), n.getMessageArgs(), n.getMessage()))
                 .type(n.getType().name())
                 .referenceType(n.getReferenceType())
                 .referenceId(n.getReferenceId())
@@ -429,5 +433,41 @@ public class NotificationService {
                 .createdBy(n.getCreatedBy())
                 .createdAt(n.getCreatedAt())
                 .build();
+    }
+
+    /**
+     * Prefer the i18n key (rendered in the reader's current locale); fall back to the literal value
+     * for user-authored notifications and pre-V037 rows, or if the key cannot be resolved.
+     */
+    private String render(String key, String argsJson, String literal) {
+        if (key == null || key.isBlank()) {
+            return literal;
+        }
+        try {
+            return messageService.getMessage(key, deserializeArgs(argsJson));
+        } catch (Exception e) {
+            log.warn("Notification: failed to render key={}: {}", key, e.getMessage());
+            return literal != null ? literal : key;
+        }
+    }
+
+    private String serializeArgs(Object[] args) {
+        if (args == null || args.length == 0) return null;
+        try {
+            return objectMapper.writeValueAsString(args);
+        } catch (Exception e) {
+            log.warn("Notification: failed to serialize args: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private Object[] deserializeArgs(String json) {
+        if (json == null || json.isBlank()) return NO_ARGS;
+        try {
+            return objectMapper.readValue(json, Object[].class);
+        } catch (Exception e) {
+            log.warn("Notification: failed to deserialize args '{}': {}", json, e.getMessage());
+            return NO_ARGS;
+        }
     }
 }

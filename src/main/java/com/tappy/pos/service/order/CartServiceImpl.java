@@ -51,6 +51,7 @@ import com.tappy.pos.model.entity.order.Combo;
 import com.tappy.pos.model.entity.order.ComboItem;
 import com.tappy.pos.repository.order.ComboRepository;
 import com.tappy.pos.service.inventory.InventoryService;
+import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.service.notification.NotificationService;
 import com.tappy.pos.service.product.ProductService;
 import com.tappy.pos.service.tenant.ShopConfigService;
@@ -1103,7 +1104,7 @@ public class CartServiceImpl implements CartService {
             orderRepository.findById(request.getPendingOrderId()).ifPresent(pending -> {
                 if (pending.getStatus() == Order.OrderStatus.PENDING) {
                     String currentUser = SecurityContextHolder.getContext().getAuthentication().getName();
-                    pending.cancel("Replaced by checkout", currentUser);
+                    pending.cancel("order.cancel.replaced_by_checkout", null, currentUser);
                     orderRepository.save(pending);
                     log.info("Cancelled pending kitchen order: {}", pending.getOrderNumber());
                 }
@@ -1271,8 +1272,8 @@ public class CartServiceImpl implements CartService {
                     : "—";
             activityLogService.logAsync(tenantContext.getCurrentTenantId(), currentUser, null,
                     ActivityAction.PREORDER_CREATED, "ORDER", savedOrder.getOrderNumber(),
-                    "Tạo đơn đặt #" + savedOrder.getOrderNumber()
-                            + " — cọc " + depositStr + ", lấy " + pickupStr, null);
+                    "activity.preorder.created", null,
+                    savedOrder.getOrderNumber(), depositStr, pickupStr);
 
             // Linked-appointment ZNS pickup reminder — only when the shop has APPOINTMENT.
             // Degrades gracefully: the pre-order works regardless; the reminder is best-effort.
@@ -1292,10 +1293,10 @@ public class CartServiceImpl implements CartService {
         } else {
             activityLogService.logAsync(tenantContext.getCurrentTenantId(), currentUser, null,
                     ActivityAction.ORDER_CREATED, "ORDER", savedOrder.getOrderNumber(),
-                    "Tạo đơn hàng #" + savedOrder.getOrderNumber(), null);
+                    "activity.order.created", null, savedOrder.getOrderNumber());
         }
 
-        // --- Notify SHOP_OWNER + MANAGER of new order, excluding the creator (fire-and-forget) ---
+        // --- Notify SHOP_OWNER of new order, excluding the creator (fire-and-forget) ---
         String formattedTotal = NumberFormat.getNumberInstance(new java.util.Locale("vi", "VN"))
                 .format(total.longValue()) + " ₫";
         String customerLine = resolvedCustomerName != null ? resolvedCustomerName + "\n" : "";
@@ -1307,10 +1308,10 @@ public class CartServiceImpl implements CartService {
         String itemsLine = itemsSummary.isBlank() ? "" : itemsSummary + "\n";
         notificationService.pushToRolesAsync(
                 Notification.NotificationType.ORDER,
-                messageService.getMessage("notification.order.new.title", savedOrder.getOrderNumber(), currentUser),
-                messageService.getMessage("notification.order.new.message", customerLine, itemsLine, "", "", formattedTotal),
+                LocalizedText.of("notification.order.new.title", savedOrder.getOrderNumber(), currentUser),
+                LocalizedText.of("notification.order.new.message", customerLine, itemsLine, "", "", formattedTotal),
                 "ORDER", savedOrder.getId(),
-                List.of(RoleEnum.SHOP_OWNER.getCode(), RoleEnum.MANAGER.getCode()),
+                List.of(RoleEnum.SHOP_OWNER.getCode()),
                 tenantContext.getCurrentTenantId(), currentUser);
 
         // --- Mark cart completed ---

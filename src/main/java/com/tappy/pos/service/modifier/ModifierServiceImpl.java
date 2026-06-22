@@ -71,7 +71,7 @@ public class ModifierServiceImpl implements ModifierService {
         log.info("Created modifier group {} with {} options", saved.getId(), saved.getOptions().size());
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.MODIFIER_GROUP_CREATED, "MODIFIER_GROUP", String.valueOf(saved.getId()),
-                "Tạo nhóm tùy chọn", null);
+                "activity.modifier.group.created", null);
         return mapToDTO(saved);
     }
 
@@ -83,7 +83,7 @@ public class ModifierServiceImpl implements ModifierService {
         ModifierGroup saved = modifierGroupRepository.save(group);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.MODIFIER_GROUP_UPDATED, "MODIFIER_GROUP", String.valueOf(id),
-                "Cập nhật nhóm tùy chọn", null);
+                "activity.modifier.group.updated", null);
         return mapToDTO(saved);
     }
 
@@ -95,7 +95,7 @@ public class ModifierServiceImpl implements ModifierService {
         log.info("Soft-deleted modifier group {}", id);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.MODIFIER_GROUP_DELETED, "MODIFIER_GROUP", String.valueOf(id),
-                "Xóa nhóm tùy chọn", null);
+                "activity.modifier.group.deleted", null);
     }
 
     @Override
@@ -129,7 +129,7 @@ public class ModifierServiceImpl implements ModifierService {
         }
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.MODIFIER_GROUP_PRODUCT_SET, "MODIFIER_GROUP", String.valueOf(productId),
-                "Gán nhóm tùy chọn cho sản phẩm", null);
+                "activity.modifier.group.product.set", null);
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

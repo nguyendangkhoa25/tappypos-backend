@@ -1,6 +1,7 @@
 package com.tappy.pos.service.order;
 
 import com.tappy.pos.exception.BadRequestException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.enums.ActivityAction;
@@ -53,6 +54,7 @@ import com.tappy.pos.service.inventory.InventoryService;
 import com.tappy.pos.service.product.ProductService;
 import com.tappy.pos.service.tenant.PrintTemplateService;
 import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.service.notification.NotificationService;
 import com.tappy.pos.model.entity.notification.Notification;
 import com.tappy.pos.model.enums.RoleEnum;
@@ -78,6 +80,8 @@ public class OrderServiceImpl implements OrderService {
     private final ProductService productService;
     private final com.tappy.pos.repository.product.ProductVariantRepository productVariantRepository;
     private final MessageService messageService;
+    private final ObjectMapper objectMapper;
+    private static final Object[] NO_ARGS = new Object[0];
     private final PrintTemplateService printTemplateService;
     private final ActivityLogService activityLogService;
     private final NotificationService notificationService;
@@ -194,7 +198,7 @@ public class OrderServiceImpl implements OrderService {
         String actor = getCurrentUsername();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.ORDER_CONFIRMED, "ORDER", String.valueOf(id),
-                "Chuyển báo giá thành đơn #" + order.getOrderNumber(), null);
+                "activity.order.confirmed.quote", null, order.getOrderNumber());
         // Award loyalty now that the quote is a real, completed sale (no points/stamps were granted
         // when the quote was saved). Mirrors the completeOrder / settle completion paths.
         if (saved.getCustomer() != null) {
@@ -242,17 +246,17 @@ public class OrderServiceImpl implements OrderService {
                 .paymentMethod(order.getPaymentMethod())
                 .amountPaid(order.getAmountPaid())
                 .changeAmount(order.getChangeAmount())
-                .notes(order.getNotes())
+                .notes(render(order.getNotesKey(), order.getNotesArgs(), order.getNotes()))
                 .prescriberName(order.getPrescriberName())
                 .prescriptionNote(order.getPrescriptionNote())
                 .createdBy(order.getCreatedBy())
                 .completedAt(order.getCompletedAt())
                 .completedBy(order.getCompletedBy())
                 .cancelledAt(order.getCancelledAt())
-                .cancelReason(order.getCancelReason())
+                .cancelReason(render(order.getCancelReasonKey(), order.getCancelReasonArgs(), order.getCancelReason()))
                 .cancelledBy(order.getCancelledBy())
                 .voidedAt(order.getVoidedAt())
-                .voidReason(order.getVoidReason())
+                .voidReason(render(order.getVoidReasonKey(), order.getVoidReasonArgs(), order.getVoidReason()))
                 .voidedBy(order.getVoidedBy())
                 .createdAt(order.getCreatedAt())
                 .invoiceId(order.getInvoice() != null ? order.getInvoice().getId() : null)
@@ -261,7 +265,7 @@ public class OrderServiceImpl implements OrderService {
                 .promotionDiscount(order.getPromotionDiscount())
                 .loyaltyPointsRedeemed(order.getLoyaltyPointsRedeemed())
                 .loyaltyDiscount(order.getLoyaltyDiscount())
-                .tableLabel(order.getTableLabel())
+                .tableLabel(render(order.getTableLabelKey(), order.getTableLabelArgs(), order.getTableLabel()))
                 .tableId(order.getTableId())
                 .parentOrderId(order.getParentOrderId())
                 .pickupTime(order.getPickupTime())
@@ -276,6 +280,43 @@ public class OrderServiceImpl implements OrderService {
                 .goldDiffAmount(order.getGoldDiffAmount())
                 .items(items)
                 .build();
+    }
+
+    /**
+     * Render a notes/reason field: prefer the i18n key (in the reader's locale) for system-generated
+     * text; fall back to the literal value for user-authored text and pre-V038 rows.
+     */
+    private String render(String key, String argsJson, String literal) {
+        if (key == null || key.isBlank()) {
+            return literal;
+        }
+        try {
+            return messageService.getMessage(key, deserializeArgs(argsJson));
+        } catch (Exception e) {
+            log.warn("Order: failed to render key={}: {}", key, e.getMessage());
+            return literal != null ? literal : key;
+        }
+    }
+
+    /** Serialize message args to JSON for storage on a *_args column (null when empty). */
+    private String serializeArgs(Object... args) {
+        if (args == null || args.length == 0) return null;
+        try {
+            return objectMapper.writeValueAsString(args);
+        } catch (Exception e) {
+            log.warn("Order: failed to serialize args: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private Object[] deserializeArgs(String json) {
+        if (json == null || json.isBlank()) return NO_ARGS;
+        try {
+            return objectMapper.readValue(json, Object[].class);
+        } catch (Exception e) {
+            log.warn("Order: failed to deserialize args '{}': {}", json, e.getMessage());
+            return NO_ARGS;
+        }
     }
 
     /** Balance still owed: totalAmount - amountPaid, floored at 0. Derived, never stored. */
@@ -326,7 +367,7 @@ public class OrderServiceImpl implements OrderService {
 
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), completedBy, null,
                 ActivityAction.ORDER_COMPLETED, "ORDER", saved.getOrderNumber(),
-                "Completed order #" + saved.getOrderNumber(), null);
+                "activity.order.completed.basic", null, saved.getOrderNumber());
 
         // Award loyalty points to customer if applicable
         if (saved.getCustomer() != null) {
@@ -383,22 +424,20 @@ public class OrderServiceImpl implements OrderService {
         // Pre-orders log their own action so the Activity Log "Hủy đơn đặt" filter works.
         ActivityAction cancelAction = saved.isPreorder()
                 ? ActivityAction.PREORDER_CANCELLED : ActivityAction.ORDER_CANCELLED;
-        String cancelLabel = saved.isPreorder() ? "Hủy đơn đặt #" : "Hủy đơn #";
+        String cancelKey = saved.isPreorder() ? "activity.preorder.cancelled" : "activity.order.cancelled";
         activityLogService.logAsync(tenantId, cancelledBy, null,
                 cancelAction, "ORDER", saved.getOrderNumber(),
-                cancelLabel + saved.getOrderNumber() + " — " + request.getReason(), null);
+                cancelKey, null, saved.getOrderNumber(), request.getReason());
 
         try {
-            Locale vi = new Locale("vi");
             String amountStr = String.format("%,.0f ₫", saved.getTotalAmount());
-            String title = messageService.getMessage("notification.order.cancelled.title", vi,
-                    saved.getOrderNumber());
-            String msg = messageService.getMessage("notification.order.cancelled.message", vi,
-                    saved.getOrderNumber(), amountStr, cancelledBy,
-                    request.getReason() != null ? request.getReason() : "—");
-            notificationService.pushToRolesAsync(Notification.NotificationType.ORDER, title, msg,
+            notificationService.pushToRolesAsync(Notification.NotificationType.ORDER,
+                    LocalizedText.of("notification.order.cancelled.title", saved.getOrderNumber()),
+                    LocalizedText.of("notification.order.cancelled.message",
+                            saved.getOrderNumber(), amountStr, cancelledBy,
+                            request.getReason() != null ? request.getReason() : "—"),
                     "ORDER", saved.getId(),
-                    List.of(RoleEnum.SHOP_OWNER.getCode(), RoleEnum.MANAGER.getCode()),
+                    List.of(RoleEnum.SHOP_OWNER.getCode()),
                     tenantId);
         } catch (Exception e) {
             log.warn("Failed to push order-cancelled notification (order={}): {}", saved.getOrderNumber(), e.getMessage());
@@ -475,8 +514,8 @@ public class OrderServiceImpl implements OrderService {
         NumberFormat vnd = NumberFormat.getNumberInstance(new Locale("vi", "VN"));
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.PREORDER_SETTLED, "ORDER", saved.getOrderNumber(),
-                "Hoàn tất đơn đặt #" + saved.getOrderNumber()
-                        + " — thu nốt " + vnd.format(balanceDue.longValue()) + " ₫", null);
+                "activity.preorder.settled", null,
+                saved.getOrderNumber(), vnd.format(balanceDue.longValue()) + " ₫");
 
         if (saved.getCustomer() != null) {
             try {
@@ -619,7 +658,7 @@ public class OrderServiceImpl implements OrderService {
 
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), voidedBy, null,
                 ActivityAction.ORDER_VOIDED, "ORDER", saved.getOrderNumber(),
-                "Voided order #" + saved.getOrderNumber() + " — " + request.getReason(), null);
+                "activity.order.voided", null, saved.getOrderNumber(), request.getReason());
 
         return mapToDTO(saved);
     }
@@ -691,7 +730,7 @@ public class OrderServiceImpl implements OrderService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.ORDER_EXCHANGED, "ORDER", saved.getOrderNumber(),
-                "Đổi sản phẩm đơn #" + saved.getOrderNumber() + " (" + item.getProductName() + ")", null);
+                "activity.order.exchanged", null, saved.getOrderNumber(), item.getProductName());
 
         log.info("Exchanged item {} on order {}: variant {} -> {}", itemId, orderId, oldVariantId, request.getNewVariantId());
         return mapToDTO(saved);
@@ -704,7 +743,8 @@ public class OrderServiceImpl implements OrderService {
         ShopInfo shopInfo = shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc().orElse(null);
         var cfg = printTemplateService.getReceiptConfig();
         BankAccount bankAccount = cfg.isShowVietQr() ? bankAccountRepository.findDefault().orElse(null) : null;
-        return ReceiptHtmlBuilder.build(order, shopInfo, cfg, bankAccount);
+        String tableLabel = render(order.getTableLabelKey(), order.getTableLabelArgs(), order.getTableLabel());
+        return ReceiptHtmlBuilder.build(order, tableLabel, shopInfo, cfg, bankAccount);
     }
 
     @Override
@@ -1354,7 +1394,7 @@ public class OrderServiceImpl implements OrderService {
         }
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.ORDER_CONFIRMED, "ORDER", saved.getOrderNumber(),
-                "Xác nhận đơn khách đặt #" + saved.getOrderNumber(), null);
+                "activity.order.confirmed", null, saved.getOrderNumber());
         return mapToDTO(saved);
     }
 
@@ -1367,11 +1407,15 @@ public class OrderServiceImpl implements OrderService {
             throw new BadRequestException(messageService.getMessage("error.order.not.submitted"));
         }
         String actor = getCurrentUsername();
-        order.cancel(reason != null && !reason.isBlank() ? reason : "Từ chối đơn khách đặt", actor);
+        if (reason != null && !reason.isBlank()) {
+            order.cancel(reason, actor);                                  // user-entered reason
+        } else {
+            order.cancel("order.cancel.rejected_default", serializeArgs(), actor);  // system default
+        }
         Order saved = orderRepository.save(order);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.ORDER_REJECTED, "ORDER", saved.getOrderNumber(),
-                "Từ chối đơn khách đặt #" + saved.getOrderNumber(), null);
+                "activity.order.rejected", null, saved.getOrderNumber());
         return mapToDTO(saved);
     }
 
@@ -1395,7 +1439,7 @@ public class OrderServiceImpl implements OrderService {
         };
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.ORDER_DELIVERY_UPDATED, "ORDER", saved.getOrderNumber(),
-                "Cập nhật giao hàng đơn #" + saved.getOrderNumber() + " → " + statusLabel, null);
+                "activity.order.delivery.updated", null, saved.getOrderNumber(), statusLabel);
         return mapToDTO(saved);
     }
 
@@ -1694,7 +1738,7 @@ public class OrderServiceImpl implements OrderService {
 
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), currentUser, null,
                 ActivityAction.ORDER_COMPLETED, "ORDER", saved.getOrderNumber(),
-                "Thanh toán và hoàn tất đơn hàng #" + saved.getOrderNumber(), null);
+                "activity.order.completed", null, saved.getOrderNumber());
 
         // For a split-group check, release the table only once every sibling check is settled.
         releaseTableForSplitGroupIfComplete(saved);
@@ -1730,8 +1774,8 @@ public class OrderServiceImpl implements OrderService {
 
         activityLogService.logAsync(tenantId, actor, null,
                 ActivityAction.ORDER_SPLIT, "ORDER", order.getOrderNumber(),
-                "Tách bill đơn #" + order.getOrderNumber() + " (" + ("EVEN".equals(mode) ? "chia đều" : "theo món") + ")",
-                null);
+                "activity.order.split", null,
+                order.getOrderNumber(), ("EVEN".equals(mode) ? "chia đều" : "theo món"));
         return result;
     }
 
@@ -1753,15 +1797,21 @@ public class OrderServiceImpl implements OrderService {
             allocated = allocated.add(childTotal);
             Order child = newChildCheck(order, tenantId, actor);
             child.setTotalAmount(childTotal);
-            child.setNotes("Chia đều " + i + "/" + n
-                    + (order.getTableLabel() != null ? " — Bàn " + order.getTableLabel() : ""));
+            String tableLabel = render(order.getTableLabelKey(), order.getTableLabelArgs(), order.getTableLabel());
+            if (tableLabel != null) {
+                child.setNotesKey("order.note.split_even.table");
+                child.setNotesArgs(serializeArgs(String.valueOf(i), String.valueOf(n), tableLabel));
+            } else {
+                child.setNotesKey("order.note.split_even");
+                child.setNotesArgs(serializeArgs(String.valueOf(i), String.valueOf(n)));
+            }
             children.add(orderRepository.save(child));
         }
 
         // Zero the source total before voiding (matches splitByItem) so any report that sums
         // total_amount without excluding VOIDED rows doesn't double-count the split-out value.
         order.setTotalAmount(BigDecimal.ZERO);
-        order.voidOrder("Tách bill chia đều " + n + " phần", actor);
+        order.voidOrder("order.void.split_even", serializeArgs(String.valueOf(n)), actor);
         orderRepository.save(order);
         return children.stream().map(this::mapToDTO).collect(Collectors.toList());
     }
@@ -1840,7 +1890,7 @@ public class OrderServiceImpl implements OrderService {
         } else {
             // Everything was split out — close the now-empty source order.
             order.setTotalAmount(BigDecimal.ZERO);
-            order.voidOrder("Tách bill toàn bộ thành " + children.size() + " bill", actor);
+            order.voidOrder("order.void.split_all", serializeArgs(String.valueOf(children.size())), actor);
         }
 
         // Keep the checks summing to the captured grand total; the first check absorbs any
@@ -1885,13 +1935,13 @@ public class OrderServiceImpl implements OrderService {
 
         source.getOrderItems().clear(); // orphanRemoval deletes the moved-out items
         source.setTotalAmount(BigDecimal.ZERO);
-        source.voidOrder("Gộp vào đơn #" + target.getOrderNumber(), actor);
+        source.voidOrder("order.void.merged", serializeArgs(target.getOrderNumber()), actor);
         Order savedSource = orderRepository.save(source);
         releaseTableForOrder(savedSource); // free the merged-away table
 
         activityLogService.logAsync(tenantId, actor, null,
                 ActivityAction.ORDER_MERGED, "ORDER", target.getOrderNumber(),
-                "Gộp bill #" + savedSource.getOrderNumber() + " vào #" + target.getOrderNumber(), null);
+                "activity.order.merged", null, savedSource.getOrderNumber(), target.getOrderNumber());
 
         // Reload the target so the response carries the merged-in items.
         return mapToDTO(findActiveOrder(targetOrderId));
@@ -1908,6 +1958,8 @@ public class OrderServiceImpl implements OrderService {
                 .parentOrderId(source.getId())
                 .tableId(source.getTableId())
                 .tableLabel(source.getTableLabel())
+                .tableLabelKey(source.getTableLabelKey())
+                .tableLabelArgs(source.getTableLabelArgs())
                 .serviceChargeRate(source.getServiceChargeRate())
                 .createdBy(actor)
                 .totalAmount(BigDecimal.ZERO)

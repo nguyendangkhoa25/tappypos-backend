@@ -1,6 +1,8 @@
 package com.tappy.pos.service.auth;
 
 import com.tappy.pos.exception.BadRequestException;
+import com.tappy.pos.exception.ZaloSendException;
+import com.tappy.pos.exception.ZaloUserNotReachableException;
 import com.tappy.pos.model.entity.auth.PasswordResetOtp;
 import com.tappy.pos.model.entity.auth.User;
 import com.tappy.pos.repository.auth.PasswordResetOtpRepository;
@@ -27,6 +29,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -77,7 +80,44 @@ class PasswordResetServiceTest {
         assertThat(cap.getValue().getStatus()).isEqualTo("PENDING");
         assertThat(cap.getValue().getResendCount()).isEqualTo(1);
         assertThat(cap.getValue().getPhone()).isEqualTo("84912345678");
-        verify(zaloZnsService).sendOtpAsync(eq("84912345678"), anyString(), eq(11L));
+        verify(zaloZnsService).sendOtpSync(eq("84912345678"), anyString(), eq(11L));
+    }
+
+    @Test
+    @DisplayName("requestOtp surfaces ZaloUserNotReachableException when the phone isn't on Zalo")
+    void requestOtp_notOnZalo() {
+        when(otpRepository.countRecentRequestsByPhone(anyString(), any())).thenReturn(0);
+        when(userRepository.findByPhoneGlobal("84912345678")).thenReturn(Optional.of(user));
+        when(otpRepository.save(any())).thenAnswer(i -> {
+            PasswordResetOtp r = i.getArgument(0);
+            r.setId(12L);
+            return r;
+        });
+        doThrow(new ZaloUserNotReachableException("Zalo error -124"))
+                .when(zaloZnsService).sendOtpSync(eq("84912345678"), anyString(), eq(12L));
+
+        assertThatThrownBy(() -> service.requestOtp("0912345678", "ip"))
+                .isInstanceOf(ZaloUserNotReachableException.class);
+
+        // The OTP row is still saved (kept for rate-limiting via noRollbackFor)
+        verify(otpRepository).save(any());
+    }
+
+    @Test
+    @DisplayName("requestOtp surfaces ZaloSendException on a transient send failure")
+    void requestOtp_sendFailed() {
+        when(otpRepository.countRecentRequestsByPhone(anyString(), any())).thenReturn(0);
+        when(userRepository.findByPhoneGlobal("84912345678")).thenReturn(Optional.of(user));
+        when(otpRepository.save(any())).thenAnswer(i -> {
+            PasswordResetOtp r = i.getArgument(0);
+            r.setId(13L);
+            return r;
+        });
+        doThrow(new ZaloSendException("Zalo ZNS call error"))
+                .when(zaloZnsService).sendOtpSync(eq("84912345678"), anyString(), eq(13L));
+
+        assertThatThrownBy(() -> service.requestOtp("0912345678", "ip"))
+                .isInstanceOf(ZaloSendException.class);
     }
 
     @Test
@@ -90,7 +130,7 @@ class PasswordResetServiceTest {
 
         assertThat(masked).contains("***");
         verify(otpRepository, never()).save(any());
-        verify(zaloZnsService, never()).sendOtpAsync(anyString(), anyString(), anyLong());
+        verify(zaloZnsService, never()).sendOtpSync(anyString(), anyString(), anyLong());
     }
 
     @Test

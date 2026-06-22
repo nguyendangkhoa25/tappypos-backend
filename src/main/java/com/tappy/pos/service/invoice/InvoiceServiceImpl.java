@@ -224,7 +224,7 @@ public class InvoiceServiceImpl implements InvoiceService {
         log.info("Invoice {} created successfully", saved.getInvoiceNumber());
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.INVOICE_CREATED, "INVOICE", String.valueOf(saved.getId()),
-                "Tạo hóa đơn " + saved.getInvoiceNumber(), null);
+                "activity.invoice.created", null, saved.getInvoiceNumber());
         return mapToDTO(saved);
     }
 
@@ -260,7 +260,7 @@ public class InvoiceServiceImpl implements InvoiceService {
         log.info("Invoice {} updated", saved.getInvoiceNumber());
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.INVOICE_UPDATED, "INVOICE", String.valueOf(saved.getId()),
-                "Cập nhật hóa đơn " + saved.getInvoiceNumber(), null);
+                "activity.invoice.updated", null, saved.getInvoiceNumber());
         return mapToDTO(saved);
     }
 
@@ -277,6 +277,9 @@ public class InvoiceServiceImpl implements InvoiceService {
         invoice.issue();
         Invoice saved = invoiceRepository.save(invoice);
         log.info("Invoice {} issued", saved.getInvoiceNumber());
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.INVOICE_ISSUED, "INVOICE", String.valueOf(saved.getId()),
+                "activity.invoice.issued", null, saved.getInvoiceNumber());
         return mapToDTO(saved);
     }
 
@@ -301,7 +304,7 @@ public class InvoiceServiceImpl implements InvoiceService {
         log.info("Invoice {} cancelled", saved.getInvoiceNumber());
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.INVOICE_CANCELLED, "INVOICE", String.valueOf(saved.getId()),
-                "Hủy hóa đơn " + saved.getInvoiceNumber(), null);
+                "activity.invoice.cancelled", null, saved.getInvoiceNumber());
         return mapToDTO(saved);
     }
 
@@ -326,7 +329,7 @@ public class InvoiceServiceImpl implements InvoiceService {
         log.info("Invoice {} deleted", invoice.getInvoiceNumber());
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.INVOICE_DELETED, "INVOICE", String.valueOf(invoice.getId()),
-                "Xóa hóa đơn " + invoice.getInvoiceNumber(), null);
+                "activity.invoice.deleted", null, invoice.getInvoiceNumber());
     }
 
     @Override
@@ -404,7 +407,7 @@ public class InvoiceServiceImpl implements InvoiceService {
         log.info("Input invoice {} created", saved.getInvoiceNumber());
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.INVOICE_INPUT_CREATED, "INVOICE", String.valueOf(saved.getId()),
-                "Tạo hóa đơn đầu vào " + saved.getInvoiceNumber(), null);
+                "activity.invoice.input.created", null, saved.getInvoiceNumber());
         return mapToDTO(saved);
     }
 
@@ -427,7 +430,7 @@ public class InvoiceServiceImpl implements InvoiceService {
         log.info("Input invoice {} confirmed", saved.getInvoiceNumber());
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.INVOICE_INPUT_CONFIRMED, "INVOICE", String.valueOf(saved.getId()),
-                "Xác nhận hóa đơn đầu vào " + saved.getInvoiceNumber(), null);
+                "activity.invoice.input.confirmed", null, saved.getInvoiceNumber());
         return mapToDTO(saved);
     }
 

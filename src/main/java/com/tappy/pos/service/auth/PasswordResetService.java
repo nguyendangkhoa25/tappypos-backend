@@ -1,6 +1,7 @@
 package com.tappy.pos.service.auth;
 
 import com.tappy.pos.exception.BadRequestException;
+import com.tappy.pos.exception.ZaloUserNotReachableException;
 import com.tappy.pos.model.entity.auth.PasswordResetOtp;
 import com.tappy.pos.model.entity.auth.User;
 import com.tappy.pos.repository.auth.PasswordResetOtpRepository;
@@ -62,8 +63,13 @@ public class PasswordResetService {
      * Always returns the masked phone (caller may show it in the UI).
      * Never reveals whether the phone is registered — identical HTTP 200 either way.
      *
-     * @throws ResponseStatusException 429 when rate-limit is exceeded.
+     * @throws ResponseStatusException          429 when rate-limit is exceeded.
+     * @throws ZaloUserNotReachableException    422 when the phone isn't on Zalo (hasn't followed the OA).
+     *                                          The OTP row is intentionally kept ({@code noRollbackFor})
+     *                                          so it still counts toward the rate limit.
+     * @throws com.tappy.pos.exception.ZaloSendException 502 on a transient send failure (row rolls back so the user can retry).
      */
+    @Transactional(noRollbackFor = ZaloUserNotReachableException.class)
     public String requestOtp(String rawPhone, String ipAddress) {
         String phone = ZaloZnsService.normalizePhone(rawPhone);
         String masked = ZaloZnsService.maskPhone(phone);
@@ -101,8 +107,9 @@ public class PasswordResetService {
                 .build();
         otpRepository.save(record);
 
-        // Fire-and-forget: ZNS send runs in a separate thread; exceptions swallowed internally
-        zaloZnsService.sendOtpAsync(phone, otp, record.getId());
+        // Synchronous send so we can surface "not on Zalo" (and other delivery failures) to the user
+        // who is waiting on the screen, instead of silently never delivering a code.
+        zaloZnsService.sendOtpSync(phone, otp, record.getId());
 
         log.info("[OTP] Issued for user={} phone={} rowId={}",
                 user.getUsername(), masked, record.getId());

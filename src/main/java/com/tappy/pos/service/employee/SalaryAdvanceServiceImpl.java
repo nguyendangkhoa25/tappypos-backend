@@ -63,7 +63,7 @@ public class SalaryAdvanceServiceImpl implements SalaryAdvanceService {
                 tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.SALARY_ADVANCE_CREATED, "SALARY_ADVANCE",
                 saved.getId().toString(),
-                "Ứng lương " + emp.getFullName() + " - " + req.getAmount().toPlainString() + "₫", null);
+                "activity.salary.advance.created", null, emp.getFullName(), req.getAmount().toPlainString());
 
         return mapToDTO(saved);
     }
@@ -88,7 +88,7 @@ public class SalaryAdvanceServiceImpl implements SalaryAdvanceService {
                 tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.SALARY_ADVANCE_DELETED, "SALARY_ADVANCE",
                 advance.getId().toString(),
-                "Xóa ứng lương " + advance.getEmployeeName(), null);
+                "activity.salary.advance.deleted", null, advance.getEmployeeName());
 
         advanceRepository.delete(advance);
     }

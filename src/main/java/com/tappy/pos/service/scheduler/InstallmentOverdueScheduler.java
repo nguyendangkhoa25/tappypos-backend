@@ -13,7 +13,7 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Runs daily at 08:05 and notifies SHOP_OWNER + MANAGER of every active tenant that has the
+ * Runs daily at 08:05 and notifies SHOP_OWNER of every active tenant that has the
  * INSTALLMENT feature about overdue trả-góp kỳ. Mirrors {@link PawnDueNotificationScheduler}.
  * See VEHICLE_SHOP_SHOP_TYPE_PLAN §4e.
  */

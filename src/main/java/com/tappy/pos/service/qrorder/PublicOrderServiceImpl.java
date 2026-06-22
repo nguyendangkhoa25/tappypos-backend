@@ -22,6 +22,7 @@ import com.tappy.pos.repository.product.ProductRepository;
 import com.tappy.pos.repository.table.TableRepository;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.tenant.ShopConfigService;
+import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -159,10 +160,10 @@ public class PublicOrderServiceImpl implements PublicOrderService {
         try {
             notificationService.pushToRolesAsync(
                     Notification.NotificationType.ORDER,
-                    messageService.getMessage("notification.qr.order.title", table.getTableNumber()),
-                    messageService.getMessage("notification.qr.order.message", saved.getOrderNumber()),
+                    LocalizedText.of("notification.qr.order.title", table.getTableNumber()),
+                    LocalizedText.of("notification.qr.order.message", saved.getOrderNumber()),
                     "ORDER", saved.getId(),
-                    List.of(RoleEnum.SHOP_OWNER.getCode(), RoleEnum.MANAGER.getCode()),
+                    List.of(RoleEnum.SHOP_OWNER.getCode()),
                     tenantId);
         } catch (Exception e) {
             log.warn("Failed to push QR-order notification (order={}): {}", saved.getOrderNumber(), e.getMessage());

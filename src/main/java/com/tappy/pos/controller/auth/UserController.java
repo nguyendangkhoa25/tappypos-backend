@@ -57,7 +57,7 @@ public class UserController {
     /**
      * GET /api/users/{id}
      * Get user by ID
-     * Required role: ROLE_ADMIN, ROLE_MANAGER
+     * Gated by the USER feature
      */
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<UserDetailDTO>> getUserById(@PathVariable Long id) {
@@ -69,7 +69,7 @@ public class UserController {
     /**
      * GET /api/users/username/{username}
      * Get user by username
-     * Required role: ROLE_ADMIN, ROLE_MANAGER
+     * Gated by the USER feature
      */
     @GetMapping("/username/{username}")
     public ResponseEntity<ApiResponse<UserDetailDTO>> getUserByUsername(@PathVariable String username) {
@@ -81,7 +81,7 @@ public class UserController {
     /**
      * GET /api/users
      * Get all users with pagination and search
-     * Required role: ROLE_ADMIN, ROLE_MANAGER
+     * Gated by the USER feature
      *
      * Query parameters:
      * - page: Page number (0-based, default: 0)

@@ -207,7 +207,9 @@ class PublicRoomServiceImplTest {
         assertThat(result.getItemCount()).isEqualTo(5);
         assertThat(result.getAddedTotal()).isEqualByComparingTo("35000"); // 2*10000 + 3*5000
         verify(itemRepository, times(2)).save(any(RoomStayItemEntity.class));
-        verify(notificationService).pushToRolesAsync(any(), anyString(), anyString(),
+        verify(notificationService).pushToRolesAsync(any(),
+                any(com.tappy.pos.model.i18n.LocalizedText.class),
+                any(com.tappy.pos.model.i18n.LocalizedText.class),
                 eq("ROOM_STAY"), eq(50L), any(), eq("shop1"));
     }
 
@@ -263,7 +265,9 @@ class PublicRoomServiceImplTest {
         assertThat(dto.getId()).isEqualTo(77L);
         assertThat(dto.getRequestType()).isEqualTo("CLEANING");
         assertThat(dto.getStatus()).isEqualTo("NEW");
-        verify(notificationService).pushToRolesAsync(any(), anyString(), anyString(),
+        verify(notificationService).pushToRolesAsync(any(),
+                any(com.tappy.pos.model.i18n.LocalizedText.class),
+                any(com.tappy.pos.model.i18n.LocalizedText.class),
                 eq("ROOM_REQUEST"), eq(77L), any(), eq("shop1"));
     }
 
@@ -315,7 +319,10 @@ class PublicRoomServiceImplTest {
             return r;
         });
         doThrow(new RuntimeException("notif down")).when(notificationService)
-                .pushToRolesAsync(any(), anyString(), anyString(), anyString(), anyLong(), any(), anyString());
+                .pushToRolesAsync(any(),
+                        any(com.tappy.pos.model.i18n.LocalizedText.class),
+                        any(com.tappy.pos.model.i18n.LocalizedText.class),
+                        anyString(), anyLong(), any(), anyString());
         GuestRequestRequest req = new GuestRequestRequest();
         req.setRequestType("SERVICE");
 

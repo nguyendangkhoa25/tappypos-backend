@@ -114,7 +114,7 @@ class RoomServiceImplTest {
         ArgumentCaptor<RoomEntity> roomCap = ArgumentCaptor.forClass(RoomEntity.class);
         verify(roomRepository).save(roomCap.capture());
         assertThat(roomCap.getValue().getStatus()).isEqualTo("OCCUPIED");
-        verify(activityLogService).logAsync(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(activityLogService).logAsync(any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test

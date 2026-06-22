@@ -93,7 +93,7 @@ public class GoldPriceServiceImpl implements GoldPriceService {
         log.info("Gold price created id={} for category '{}' by {}", saved.getId(), catName, currentUser);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.GOLD_PRICE_CREATED, "GOLD_PRICE", String.valueOf(saved.getId()),
-                "Tạo giá vàng " + saved.getLabel(), null);
+                "activity.gold.price.created", null, saved.getLabel());
 
         Map<Long, Category> catMap = buildCategoryMap();
         return toDTO(saved, catMap);
@@ -122,7 +122,7 @@ public class GoldPriceServiceImpl implements GoldPriceService {
         log.info("Gold price {} updated by {}", id, currentUser);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.GOLD_PRICE_UPDATED, "GOLD_PRICE", String.valueOf(saved.getId()),
-                "Cập nhật giá vàng " + saved.getLabel(), null);
+                "activity.gold.price.updated", null, saved.getLabel());
 
         Map<Long, Category> catMap = buildCategoryMap();
         return toDTO(saved, catMap);
@@ -175,7 +175,7 @@ public class GoldPriceServiceImpl implements GoldPriceService {
         log.info("Gold price {} soft-deleted by {}", id, getCurrentUsername());
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.GOLD_PRICE_DELETED, "GOLD_PRICE", String.valueOf(price.getId()),
-                "Xóa giá vàng " + price.getLabel(), null);
+                "activity.gold.price.deleted", null, price.getLabel());
     }
 
     @Override

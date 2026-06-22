@@ -91,7 +91,7 @@ public class CategoryServiceImpl implements CategoryService {
         log.info("Category created: {} (id={})", saved.getName(), saved.getId());
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.CATEGORY_CREATED, "CATEGORY", String.valueOf(saved.getId()),
-                "Tạo danh mục " + saved.getName(), null);
+                "activity.category.created", null, saved.getName());
         return mapToDTO(saved, null);
     }
 
@@ -129,7 +129,7 @@ public class CategoryServiceImpl implements CategoryService {
         log.info("Category updated: {} (id={})", updated.getName(), updated.getId());
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.CATEGORY_UPDATED, "CATEGORY", String.valueOf(updated.getId()),
-                "Cập nhật danh mục " + updated.getName(), null);
+                "activity.category.updated", null, updated.getName());
         return mapToDTO(updated, null);
     }
 
@@ -160,7 +160,7 @@ public class CategoryServiceImpl implements CategoryService {
         log.info("Category deleted: {} (id={})", category.getName(), id);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.CATEGORY_DELETED, "CATEGORY", String.valueOf(category.getId()),
-                "Xóa danh mục " + category.getName(), null);
+                "activity.category.deleted", null, category.getName());
     }
 
     @Override

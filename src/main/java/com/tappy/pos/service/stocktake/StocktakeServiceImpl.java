@@ -70,7 +70,7 @@ public class StocktakeServiceImpl implements StocktakeService {
 
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.STOCKTAKE_STARTED, "STOCKTAKE", String.valueOf(session.getId()),
-                "Bắt đầu kiểm kho" + (session.getName() != null ? ": " + session.getName() : ""), null);
+                "activity.stocktake.started", null, (session.getName() != null ? ": " + session.getName() : ""));
 
         return toSessionDTO(session, false);
     }
@@ -243,7 +243,7 @@ public class StocktakeServiceImpl implements StocktakeService {
 
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.STOCKTAKE_APPLIED, "STOCKTAKE", String.valueOf(sessionId),
-                "Áp dụng kiểm kho: điều chỉnh " + adjusted + " sản phẩm", null);
+                "activity.stocktake.applied", null, String.valueOf(adjusted));
 
         return toSessionDTO(session, true);
     }
@@ -260,7 +260,7 @@ public class StocktakeServiceImpl implements StocktakeService {
 
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.STOCKTAKE_CANCELLED, "STOCKTAKE", String.valueOf(sessionId),
-                "Hủy phiên kiểm kho", null);
+                "activity.stocktake.cancelled", null);
 
         return toSessionDTO(session, false);
     }

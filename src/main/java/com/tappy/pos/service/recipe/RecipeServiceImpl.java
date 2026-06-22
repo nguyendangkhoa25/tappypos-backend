@@ -95,7 +95,7 @@ public class RecipeServiceImpl implements RecipeService {
         activityLogService.logAsync(tenantId, actor, null,
                 isNew ? ActivityAction.RECIPE_CREATED : ActivityAction.RECIPE_UPDATED,
                 "RECIPE", String.valueOf(saved.getId()),
-                (isNew ? "Tạo định lượng cho " : "Cập nhật định lượng cho ") + finished.getName(), null);
+                isNew ? "activity.recipe.created" : "activity.recipe.updated", null, finished.getName());
 
         return buildRecipeDTO(saved, newItems, finished);
     }
@@ -134,7 +134,7 @@ public class RecipeServiceImpl implements RecipeService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.RECIPE_DELETED, "RECIPE", String.valueOf(id),
-                "Xóa định lượng #" + id, null);
+                "activity.recipe.deleted", null, String.valueOf(id));
     }
 
     @Override

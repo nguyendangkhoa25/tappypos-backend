@@ -199,7 +199,7 @@ class PawnServiceImplTest {
 
         verify(pawnRepository).deleteAllByIdInBatch(List.of(1L));
         verify(activityLogService).logAsync(eq("test-shop"), eq("staff01"), isNull(),
-                any(), eq("PAWN"), eq("1"), anyString(), isNull());
+                any(), eq("PAWN"), eq("1"), anyString(), isNull(), any());
     }
 
     @Test
@@ -210,7 +210,7 @@ class PawnServiceImplTest {
         pawnService.deletePawnByPawnIds(List.of(99L));
 
         verify(pawnRepository).deleteAllByIdInBatch(List.of(99L));
-        verify(activityLogService, never()).logAsync(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(activityLogService, never()).logAsync(any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     // ── cancelPawnByPawnId ────────────────────────────────────────────────────
@@ -235,7 +235,7 @@ class PawnServiceImplTest {
         assertThat(pawnEntity.getCanceledReason()).isEqualTo("Không cần nữa");
         verify(pawnRepository, atLeastOnce()).save(pawnEntity);
         verify(activityLogService).logAsync(eq("test-shop"), eq("staff01"), isNull(),
-                any(), eq("PAWN"), anyString(), anyString(), isNull());
+                any(), eq("PAWN"), anyString(), anyString(), isNull(), any());
     }
 
     @Test
@@ -490,7 +490,7 @@ class PawnServiceImplTest {
         assertThat(result.getRequestId()).isEqualTo(10L);
         verify(reqMoneyRepository).save(any(ReqMoneyEntity.class));
         verify(activityLogService).logAsync(eq("test-shop"), eq("staff01"), isNull(),
-                any(), eq("PAWN"), eq("1"), anyString(), isNull());
+                any(), eq("PAWN"), eq("1"), anyString(), isNull(), any());
     }
 
     @Test
@@ -570,7 +570,7 @@ class PawnServiceImplTest {
 
         assertThat(result).isNotNull();
         verify(pawnRepository).save(any(PawnEntity.class));
-        verify(activityLogService).logAsync(anyString(), anyString(), isNull(), any(), eq("PAWN"), eq("2"), anyString(), isNull());
+        verify(activityLogService).logAsync(anyString(), anyString(), isNull(), any(), eq("PAWN"), eq("2"), anyString(), isNull(), any());
     }
 
     @Test
@@ -1473,7 +1473,7 @@ class PawnServiceImplTest {
         verify(pawnRepository).save(pawnEntity);
         verify(r2CleanupService).deleteAsync("old-key");
         verify(activityLogService).logAsync(eq("test-shop"), eq("staff01"), isNull(),
-                eq(ActivityAction.PAWN_SIGNED), eq("PAWN"), eq("1"), any(), isNull());
+                eq(ActivityAction.PAWN_SIGNED), eq("PAWN"), eq("1"), any(), isNull(), any());
     }
 
     @Test

@@ -172,7 +172,7 @@ public class ShopInvitationService {
             String accessToken = jwtTokenProvider.generateTokenWithRolesAndFeatures(
                     username, roleNames, featureNames, false,
                     tenant.getShopType() != null ? tenant.getShopType().name() : null,
-                    tenantId);
+                    tenantId, tenant.getFeaturesVersion());
 
             log.info("User '{}' joined tenant '{}' as role '{}' via invitation code '{}'",
                     username, tenantId, invitation.getRoleName(), code);

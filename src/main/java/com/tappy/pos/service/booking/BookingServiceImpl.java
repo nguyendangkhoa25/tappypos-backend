@@ -101,7 +101,7 @@ public class BookingServiceImpl implements BookingService {
         List<BookingResourceRate> rates = replaceRates(saved, request.getRates());
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.BOOKING_RESOURCE_CREATED, "BOOKING_RESOURCE", String.valueOf(saved.getId()),
-                "Tạo tài nguyên đặt chỗ", null);
+                "activity.booking.resource.created", null);
         return mapResource(saved, null, rates);
     }
 
@@ -119,7 +119,7 @@ public class BookingServiceImpl implements BookingService {
         BookingResource saved = resourceRepository.save(resource);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.BOOKING_RESOURCE_UPDATED, "BOOKING_RESOURCE", String.valueOf(saved.getId()),
-                "Cập nhật tài nguyên đặt chỗ", null);
+                "activity.booking.resource.updated", null);
         // null = leave windows unchanged; non-null = full replace.
         List<BookingResourceRate> rates = (request.getRates() != null)
                 ? replaceRates(saved, request.getRates())
@@ -161,7 +161,7 @@ public class BookingServiceImpl implements BookingService {
         resourceRepository.save(resource);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.BOOKING_RESOURCE_DELETED, "BOOKING_RESOURCE", String.valueOf(id),
-                "Xóa tài nguyên đặt chỗ", null);
+                "activity.booking.resource.deleted", null);
     }
 
     // ── Bookings ─────────────────────────────────────────────────────────────
@@ -203,7 +203,7 @@ public class BookingServiceImpl implements BookingService {
             log.info("Booking created: {} resource={} type=WALK_IN", saved.getBookingNumber(), resource.getName());
             activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                     ActivityAction.BOOKING_CREATED, "BOOKING", String.valueOf(saved.getId()),
-                    "Tạo lượt đặt chỗ", null);
+                    "activity.booking.created", null);
             return mapBooking(saved);
         }
 
@@ -237,7 +237,7 @@ public class BookingServiceImpl implements BookingService {
         log.info("Reservation created: {} resource={} occurrences={}", first.getBookingNumber(), resource.getName(), occurrences);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.BOOKING_CREATED, "BOOKING", String.valueOf(first.getId()),
-                "Tạo lượt đặt chỗ", null);
+                "activity.booking.created", null);
         return mapBooking(first);
     }
 
@@ -316,7 +316,7 @@ public class BookingServiceImpl implements BookingService {
         log.info("Booking checked out: {} minutes={} amount={} order={}", saved.getBookingNumber(), minutes, amount, orderId);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.BOOKING_CHECKOUT, "BOOKING", String.valueOf(saved.getId()),
-                "Trả chỗ đặt", null);
+                "activity.booking.checkout", null);
         return mapBooking(saved);
     }
 
@@ -331,7 +331,7 @@ public class BookingServiceImpl implements BookingService {
         Booking saved = bookingRepository.save(booking);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.BOOKING_CANCELLED, "BOOKING", String.valueOf(saved.getId()),
-                "Hủy lượt đặt chỗ", null);
+                "activity.booking.cancelled", null);
         return mapBooking(saved);
     }
 
@@ -354,7 +354,7 @@ public class BookingServiceImpl implements BookingService {
         bookingRepository.save(booking);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.BOOKING_DELETED, "BOOKING", String.valueOf(id),
-                "Xóa lượt đặt chỗ", null);
+                "activity.booking.deleted", null);
     }
 
     // ── Order creation on checkout ───────────────────────────────────────────

@@ -110,7 +110,7 @@ public class CustomerDebtServiceImpl implements CustomerDebtService {
         CustomerDebtDTO saved = toDTO(debtRepository.save(debt));
         activityLogService.logAsync(tid, authContext.getCurrentUsername(), null,
                 ActivityAction.DEBT_CREATED, "CUSTOMER_DEBT", String.valueOf(saved.getId()),
-                "Ghi nợ khách " + customer.getName() + ": " + request.getAmount() + "đ", null);
+                "activity.debt.created", null, customer.getName(), request.getAmount());
         return saved;
     }
 
@@ -154,7 +154,7 @@ public class CustomerDebtServiceImpl implements CustomerDebtService {
         DebtPaymentDTO saved = toPaymentDTO(paymentRepository.save(payment));
         activityLogService.logAsync(tid, authContext.getCurrentUsername(), null,
                 ActivityAction.DEBT_PAYMENT, "CUSTOMER_DEBT", String.valueOf(request.getCustomerId()),
-                "Thu nợ khách: " + amount + "đ", null);
+                "activity.debt.payment", null, amount);
         return saved;
     }
 
@@ -176,7 +176,7 @@ public class CustomerDebtServiceImpl implements CustomerDebtService {
         debtRepository.save(debt);
         activityLogService.logAsync(tid, authContext.getCurrentUsername(), null,
                 ActivityAction.DEBT_DELETED, "CUSTOMER_DEBT", String.valueOf(id),
-                "Xóa công nợ khách: " + debt.getCustomerName(), null);
+                "activity.debt.deleted", null, debt.getCustomerName());
     }
 
     private static BigDecimal nullSafe(BigDecimal v) {

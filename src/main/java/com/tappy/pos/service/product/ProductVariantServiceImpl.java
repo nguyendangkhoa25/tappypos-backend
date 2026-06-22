@@ -98,6 +98,9 @@ public class ProductVariantServiceImpl implements ProductVariantService {
             result.add(mapToDTO(saved, product.getPrice()));
         }
         log.info("Bulk-updated {} variants for product {}", result.size(), productId);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.PRODUCT_VARIANT_UPDATED, "PRODUCT_VARIANT", String.valueOf(productId),
+                "activity.product.variant.bulk_updated", null, result.size());
         return result;
     }
 
@@ -124,7 +127,7 @@ public class ProductVariantServiceImpl implements ProductVariantService {
         log.info("Created variant {} for product {}", saved.getId(), productId);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.PRODUCT_VARIANT_CREATED, "PRODUCT_VARIANT", String.valueOf(saved.getId()),
-                "Tạo biến thể sản phẩm " + saved.getSku(), null);
+                "activity.product.variant.created", null, saved.getSku());
         return mapToDTO(saved, product.getPrice());
     }
 
@@ -151,7 +154,7 @@ public class ProductVariantServiceImpl implements ProductVariantService {
         log.info("Updated variant {} for product {}", variantId, productId);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.PRODUCT_VARIANT_UPDATED, "PRODUCT_VARIANT", String.valueOf(saved.getId()),
-                "Cập nhật biến thể sản phẩm " + saved.getSku(), null);
+                "activity.product.variant.updated", null, saved.getSku());
         return mapToDTO(saved, product.getPrice());
     }
 
@@ -174,7 +177,7 @@ public class ProductVariantServiceImpl implements ProductVariantService {
         log.info("Deleted variant {} for product {}", variantId, productId);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.PRODUCT_VARIANT_DELETED, "PRODUCT_VARIANT", String.valueOf(variant.getId()),
-                "Xóa biến thể sản phẩm " + variant.getSku(), null);
+                "activity.product.variant.deleted", null, variant.getSku());
     }
 
     @Override
@@ -239,7 +242,7 @@ public class ProductVariantServiceImpl implements ProductVariantService {
         log.info("Generated {} variants for product {}", created.size(), productId);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.PRODUCT_VARIANT_GENERATED, "PRODUCT_VARIANT", String.valueOf(productId),
-                "Tạo " + created.size() + " biến thể cho sản phẩm " + product.getName(), null);
+                "activity.product.variant.generated", null, String.valueOf(created.size()), product.getName());
         return created;
     }
 

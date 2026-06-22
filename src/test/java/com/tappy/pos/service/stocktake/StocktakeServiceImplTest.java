@@ -135,7 +135,7 @@ class StocktakeServiceImplTest {
         assertThat(dto.getStatus()).isEqualTo(StocktakeStatus.IN_PROGRESS);
         assertThat(dto.getStartedBy()).isEqualTo("alice");
         verify(activityLogService).logAsync(eq("shop1"), eq("alice"), any(), any(), eq("STOCKTAKE"),
-                anyString(), anyString(), any());
+                anyString(), anyString(), any(), any());
     }
 
     @Test
@@ -148,7 +148,7 @@ class StocktakeServiceImplTest {
 
         assertThat(dto.getId()).isEqualTo(10L);
         verify(sessionRepository, never()).save(any());
-        verify(activityLogService, never()).logAsync(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(activityLogService, never()).logAsync(any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     // ── listSessions / getSession / getActiveSession ─────────────────────────
@@ -457,7 +457,7 @@ class StocktakeServiceImplTest {
         assertThat(dto.getStatus()).isEqualTo(StocktakeStatus.COMPLETED);
         assertThat(dto.getCompletedBy()).isEqualTo("alice");
         verify(activityLogService).logAsync(eq("shop1"), eq("alice"), any(), any(), eq("STOCKTAKE"),
-                anyString(), anyString(), any());
+                anyString(), anyString(), any(), any());
     }
 
     @Test

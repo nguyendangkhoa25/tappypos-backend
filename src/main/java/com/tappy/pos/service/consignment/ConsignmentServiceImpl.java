@@ -82,7 +82,7 @@ public class ConsignmentServiceImpl implements ConsignmentService {
 
         activityLogService.logAsync(tenantId, actor, null,
                 ActivityAction.CONSIGNMENT_CREATED, "CONSIGNMENT", saved.getPlacementNumber(),
-                "Tạo phiếu ký gửi " + saved.getPlacementNumber() + " — NCC: " + saved.getPublisherName(), null);
+                "activity.consignment.created", null, saved.getPlacementNumber(), saved.getPublisherName());
 
         return toDTO(saved, true);
     }
@@ -120,7 +120,7 @@ public class ConsignmentServiceImpl implements ConsignmentService {
         Consignment saved = consignmentRepository.save(consignment);
         activityLogService.logAsync(tenantId, authContext.getCurrentUsername(), null,
                 ActivityAction.CONSIGNMENT_UPDATED, "CONSIGNMENT", saved.getPlacementNumber(),
-                "Cập nhật phiếu ký gửi " + saved.getPlacementNumber(), null);
+                "activity.consignment.updated", null, saved.getPlacementNumber());
         return toDTO(saved, true);
     }
 
@@ -147,7 +147,7 @@ public class ConsignmentServiceImpl implements ConsignmentService {
         consignmentRepository.save(consignment);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.CONSIGNMENT_CANCELLED, "CONSIGNMENT", consignment.getPlacementNumber(),
-                "Hủy/xóa phiếu ký gửi " + consignment.getPlacementNumber(), null);
+                "activity.consignment.cancelled", null, consignment.getPlacementNumber());
     }
 
     @Override
@@ -173,7 +173,8 @@ public class ConsignmentServiceImpl implements ConsignmentService {
 
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.CONSIGNMENT_SETTLED, "CONSIGNMENT", saved.getPlacementNumber(),
-                "Thanh toán ký gửi " + saved.getPlacementNumber() + " — " + settlement.getTotalAmountDue() + "đ", null);
+                "activity.consignment.settled", null,
+                saved.getPlacementNumber(), String.valueOf(settlement.getTotalAmountDue()));
         return toDTO(saved, true);
     }
 

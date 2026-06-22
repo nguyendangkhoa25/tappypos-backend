@@ -59,7 +59,15 @@ public enum FeatureEnum {
     INSTALLMENT("Bán Trả Góp", "Bán hàng trả góp theo nhiều kỳ: lập lịch trả, theo dõi kỳ đến hạn và thu tiền từng kỳ"),
     INSTALLMENT_VIEW_ALL("Xem Tất Cả Hợp Đồng Trả Góp", "Xem hợp đồng trả góp của tất cả nhân viên; nếu không có quyền này, chỉ xem được hợp đồng tự tạo"),
     CONSIGNMENT("Ký Gửi Hàng", "Nhận hàng ký gửi từ nhà cung cấp/NXB, theo dõi số lượng đã bán và thanh toán theo doanh số; dùng cho nhà sách, cửa hàng ký gửi"),
-    CONSIGNMENT_VIEW_ALL("Xem Tất Cả Phiếu Ký Gửi", "Xem phiếu ký gửi của tất cả nhân viên; nếu không có quyền này, chỉ xem được phiếu tự tạo");
+    CONSIGNMENT_VIEW_ALL("Xem Tất Cả Phiếu Ký Gửi", "Xem phiếu ký gửi của tất cả nhân viên; nếu không có quyền này, chỉ xem được phiếu tự tạo"),
+
+    // ── Master-tenant / agent features (no shop access) — seeded in V001, enforced via @RequiresFeature ──
+    TENANT_MGMT("Quản Lý Cửa Hàng", "Quản lý các cửa hàng (tenant) trong hệ thống — chỉ dành cho cơ sở dữ liệu chính"),
+    AGENT_MGMT("Quản Lý Đại Lý", "Quản lý các đại lý bán hàng của nền tảng — chỉ dành cho cơ sở dữ liệu chính"),
+    MASTER_DASHBOARD("Bảng Điều Khiển Tổng", "Thống kê toàn nền tảng cho quản trị viên và đại lý"),
+    FEEDBACK_MGMT("Quản Lý Góp Ý", "Xem và xử lý góp ý gửi từ các cửa hàng — chỉ dành cho cơ sở dữ liệu chính"),
+    CONTACT_LEAD_MGMT("Quản Lý Yêu Cầu Liên Hệ", "Quản lý yêu cầu dùng thử từ trang giới thiệu — chỉ dành cho cơ sở dữ liệu chính"),
+    PRODUCT_CATALOG("Danh Mục Sản Phẩm Chung", "Cơ sở dữ liệu mã vạch sản phẩm dùng chung — chỉ dành cho cơ sở dữ liệu chính");
 
     /**
      * -- GETTER --

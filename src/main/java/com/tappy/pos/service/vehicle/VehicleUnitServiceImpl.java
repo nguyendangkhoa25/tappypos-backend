@@ -81,10 +81,15 @@ public class VehicleUnitServiceImpl implements VehicleUnitService {
                 .build();
 
         VehicleUnitEntity saved = vehicleUnitRepository.save(entity);
-        activityLogService.logAsync(tid, actor, null,
-                ActivityAction.VEHICLE_UNIT_CREATED, "VEHICLE_UNIT", String.valueOf(saved.getId()),
-                "Thêm xe vào kho: " + product.getName()
-                        + (saved.getFrameNo() != null ? " (số khung " + saved.getFrameNo() + ")" : ""), null);
+        if (saved.getFrameNo() != null) {
+            activityLogService.logAsync(tid, actor, null,
+                    ActivityAction.VEHICLE_UNIT_CREATED, "VEHICLE_UNIT", String.valueOf(saved.getId()),
+                    "activity.vehicle.unit.created.frame", null, product.getName(), saved.getFrameNo());
+        } else {
+            activityLogService.logAsync(tid, actor, null,
+                    ActivityAction.VEHICLE_UNIT_CREATED, "VEHICLE_UNIT", String.valueOf(saved.getId()),
+                    "activity.vehicle.unit.created", null, product.getName());
+        }
         return toDTO(saved, product);
     }
 
@@ -120,7 +125,7 @@ public class VehicleUnitServiceImpl implements VehicleUnitService {
         VehicleUnitEntity saved = vehicleUnitRepository.save(entity);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.VEHICLE_UNIT_UPDATED, "VEHICLE_UNIT", String.valueOf(id),
-                "Cập nhật xe #" + id, null);
+                "activity.vehicle.unit.updated", null, id);
         return toDTO(saved, null);
     }
 
@@ -163,9 +168,15 @@ public class VehicleUnitServiceImpl implements VehicleUnitService {
         if (request.getPaperworkStatus() != null) entity.setPaperworkStatus(request.getPaperworkStatus());
         entity.setUpdatedAt(now);
         VehicleUnitEntity saved = vehicleUnitRepository.save(entity);
-        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
-                ActivityAction.VEHICLE_UNIT_SOLD, "VEHICLE_UNIT", String.valueOf(id),
-                "Bán xe #" + id + (saved.getFrameNo() != null ? " (số khung " + saved.getFrameNo() + ")" : ""), null);
+        if (saved.getFrameNo() != null) {
+            activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                    ActivityAction.VEHICLE_UNIT_SOLD, "VEHICLE_UNIT", String.valueOf(id),
+                    "activity.vehicle.unit.sold.frame", null, id, saved.getFrameNo());
+        } else {
+            activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                    ActivityAction.VEHICLE_UNIT_SOLD, "VEHICLE_UNIT", String.valueOf(id),
+                    "activity.vehicle.unit.sold", null, id);
+        }
         return toDTO(saved, null);
     }
 
@@ -180,7 +191,7 @@ public class VehicleUnitServiceImpl implements VehicleUnitService {
         vehicleUnitRepository.save(entity);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.VEHICLE_UNIT_DELETED, "VEHICLE_UNIT", String.valueOf(id),
-                "Xóa xe #" + id, null);
+                "activity.vehicle.unit.deleted", null, id);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

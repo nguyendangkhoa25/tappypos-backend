@@ -137,8 +137,8 @@ public class ProductionServiceImpl implements ProductionService {
 
         activityLogService.logAsync(tenantId, actor, null,
                 ActivityAction.PRODUCTION_RUN, "PRODUCTION", String.valueOf(saved.getId()),
-                "Làm " + produceQty + " " + (finished.getUnit() != null ? finished.getUnit() : "cái")
-                        + " " + finished.getName() + " — giá vốn 1 cái " + unitCost.toPlainString() + " ₫", null);
+                "activity.production.run", null, String.valueOf(produceQty),
+                (finished.getUnit() != null ? finished.getUnit() : "cái"), finished.getName(), unitCost.toPlainString());
 
         return toDTO(saved, finished.getName());
     }
@@ -165,7 +165,8 @@ public class ProductionServiceImpl implements ProductionService {
         Product finished = productRepository.findByIdAndDeletedFalse(batch.getFinishedProductId()).orElse(null);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.PRODUCTION_SPOILED, "PRODUCTION", String.valueOf(saved.getId()),
-                "Hỏng mẻ #" + saved.getId() + (finished != null ? " — " + finished.getName() : ""), null);
+                "activity.production.spoiled", null, String.valueOf(saved.getId()),
+                (finished != null ? " — " + finished.getName() : ""));
         return toDTO(saved, finished != null ? finished.getName() : null);
     }
 

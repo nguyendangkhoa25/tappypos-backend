@@ -49,7 +49,7 @@ public class PawnController {
                 .map(GrantedAuthority::getAuthority)
                 .anyMatch("SHOP_OWNER"::equals);
         if (!isShopOwner) {
-            throw new ForbiddenException("Chỉ chủ cửa hàng mới có quyền thực hiện thao tác này.");
+            throw new ForbiddenException("error.access.pawn.owner.only");
         }
     }
 

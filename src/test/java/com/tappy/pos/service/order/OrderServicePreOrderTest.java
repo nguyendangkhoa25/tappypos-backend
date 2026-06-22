@@ -89,7 +89,7 @@ class OrderServicePreOrderTest {
         assertThat(order.getCompletedBy()).isEqualTo("owner");
         assertThat(dto.getBalanceDue()).isEqualByComparingTo("0");
         verify(activityLogService).logAsync(eq("shop1"), eq("owner"), any(),
-                eq(ActivityAction.PREORDER_SETTLED), eq("ORDER"), eq("ORD-PRE-1"), any(), any());
+                eq(ActivityAction.PREORDER_SETTLED), eq("ORDER"), eq("ORD-PRE-1"), any(), any(), any(), any());
     }
 
     @Test

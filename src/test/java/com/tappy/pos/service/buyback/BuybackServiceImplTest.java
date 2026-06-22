@@ -76,7 +76,7 @@ class BuybackServiceImplTest {
         assertThat(res.getAcquisitionPrice()).isEqualByComparingTo("2000000");
         assertThat(res.getMargin()).isNull();
         verify(activityLogService).logAsync(eq("test-shop"), eq("staff01"), isNull(),
-                eq(ActivityAction.BUYBACK_CREATED), eq("BUYBACK"), eq("1"), any(), isNull());
+                eq(ActivityAction.BUYBACK_CREATED), eq("BUYBACK"), eq("1"), any(), isNull(), any());
     }
 
     @Test
@@ -91,7 +91,7 @@ class BuybackServiceImplTest {
         assertThat(res.getStatus()).isEqualTo(BuybackStatus.SOLD);
         assertThat(res.getMargin()).isEqualByComparingTo("500000");
         verify(activityLogService).logAsync(any(), any(), isNull(),
-                eq(ActivityAction.BUYBACK_SOLD), eq("BUYBACK"), eq("1"), any(), isNull());
+                eq(ActivityAction.BUYBACK_SOLD), eq("BUYBACK"), eq("1"), any(), isNull(), any());
     }
 
     @Test
@@ -113,7 +113,7 @@ class BuybackServiceImplTest {
 
         assertThat(res.getStatus()).isEqualTo(BuybackStatus.CANCELLED);
         verify(activityLogService).logAsync(any(), any(), isNull(),
-                eq(ActivityAction.BUYBACK_CANCELLED), eq("BUYBACK"), eq("1"), any(), isNull());
+                eq(ActivityAction.BUYBACK_CANCELLED), eq("BUYBACK"), eq("1"), any(), isNull(), any());
     }
 
     @Test

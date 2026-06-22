@@ -219,7 +219,7 @@ public class ProductServiceImpl implements ProductService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.PRODUCT_CREATED, "PRODUCT", savedProduct.getId().toString(),
-                "Created product: " + savedProduct.getName(), null);
+                "activity.product.created", null, savedProduct.getName());
 
         return mapToDTO(savedProduct);
     }
@@ -346,7 +346,7 @@ public class ProductServiceImpl implements ProductService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.PRODUCT_UPDATED, "PRODUCT", updated.getId().toString(),
-                "Updated product: " + updated.getName(), null);
+                "activity.product.updated", null, updated.getName());
 
         return mapToDTO(updated);
     }
@@ -372,7 +372,7 @@ public class ProductServiceImpl implements ProductService {
 
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.PRODUCT_DELETED, "PRODUCT", id.toString(),
-                "Deleted product: " + productName, null);
+                "activity.product.deleted", null, productName);
     }
 
     @Override
@@ -421,7 +421,7 @@ public class ProductServiceImpl implements ProductService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.PRODUCT_IMAGE_UPDATED, "PRODUCT", id.toString(),
-                "Updated image for product: " + product.getName(), null);
+                "activity.product.image.updated", null, product.getName());
 
         log.info("Product image uploaded — productId: {}, key: {}", id, key);
         return mapToDTO(product);
@@ -443,7 +443,7 @@ public class ProductServiceImpl implements ProductService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.PRODUCT_IMAGE_DELETED, "PRODUCT", id.toString(),
-                "Deleted image for product: " + product.getName(), null);
+                "activity.product.image.deleted", null, product.getName());
 
         log.info("Product image deleted — productId: {}", id);
     }

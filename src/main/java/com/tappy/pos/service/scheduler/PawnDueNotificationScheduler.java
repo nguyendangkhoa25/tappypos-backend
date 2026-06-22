@@ -12,7 +12,7 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Runs daily at 08:00 and notifies SHOP_OWNER and MANAGER of every active tenant
+ * Runs daily at 08:00 and notifies SHOP_OWNER of every active tenant
  * that has the PAWN feature about pawn contracts due today.
  */
 @Component

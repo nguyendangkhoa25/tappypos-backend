@@ -17,6 +17,7 @@ import com.tappy.pos.repository.feedback.FeedbackRepository;
 import com.tappy.pos.repository.tenant.AgentRepository;
 import com.tappy.pos.model.entity.notification.Notification;
 import com.tappy.pos.service.MessageService;
+import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -108,7 +109,7 @@ public class FeedbackServiceImpl implements FeedbackService {
         String reviewer = authContext.getCurrentUsername();
         activityLogService.logAsync("master", reviewer, null,
                 ActivityAction.FEEDBACK_REVIEWED, "FEEDBACK", String.valueOf(id),
-                "Xử lý phản hồi #" + id + " → " + request.getStatus().getDisplayName(), null);
+                "activity.feedback.reviewed", null, id, request.getStatus().getDisplayName());
         return toDTO(saved);
     }
 
@@ -129,8 +130,8 @@ public class FeedbackServiceImpl implements FeedbackService {
     // After tenantContext.clear() — we are in master context; notifications are saved with tenant_id=null
     // (UnifiedTenantEntity master records) so master/agent users see them regardless of context.
     private void notifySubscriptionRequest(String shopName, Long feedbackId, Long agentId) {
-        String title = "[Yêu cầu gói] " + shopName;
-        String message = "Cửa hàng \"" + shopName + "\" vừa gửi yêu cầu thay đổi gói dịch vụ. Xem chi tiết trong mục Phản hồi.";
+        LocalizedText title = LocalizedText.of("notification.feedback.subscription_request.title", shopName);
+        LocalizedText message = LocalizedText.of("notification.feedback.subscription_request.message", shopName);
 
         try {
             notificationService.pushToMasterUsers(title, message, "FEEDBACK", feedbackId);

@@ -20,6 +20,7 @@ import com.tappy.pos.repository.room.RoomRequestRepository;
 import com.tappy.pos.repository.room.RoomStayItemRepository;
 import com.tappy.pos.repository.room.RoomStayRepository;
 import com.tappy.pos.service.MessageService;
+import com.tappy.pos.util.MessageArgs;
 import com.tappy.pos.service.audit.ActivityLogService;
 import com.tappy.pos.service.tenant.ShopConfigService;
 import lombok.RequiredArgsConstructor;
@@ -285,6 +286,9 @@ public class RoomServiceImpl implements RoomService {
                 .build();
         RoomStayEntity saved = stayRepository.save(stay);
         log.info("Reservation created: stay={} room={} arrival={}", saved.getStayNumber(), room.getRoomNumber(), request.getReservedCheckin());
+        activityLogService.logAsync(tenantId, currentUsername(), null, ActivityAction.ROOM_RESERVED,
+                "ROOM_STAY", String.valueOf(saved.getId()),
+                "activity.room.reserved", null, room.getRoomNumber());
         return mapStay(saved, false);
     }
 
@@ -315,7 +319,7 @@ public class RoomServiceImpl implements RoomService {
 
         activityLogService.logAsync(stay.getTenantId(), currentUsername(), null, ActivityAction.ROOM_CHECKIN,
                 "ROOM_STAY", String.valueOf(saved.getId()),
-                messageService.getMessage("activity.room.checkin", room.getRoomNumber()), null);
+                "activity.room.checkin", null, room.getRoomNumber());
         log.info("Reservation checked in: stay={} room={}", saved.getStayNumber(), room.getRoomNumber());
         return mapStay(saved, true);
     }
@@ -327,7 +331,11 @@ public class RoomServiceImpl implements RoomService {
         assertReserved(stay);
         stay.setStatus("CANCELLED");
         stay.setCheckoutAt(LocalDateTime.now());
-        return mapStay(stayRepository.save(stay), false);
+        RoomStayEntity saved = stayRepository.save(stay);
+        activityLogService.logAsync(saved.getTenantId(), currentUsername(), null, ActivityAction.ROOM_RESERVATION_CANCELLED,
+                "ROOM_STAY", String.valueOf(saved.getId()),
+                "activity.room.reservation.cancelled", null, saved.getRoomNumber());
+        return mapStay(saved, false);
     }
 
     @Override
@@ -337,7 +345,11 @@ public class RoomServiceImpl implements RoomService {
         assertReserved(stay);
         stay.setStatus("NO_SHOW");
         stay.setCheckoutAt(LocalDateTime.now());
-        return mapStay(stayRepository.save(stay), false);
+        RoomStayEntity saved = stayRepository.save(stay);
+        activityLogService.logAsync(saved.getTenantId(), currentUsername(), null, ActivityAction.ROOM_RESERVATION_NO_SHOW,
+                "ROOM_STAY", String.valueOf(saved.getId()),
+                "activity.room.reservation.no_show", null, saved.getRoomNumber());
+        return mapStay(saved, false);
     }
 
     private void assertReserved(RoomStayEntity stay) {
@@ -386,7 +398,7 @@ public class RoomServiceImpl implements RoomService {
 
         activityLogService.logAsync(tenantId, currentUsername(), null, ActivityAction.ROOM_CHECKIN,
                 "ROOM_STAY", String.valueOf(saved.getId()),
-                messageService.getMessage("activity.room.checkin", room.getRoomNumber()), null);
+                "activity.room.checkin", null, room.getRoomNumber());
         log.info("Room check-in: stay={} room={} mode={}", saved.getStayNumber(), room.getRoomNumber(), billingMode);
         return mapStay(saved, true);
     }
@@ -499,7 +511,7 @@ public class RoomServiceImpl implements RoomService {
 
         activityLogService.logAsync(stay.getTenantId(), currentUsername(), null, ActivityAction.ROOM_CHECKOUT,
                 "ROOM_STAY", String.valueOf(saved.getId()),
-                messageService.getMessage("activity.room.checkout", stay.getRoomNumber(), grandTotal.toPlainString()), null);
+                "activity.room.checkout", null, stay.getRoomNumber(), grandTotal.toPlainString());
         log.info("Room checkout: stay={} units={} roomCharge={} grandTotal={} order={}",
                 saved.getStayNumber(), units, roomCharge, grandTotal, orderId);
         return mapStay(saved, true);
@@ -521,7 +533,7 @@ public class RoomServiceImpl implements RoomService {
 
         activityLogService.logAsync(stay.getTenantId(), currentUsername(), null, ActivityAction.ROOM_STAY_CANCELLED,
                 "ROOM_STAY", String.valueOf(saved.getId()),
-                messageService.getMessage("activity.room.cancelled", stay.getRoomNumber()), null);
+                "activity.room.cancelled", null, stay.getRoomNumber());
         return mapStay(saved, true);
     }
 
@@ -578,8 +590,10 @@ public class RoomServiceImpl implements RoomService {
         order.setCreatedBy(actor);
         order.setCompletedBy(actor);
         order.setCompletedAt(LocalDateTime.now());
-        order.setTableLabel(messageService.getMessage("room.label", stay.getRoomNumber()));
-        order.setNotes(stay.getNote());
+        // i18n: store key + args so the "Phòng {0}" label renders in the reader's locale at read time.
+        order.setTableLabelKey("room.label");
+        order.setTableLabelArgs(MessageArgs.toJson(stay.getRoomNumber()));
+        order.setNotes(stay.getNote()); // user-authored stay note — stored verbatim
 
         List<OrderItem> items = new ArrayList<>();
         items.add(buildOrderItem(tenantId, order, null,

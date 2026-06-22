@@ -1,8 +1,8 @@
 package com.tappy.pos.service.subscription;
 
-import com.tappy.pos.exception.OrderLimitExceededException;
 import com.tappy.pos.model.entity.tenant.Tenant;
 import com.tappy.pos.multitenant.TenantContext;
+import com.tappy.pos.repository.auth.UserRepository;
 import com.tappy.pos.repository.order.OrderRepository;
 import com.tappy.pos.repository.tenant.TenantRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -17,7 +17,6 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.lenient;
@@ -31,6 +30,7 @@ class SubscriptionServiceImplTest {
     @Mock private TenantContext tenantContext;
     @Mock private TenantRepository tenantRepository;
     @Mock private OrderRepository orderRepository;
+    @Mock private UserRepository userRepository;
 
     @InjectMocks
     private SubscriptionServiceImpl service;
@@ -45,18 +45,21 @@ class SubscriptionServiceImplTest {
     }
 
     @Test
-    @DisplayName("getForCurrentTenant: maps plan limits and usage")
+    @DisplayName("getForCurrentTenant: maps plan limits and real usage")
     void getForCurrentTenant() {
         when(tenantContext.getCurrentTenantId()).thenReturn("shop-1");
         Tenant t = tenant("BASIC", true, LocalDate.now().plusMonths(6));
         when(tenantRepository.findByTenantId("shop-1")).thenReturn(Optional.of(t));
         when(orderRepository.countOrdersThisMonth(anyInt(), anyInt())).thenReturn(12L);
+        when(userRepository.countByTenantId("shop-1")).thenReturn(2);
 
         Map<String, Object> data = service.getForCurrentTenant();
 
         assertThat(data.get("plan")).isEqualTo("BASIC");
         assertThat(data.get("status")).isEqualTo("ACTIVE");
-        assertThat(data.get("maxOrdersPerMonth")).isEqualTo(5_000);
+        assertThat(data.get("maxUsers")).isEqualTo(2);          // Cơ bản = 2 users
+        assertThat(data.get("currentUsers")).isEqualTo(2);      // real count, not the limit
+        assertThat(data.get("maxOrdersPerMonth")).isNull();     // orders unlimited on every plan
         assertThat(data.get("currentMonthOrders")).isEqualTo(12L);
     }
 
@@ -67,35 +70,28 @@ class SubscriptionServiceImplTest {
         Tenant t = tenant("TRIAL", false, LocalDate.now().plusDays(5));
         when(tenantRepository.findByTenantId("shop-1")).thenReturn(Optional.of(t));
         when(orderRepository.countOrdersThisMonth(anyInt(), anyInt())).thenReturn(0L);
+        when(userRepository.countByTenantId("shop-1")).thenReturn(1);
 
         assertThat(service.getForCurrentTenant().get("status")).isEqualTo("SUSPENDED");
     }
 
     @Test
-    @DisplayName("checkOrderLimit: under the monthly cap passes")
-    void checkOrderLimit_underCap() {
+    @DisplayName("getForCurrentTenant: unknown plan code degrades to TRIAL (no 500 on the read path)")
+    void getForCurrentTenant_unknownPlan() {
         when(tenantContext.getCurrentTenantId()).thenReturn("shop-1");
-        Tenant t = tenant("TRIAL", true, LocalDate.now().plusDays(5));
+        Tenant t = tenant("LEGACY_BOGUS", true, LocalDate.now().plusMonths(6));
         when(tenantRepository.findByTenantId("shop-1")).thenReturn(Optional.of(t));
-        when(orderRepository.countOrdersThisMonth(anyInt(), anyInt())).thenReturn(50L);
+        when(orderRepository.countOrdersThisMonth(anyInt(), anyInt())).thenReturn(0L);
+        when(userRepository.countByTenantId("shop-1")).thenReturn(1);
 
-        assertThatCode(() -> service.checkOrderLimit()).doesNotThrowAnyException();
+        // Resilient: bad/legacy code falls back to TRIAL limits instead of throwing.
+        Map<String, Object> data = service.getForCurrentTenant();
+        assertThat(data.get("maxUsers")).isEqualTo(2);       // TRIAL = 2 users
+        assertThat(data.get("maxOrdersPerMonth")).isNull();  // TRIAL = unlimited orders
     }
 
     @Test
-    @DisplayName("checkOrderLimit: at the cap → OrderLimitExceededException")
-    void checkOrderLimit_atCap() {
-        when(tenantContext.getCurrentTenantId()).thenReturn("shop-1");
-        Tenant t = tenant("TRIAL", true, LocalDate.now().plusDays(5));
-        when(tenantRepository.findByTenantId("shop-1")).thenReturn(Optional.of(t));
-        when(orderRepository.countOrdersThisMonth(anyInt(), anyInt())).thenReturn(1_000L);
-
-        assertThatThrownBy(() -> service.checkOrderLimit())
-                .isInstanceOf(OrderLimitExceededException.class);
-    }
-
-    @Test
-    @DisplayName("checkOrderLimit: unlimited plan skips the count check")
+    @DisplayName("checkOrderLimit: current plans are unlimited → no-op")
     void checkOrderLimit_unlimited() {
         when(tenantContext.getCurrentTenantId()).thenReturn("shop-1");
         Tenant t = tenant("PRO", true, LocalDate.now().plusYears(1));
