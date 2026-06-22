@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     deleted_at              TIMESTAMP DEFAULT NULL,
     deleted_by              VARCHAR(100) DEFAULT NULL,
     max_orders_per_month    INT          DEFAULT NULL,
+    features_version INT NOT NULL DEFAULT 0,  -- folded from V043
     CONSTRAINT fk_tenant_vendor FOREIGN KEY (vendor_id) REFERENCES agents (id) ON DELETE SET NULL,
     CONSTRAINT uq_tenants_tenant_id UNIQUE (tenant_id)
 );
@@ -236,7 +237,11 @@ CREATE TABLE IF NOT EXISTS notifications (
     created_at     TIMESTAMP    NOT NULL DEFAULT NOW(),
     updated_at     TIMESTAMP    NOT NULL DEFAULT NOW(),
     deleted        BOOLEAN      NOT NULL DEFAULT FALSE,
-    deleted_at     TIMESTAMP    DEFAULT NULL
+    deleted_at     TIMESTAMP    DEFAULT NULL,
+    title_key    VARCHAR(150) DEFAULT NULL,  -- folded from V037
+    title_args   TEXT         DEFAULT NULL,  -- folded from V037
+    message_key  VARCHAR(150) DEFAULT NULL,  -- folded from V037
+    message_args TEXT         DEFAULT NULL  -- folded from V037
 );
 
 -- 3.9 notification_preferences (per-user opt-in list; 'ALL' = receive everything)
@@ -263,7 +268,9 @@ CREATE TABLE IF NOT EXISTS activity_log (
     target_id       VARCHAR(100) DEFAULT NULL,
     description     VARCHAR(500) NOT NULL,
     ip_address      VARCHAR(45)  DEFAULT NULL,
-    created_at      TIMESTAMP    NOT NULL DEFAULT NOW()
+    created_at      TIMESTAMP    NOT NULL DEFAULT NOW(),
+    description_key  VARCHAR(150) DEFAULT NULL,  -- folded from V036
+    description_args TEXT         DEFAULT NULL  -- folded from V036
 );
 
 -- ════════════════════════════════════════════════════════════
@@ -384,6 +391,11 @@ CREATE TABLE IF NOT EXISTS product (
     source_pawn_id   BIGINT         DEFAULT NULL,
     inventory_mode   VARCHAR(20)    NOT NULL DEFAULT 'TRACKED',
     duration_minutes INT            NOT NULL DEFAULT 0,
+    product_kind VARCHAR(20) NOT NULL DEFAULT 'FINISHED',  -- folded from V003
+    alt_unit        VARCHAR(20)   DEFAULT NULL,  -- folded from V020
+    alt_unit_factor DECIMAL(15,3) DEFAULT NULL,  -- folded from V020
+    alt_unit_price  DECIMAL(15,2) DEFAULT NULL,  -- folded from V020
+    wholesale_price DECIMAL(15,2) DEFAULT NULL,  -- folded from V022
     CONSTRAINT uq_product_sku_tenant     UNIQUE (sku, tenant_id),
     CONSTRAINT fk_product_type           FOREIGN KEY (product_type_id) REFERENCES product_type (id),
     CONSTRAINT fk_product_vendor         FOREIGN KEY (vendor_id)       REFERENCES vendors       (id)
@@ -550,6 +562,10 @@ CREATE TABLE IF NOT EXISTS customers (
     deleted_at                  TIMESTAMP      DEFAULT NULL,
     walk_in                     BOOLEAN        NOT NULL DEFAULT FALSE,
     -- (phone, tenant_id) uniqueness is a partial index ignoring soft-deleted rows (below).
+    id_number VARCHAR(50) DEFAULT NULL,  -- folded from V011
+    stamp_count    INT NOT NULL DEFAULT 0,  -- folded from V015
+    stamp_rewards  INT NOT NULL DEFAULT 0,  -- folded from V015
+    customer_type   VARCHAR(20)   NOT NULL DEFAULT 'RETAIL',  -- folded from V022
     CONSTRAINT uq_customers_idcard_tenant   UNIQUE (id_card_number, tenant_id)
 );
 
@@ -623,6 +639,32 @@ CREATE TABLE IF NOT EXISTS orders (
     gold_diff_weight        DECIMAL(10,3)  NOT NULL DEFAULT 0,  -- Surplus/deficit weight in chỉ for EXCHANGE orders
     gold_diff_amount        DECIMAL(15,2)  NOT NULL DEFAULT 0,  -- Monetary value of surplus/deficit weight
     room_stay_id            BIGINT         DEFAULT NULL,         -- folded from V007 (lodging link; nullable, no FK; appended last to match ALTER order)
+    is_preorder    BOOLEAN       NOT NULL DEFAULT FALSE,  -- folded from V002
+    deposit_amount DECIMAL(15,2) NOT NULL DEFAULT 0,  -- folded from V002
+    service_charge_rate   DECIMAL(5,2)  NOT NULL DEFAULT 0,  -- folded from V006
+    service_charge_amount DECIMAL(15,2) NOT NULL DEFAULT 0,  -- folded from V006
+    order_channel VARCHAR(20) NOT NULL DEFAULT 'DINE_IN',  -- folded from V007
+    parent_order_id BIGINT DEFAULT NULL,  -- folded from V013
+    delivery_platform  VARCHAR(30)   DEFAULT NULL,  -- folded from V016
+    delivery_recipient VARCHAR(150)  DEFAULT NULL,  -- folded from V016
+    delivery_phone     VARCHAR(50)   DEFAULT NULL,  -- folded from V016
+    delivery_address   VARCHAR(500)  DEFAULT NULL,  -- folded from V016
+    delivery_fee       DECIMAL(15,2) NOT NULL DEFAULT 0,  -- folded from V016
+    delivery_note      VARCHAR(500)  DEFAULT NULL,  -- folded from V016
+    delivery_status    VARCHAR(20)   DEFAULT NULL,  -- folded from V016
+    stamps_awarded BOOLEAN NOT NULL DEFAULT FALSE,  -- folded from V017
+    prescriber_name   VARCHAR(255)  DEFAULT NULL,  -- folded from V018
+    prescription_note VARCHAR(1000) DEFAULT NULL,  -- folded from V018
+    is_quote     BOOLEAN     NOT NULL DEFAULT FALSE,  -- folded from V023
+    quote_number VARCHAR(50) DEFAULT NULL,  -- folded from V023
+    notes_key          VARCHAR(150) DEFAULT NULL,  -- folded from V038
+    notes_args         TEXT         DEFAULT NULL,  -- folded from V038
+    cancel_reason_key  VARCHAR(150) DEFAULT NULL,  -- folded from V038
+    cancel_reason_args TEXT         DEFAULT NULL,  -- folded from V038
+    void_reason_key    VARCHAR(150) DEFAULT NULL,  -- folded from V038
+    void_reason_args   TEXT         DEFAULT NULL,  -- folded from V038
+    table_label_key  VARCHAR(150) DEFAULT NULL,  -- folded from V039
+    table_label_args TEXT         DEFAULT NULL,  -- folded from V039
     CONSTRAINT uq_orders_number_tenant  UNIQUE (order_number, tenant_id),
     CONSTRAINT chk_orders_status        CHECK  (status IN ('SUBMITTED','PENDING','IN_PROGRESS','COMPLETED','CANCELLED','VOIDED')),
     CONSTRAINT chk_orders_order_type    CHECK  (order_type IN ('SELL', 'BUY', 'EXCHANGE')),
@@ -662,6 +704,10 @@ CREATE TABLE IF NOT EXISTS order_items (
     deleted               BOOLEAN        NOT NULL DEFAULT FALSE,
     deleted_at            TIMESTAMP      DEFAULT NULL,
     variant_id            BIGINT         DEFAULT NULL,
+    modifiers JSONB DEFAULT NULL,  -- folded from V009
+    prescription_required BOOLEAN NOT NULL DEFAULT FALSE,  -- folded from V018
+    sell_unit   VARCHAR(20)   DEFAULT NULL,  -- folded from V021
+    unit_factor DECIMAL(15,3) DEFAULT NULL,  -- folded from V021
     CONSTRAINT chk_oi_status    CHECK (status IN ('PENDING','IN_PROGRESS','COMPLETED')),
     CONSTRAINT chk_oi_item_type CHECK (item_type IN ('STANDARD', 'GOLD_IN', 'GOLD_OUT')),
     CONSTRAINT fk_oi_order      FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
@@ -804,6 +850,10 @@ CREATE TABLE IF NOT EXISTS cart_items (
     added_at               TIMESTAMP      NOT NULL DEFAULT NOW(),
     updated_at             TIMESTAMP      NOT NULL DEFAULT NOW(),
     variant_id             BIGINT         DEFAULT NULL,
+    modifiers JSONB DEFAULT NULL,  -- folded from V009
+    prescription_required BOOLEAN NOT NULL DEFAULT FALSE,  -- folded from V018
+    sell_unit   VARCHAR(20)   DEFAULT NULL,  -- folded from V021
+    unit_factor DECIMAL(15,3) DEFAULT NULL,  -- folded from V021
     CONSTRAINT chk_ci_item_type CHECK (item_type IN ('STANDARD', 'GOLD_IN', 'GOLD_OUT')),
     CONSTRAINT fk_ci_cart       FOREIGN KEY (cart_id) REFERENCES carts (id) ON DELETE CASCADE
 );
@@ -844,7 +894,10 @@ CREATE TABLE IF NOT EXISTS loyalty_programs (
     created_at                     TIMESTAMP      DEFAULT NOW(),
     updated_at                     TIMESTAMP      DEFAULT NOW(),
     deleted                        BOOLEAN        NOT NULL DEFAULT FALSE,
-    deleted_at                     TIMESTAMP      DEFAULT NULL
+    deleted_at                     TIMESTAMP      DEFAULT NULL,
+    stamp_card_enabled  BOOLEAN      NOT NULL DEFAULT FALSE,  -- folded from V015
+    stamp_card_size     INT          NOT NULL DEFAULT 10,  -- folded from V015
+    stamp_card_reward   VARCHAR(255) NOT NULL DEFAULT 'Tặng 1 ly nước bất kỳ'  -- folded from V015
 );
 
 -- 4.23 loyalty_tiers
@@ -1161,7 +1214,9 @@ CREATE TABLE IF NOT EXISTS pawn (
     visible                  BOOLEAN        NOT NULL DEFAULT TRUE,
     pawn_category            VARCHAR(50)    DEFAULT NULL,
     legacy_id                VARCHAR(50)    DEFAULT NULL,
-    customer_name            VARCHAR(255)   DEFAULT NULL
+    customer_name            VARCHAR(255)   DEFAULT NULL,
+    customer_signature_url VARCHAR(500) DEFAULT NULL,  -- folded from V024
+    signed_at              TIMESTAMP    DEFAULT NULL  -- folded from V024
 );
 
 -- 4.32 pawn_audit
@@ -1490,7 +1545,8 @@ CREATE TABLE IF NOT EXISTS product_catalog (
     image_url     VARCHAR(500),
     source        VARCHAR(50)   DEFAULT 'MANUAL',
     created_at    TIMESTAMP     NOT NULL DEFAULT NOW(),
-    updated_at    TIMESTAMP
+    updated_at    TIMESTAMP,
+    isbn VARCHAR(20) DEFAULT NULL  -- folded from V034
 );
 
 -- 4.45 shop_integrations (per-tenant third-party integration credentials)
@@ -2237,7 +2293,9 @@ CREATE TABLE IF NOT EXISTS combo_items (
     product_id BIGINT NOT NULL,
     product_name VARCHAR(255) NOT NULL,
     quantity INTEGER NOT NULL DEFAULT 1,
-    price DECIMAL(20,0) NOT NULL DEFAULT 0
+    price DECIMAL(20,0) NOT NULL DEFAULT 0,
+    tenant_id VARCHAR(50) NOT NULL DEFAULT current_setting('app.current_tenant', true),  -- folded from V041
+    legacy_id VARCHAR(50) DEFAULT NULL  -- folded from V041
 );
 CREATE INDEX IF NOT EXISTS idx_combos_tenant ON combos(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_combo_items_combo ON combo_items(combo_id);
@@ -2246,6 +2304,13 @@ ALTER TABLE combos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE combos FORCE  ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON combos
     USING (tenant_id = current_tenant_id());
+
+-- combo_items as a first-class tenant table (folded from V041): tenant_id + RLS + legacy_id.
+CREATE INDEX IF NOT EXISTS idx_combo_items_legacy_id ON combo_items (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+ALTER TABLE combo_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE combo_items FORCE  ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON combo_items
+    USING (tenant_id = current_setting('app.current_tenant', true));
 
 -- ════════════════════════════════════════════════════════════
 -- Merged from: V005__exchange_rates.sql
@@ -4623,7 +4688,8 @@ CREATE TABLE IF NOT EXISTS booking_resources (
     created_at      TIMESTAMP     NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMP     NOT NULL DEFAULT NOW(),
     deleted         BOOLEAN       NOT NULL DEFAULT FALSE,
-    deleted_at      TIMESTAMP
+    deleted_at      TIMESTAMP,
+    minimum_charge DECIMAL(15,2) NOT NULL DEFAULT 0  -- folded from V028
 );
 
 -- ── Bookings (reservation or walk-in timer) ──────────────────────────────────
@@ -4653,7 +4719,10 @@ CREATE TABLE IF NOT EXISTS bookings (
     created_at           TIMESTAMP     NOT NULL DEFAULT NOW(),
     updated_at           TIMESTAMP     NOT NULL DEFAULT NOW(),
     deleted              BOOLEAN       NOT NULL DEFAULT FALSE,
-    deleted_at           TIMESTAMP
+    deleted_at           TIMESTAMP,
+    deposit_amount DECIMAL(15,2) NOT NULL DEFAULT 0,  -- folded from V026
+    deposit_paid    BOOLEAN       NOT NULL DEFAULT FALSE,  -- folded from V026
+    recurrence_group_id VARCHAR(36) DEFAULT NULL  -- folded from V027
 );
 
 -- ── RLS ──────────────────────────────────────────────────────────────────────
@@ -4779,7 +4848,11 @@ CREATE TABLE IF NOT EXISTS room (
     created_at     TIMESTAMP     DEFAULT NOW(),
     updated_at     TIMESTAMP     DEFAULT NOW(),
     deleted        BOOLEAN       NOT NULL DEFAULT FALSE,
-    deleted_at     TIMESTAMP     DEFAULT NULL
+    deleted_at     TIMESTAMP     DEFAULT NULL,
+    assigned_cleaner_id   BIGINT       DEFAULT NULL,  -- folded from V010
+    assigned_cleaner_name VARCHAR(255) DEFAULT NULL,  -- folded from V010
+    cleaning_started_at   TIMESTAMP    DEFAULT NULL,  -- folded from V010
+    cleaned_at            TIMESTAMP    DEFAULT NULL  -- folded from V010
 );
 CREATE INDEX IF NOT EXISTS idx_room_tenant_status ON room (tenant_id, status);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_room_qr_token ON room (qr_token) WHERE qr_token IS NOT NULL;
@@ -4906,3 +4979,744 @@ VALUES ('ROOM', 'Quản Lý Phòng',
         'Quản lý phòng khách sạn / nhà nghỉ / homestay: sơ đồ phòng, nhận phòng, trả phòng, ghi nợ dịch vụ trong phòng',
         TRUE, FALSE)
 ON CONFLICT (name) DO NOTHING;
+
+-- == Feature catalog rows folded from V003/V004/V019/V029/V030/V035 ==
+-- from V003
+INSERT INTO features (name, display_name, description, active, deleted)
+VALUES ('RECIPE', 'Định Lượng & Sản Xuất',
+        'Quản lý công thức/định lượng nguyên liệu cho thành phẩm, tính giá vốn thật và sản xuất (làm bánh) trừ kho nguyên liệu, cộng kho thành phẩm',
+        TRUE, FALSE)
+ON CONFLICT (name) DO NOTHING;
+-- from V004
+INSERT INTO features (name, display_name, description, active, deleted)
+VALUES ('REPAIR', 'Sửa Chữa',
+        'Quản lý phiếu sửa chữa thiết bị: tiếp nhận máy, ghi lỗi, báo giá, giao thợ, theo dõi tình trạng và bảo hành sửa chữa',
+        TRUE, FALSE)
+ON CONFLICT (name) DO NOTHING;
+INSERT INTO features (name, display_name, description, active, deleted)
+VALUES ('REPAIR_VIEW_ALL', 'Xem Tất Cả Phiếu Sửa Chữa',
+        'Xem phiếu sửa chữa của tất cả nhân viên; nếu không có quyền này, chỉ xem được phiếu tự tạo',
+        TRUE, FALSE)
+ON CONFLICT (name) DO NOTHING;
+-- from V019
+INSERT INTO features (name, display_name, description, active, deleted)
+VALUES ('CUSTOMER_DEBT', 'Công Nợ Khách Hàng',
+        'Bán chịu, ghi sổ nợ và thu nợ khách hàng (thường dùng cho cửa hàng vật liệu xây dựng)',
+        TRUE, FALSE)
+ON CONFLICT (name) DO NOTHING;
+-- from V029
+INSERT INTO features (name, display_name, description, active, deleted)
+VALUES ('BUYBACK', 'Mua Bán Đồ Cũ',
+        'Mua đồ cũ của khách rồi bán lại; dùng cho tiệm vàng, cửa hàng xe máy, đồ cũ',
+        TRUE, FALSE)
+ON CONFLICT (name) DO NOTHING;
+-- from V030
+INSERT INTO features (name, display_name, description, active, deleted) VALUES
+    ('TRADE_IN', 'Thu Cũ Đổi Mới',
+     'Định giá xe cũ của khách và quy đổi vào đơn bán xe mới hoặc mua đứt; dùng cho cửa hàng xe',
+     TRUE, FALSE),
+    ('TRADE_IN_VIEW_ALL', 'Xem Tất Cả Phiếu Thu Cũ',
+     'Xem phiếu thu cũ đổi mới của tất cả nhân viên; nếu không có quyền này, chỉ xem được phiếu tự tạo',
+     TRUE, FALSE),
+    ('INSTALLMENT', 'Bán Trả Góp',
+     'Bán hàng trả góp theo nhiều kỳ: lập lịch trả, theo dõi kỳ đến hạn và thu tiền từng kỳ',
+     TRUE, FALSE),
+    ('INSTALLMENT_VIEW_ALL', 'Xem Tất Cả Hợp Đồng Trả Góp',
+     'Xem hợp đồng trả góp của tất cả nhân viên; nếu không có quyền này, chỉ xem được hợp đồng tự tạo',
+     TRUE, FALSE)
+ON CONFLICT (name) DO NOTHING;
+-- from V035
+INSERT INTO features (name, display_name, description, active, deleted)
+VALUES
+    ('CONSIGNMENT', 'Ký Gửi Hàng',
+     'Nhận hàng ký gửi từ nhà cung cấp/NXB, theo dõi số lượng đã bán và thanh toán theo doanh số; dùng cho nhà sách, cửa hàng ký gửi',
+     TRUE, FALSE),
+    ('CONSIGNMENT_VIEW_ALL', 'Xem Tất Cả Phiếu Ký Gửi',
+     'Xem phiếu ký gửi của tất cả nhân viên; nếu không có quyền này, chỉ xem được phiếu tự tạo',
+     TRUE, FALSE)
+ON CONFLICT (name) DO NOTHING;
+
+
+-- ============================================================
+-- Folded incremental tables, indexes & RLS (from V002+ migrations)
+-- ============================================================
+
+-- == V002 ==
+CREATE INDEX IF NOT EXISTS idx_orders_preorder_pickup
+    ON orders (tenant_id, pickup_time)
+    WHERE is_preorder = TRUE AND deleted = FALSE;
+
+-- == V003 ==
+DO $$ BEGIN
+    ALTER TABLE product ADD CONSTRAINT chk_product_kind CHECK (product_kind IN ('FINISHED','INGREDIENT','BOTH'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_product_kind
+    ON product (tenant_id, product_kind) WHERE product_kind <> 'FINISHED';
+CREATE TABLE IF NOT EXISTS recipe (
+    id                  BIGSERIAL     PRIMARY KEY,
+    tenant_id           VARCHAR(50)   NOT NULL,
+    finished_product_id BIGINT        NOT NULL,
+    yield_quantity      DECIMAL(12,3) NOT NULL DEFAULT 1,
+    labor_cost          DECIMAL(15,2) NOT NULL DEFAULT 0,
+    overhead_cost       DECIMAL(15,2) NOT NULL DEFAULT 0,
+    notes               VARCHAR(500)  DEFAULT NULL,
+    legacy_id           VARCHAR(50)   DEFAULT NULL,
+    deleted             BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at          TIMESTAMP     DEFAULT NULL,
+    created_by          VARCHAR(100)  DEFAULT NULL,
+    created_at          TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMP     NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_recipe_yield   CHECK (yield_quantity > 0),
+    CONSTRAINT uq_recipe_product  UNIQUE (finished_product_id, tenant_id),
+    CONSTRAINT fk_recipe_product  FOREIGN KEY (finished_product_id) REFERENCES product(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_recipe_tenant       ON recipe (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_recipe_legacy_id    ON recipe (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+ALTER TABLE recipe ENABLE ROW LEVEL SECURITY;
+ALTER TABLE recipe FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON recipe
+    USING (tenant_id = current_setting('app.current_tenant', true));
+CREATE TABLE IF NOT EXISTS recipe_item (
+    id                    BIGSERIAL     PRIMARY KEY,
+    tenant_id             VARCHAR(50)   NOT NULL,
+    recipe_id             BIGINT        NOT NULL,
+    ingredient_product_id BIGINT        NOT NULL,
+    quantity              DECIMAL(12,3) NOT NULL,
+    unit                  VARCHAR(20)   DEFAULT NULL,
+    legacy_id             VARCHAR(50)   DEFAULT NULL,
+    deleted               BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at            TIMESTAMP     DEFAULT NULL,
+    created_at            TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_at            TIMESTAMP     NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_recipe_item_qty   CHECK (quantity > 0),
+    CONSTRAINT fk_recipe_item_recipe FOREIGN KEY (recipe_id)             REFERENCES recipe(id)  ON DELETE CASCADE,
+    CONSTRAINT fk_recipe_item_ingr   FOREIGN KEY (ingredient_product_id) REFERENCES product(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS idx_recipe_item_recipe ON recipe_item (tenant_id, recipe_id);
+CREATE INDEX IF NOT EXISTS idx_recipe_item_legacy_id
+    ON recipe_item (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+ALTER TABLE recipe_item ENABLE ROW LEVEL SECURITY;
+ALTER TABLE recipe_item FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON recipe_item
+    USING (tenant_id = current_setting('app.current_tenant', true));
+CREATE TABLE IF NOT EXISTS production_batch (
+    id                  BIGSERIAL     PRIMARY KEY,
+    tenant_id           VARCHAR(50)   NOT NULL,
+    finished_product_id BIGINT        NOT NULL,
+    recipe_id           BIGINT        DEFAULT NULL,
+    quantity_produced   DECIMAL(12,3) NOT NULL,
+    ingredient_cost     DECIMAL(15,2) NOT NULL DEFAULT 0,
+    unit_cost           DECIMAL(15,2) NOT NULL DEFAULT 0,
+    status              VARCHAR(20)   NOT NULL DEFAULT 'COMPLETED',
+    produced_by         VARCHAR(100)  DEFAULT NULL,
+    notes               VARCHAR(500)  DEFAULT NULL,
+    legacy_id           VARCHAR(50)   DEFAULT NULL,
+    deleted             BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at          TIMESTAMP     DEFAULT NULL,
+    created_at          TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMP     NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_prod_qty    CHECK (quantity_produced > 0),
+    CONSTRAINT chk_prod_status CHECK (status IN ('COMPLETED','SPOILED')),
+    CONSTRAINT fk_prod_product FOREIGN KEY (finished_product_id) REFERENCES product(id) ON DELETE CASCADE,
+    CONSTRAINT fk_prod_recipe  FOREIGN KEY (recipe_id)           REFERENCES recipe(id)  ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_prod_tenant_date ON production_batch (tenant_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_prod_product     ON production_batch (tenant_id, finished_product_id);
+CREATE INDEX IF NOT EXISTS idx_prod_legacy_id   ON production_batch (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+ALTER TABLE production_batch ENABLE ROW LEVEL SECURITY;
+ALTER TABLE production_batch FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON production_batch
+    USING (tenant_id = current_setting('app.current_tenant', true));
+
+-- == V004 ==
+CREATE TABLE IF NOT EXISTS repair_tickets (
+    id                       BIGSERIAL     PRIMARY KEY,
+    tenant_id                VARCHAR(50)   NOT NULL,
+    ticket_number            VARCHAR(30)   NOT NULL,
+    customer_id              BIGINT,
+    customer_name            VARCHAR(255)  NOT NULL,
+    customer_phone           VARCHAR(20),
+    device_type              VARCHAR(100),
+    brand                    VARCHAR(100),
+    model                    VARCHAR(100),
+    serial_imei              VARCHAR(100),
+    reported_fault           TEXT          NOT NULL,
+    diagnosis                TEXT,
+    quote_amount             DECIMAL(15,2) NOT NULL DEFAULT 0,
+    parts_amount             DECIMAL(15,2) NOT NULL DEFAULT 0,
+    labor_amount             DECIMAL(15,2) NOT NULL DEFAULT 0,
+    total_amount             DECIMAL(15,2) NOT NULL DEFAULT 0,
+    warranty_days            INT           NOT NULL DEFAULT 0,
+    assigned_technician_id   BIGINT,
+    assigned_technician_name VARCHAR(255),
+    status                   VARCHAR(20)   NOT NULL DEFAULT 'RECEIVED', -- RECEIVED | DIAGNOSING | QUOTED | REPAIRING | COMPLETED | DELIVERED | CANCELLED
+    is_warranty_claim        BOOLEAN       NOT NULL DEFAULT FALSE,
+    note                     TEXT,
+    received_at              TIMESTAMP,
+    completed_at             TIMESTAMP,
+    delivered_at             TIMESTAMP,
+    linked_order_id          BIGINT,
+    legacy_id                VARCHAR(50)   DEFAULT NULL,
+    created_by               VARCHAR(255)  NOT NULL,
+    created_at               TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_at               TIMESTAMP     NOT NULL DEFAULT NOW(),
+    deleted                  BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at               TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS repair_parts (
+    id               BIGSERIAL     PRIMARY KEY,
+    tenant_id        VARCHAR(50)   NOT NULL,
+    repair_ticket_id BIGINT        NOT NULL REFERENCES repair_tickets(id),
+    product_id       BIGINT,
+    product_name     VARCHAR(255)  NOT NULL,
+    quantity         INT           NOT NULL DEFAULT 1,
+    unit_price       DECIMAL(15,2) NOT NULL DEFAULT 0,
+    line_total       DECIMAL(15,2) NOT NULL DEFAULT 0,
+    legacy_id        VARCHAR(50)   DEFAULT NULL,
+    created_at       TIMESTAMP     NOT NULL DEFAULT NOW()
+);
+ALTER TABLE repair_tickets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE repair_tickets FORCE  ROW LEVEL SECURITY;
+ALTER TABLE repair_parts   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE repair_parts   FORCE  ROW LEVEL SECURITY;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies
+        WHERE tablename = 'repair_tickets' AND policyname = 'repair_tickets_tenant_isolation') THEN
+        CREATE POLICY repair_tickets_tenant_isolation ON repair_tickets
+            USING (tenant_id = current_setting('app.current_tenant', true));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies
+        WHERE tablename = 'repair_parts' AND policyname = 'repair_parts_tenant_isolation') THEN
+        CREATE POLICY repair_parts_tenant_isolation ON repair_parts
+            USING (tenant_id = current_setting('app.current_tenant', true));
+    END IF;
+END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_repair_tickets_number
+    ON repair_tickets (tenant_id, ticket_number) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_repair_tickets_tenant_status
+    ON repair_tickets (tenant_id, status) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_repair_tickets_created_by
+    ON repair_tickets (tenant_id, created_by) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_repair_tickets_customer
+    ON repair_tickets (tenant_id, customer_id) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_repair_tickets_legacy
+    ON repair_tickets (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_repair_parts_ticket
+    ON repair_parts (tenant_id, repair_ticket_id);
+CREATE INDEX IF NOT EXISTS idx_repair_parts_legacy
+    ON repair_parts (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+
+-- == V005 ==
+CREATE INDEX IF NOT EXISTS idx_product_variants_barcode
+    ON product_variants (tenant_id, barcode)
+    WHERE barcode IS NOT NULL AND deleted = FALSE;
+
+-- == V007 ==
+CREATE INDEX IF NOT EXISTS idx_orders_channel
+    ON orders (tenant_id, order_channel) WHERE deleted = FALSE;
+
+-- == V008 ==
+CREATE TABLE IF NOT EXISTS modifier_groups (
+    id          BIGSERIAL     PRIMARY KEY,
+    tenant_id   VARCHAR(50)   NOT NULL,
+    name        VARCHAR(150)  NOT NULL,
+    min_select  INT           NOT NULL DEFAULT 0,
+    max_select  INT           NOT NULL DEFAULT 1,
+    required    BOOLEAN       NOT NULL DEFAULT FALSE,
+    sort_order  INT           NOT NULL DEFAULT 0,
+    legacy_id   VARCHAR(50)   DEFAULT NULL,
+    created_at  TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMP     NOT NULL DEFAULT NOW(),
+    deleted     BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at  TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS modifier_options (
+    id                BIGSERIAL     PRIMARY KEY,
+    tenant_id         VARCHAR(50)   NOT NULL,
+    modifier_group_id BIGINT        NOT NULL REFERENCES modifier_groups(id),
+    name              VARCHAR(150)  NOT NULL,
+    price_delta       DECIMAL(15,2) NOT NULL DEFAULT 0,
+    sort_order        INT           NOT NULL DEFAULT 0,
+    legacy_id         VARCHAR(50)   DEFAULT NULL,
+    created_at        TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMP     NOT NULL DEFAULT NOW(),
+    deleted           BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at        TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS product_modifier_groups (
+    id                BIGSERIAL   PRIMARY KEY,
+    tenant_id         VARCHAR(50) NOT NULL,
+    product_id        BIGINT      NOT NULL,
+    modifier_group_id BIGINT      NOT NULL REFERENCES modifier_groups(id),
+    sort_order        INT         NOT NULL DEFAULT 0,
+    created_at        TIMESTAMP   NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMP,
+    deleted           BOOLEAN     NOT NULL DEFAULT FALSE,
+    deleted_at        TIMESTAMP,
+    CONSTRAINT uq_product_modifier UNIQUE (tenant_id, product_id, modifier_group_id)
+);
+ALTER TABLE modifier_groups         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE modifier_groups         FORCE  ROW LEVEL SECURITY;
+ALTER TABLE modifier_options        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE modifier_options        FORCE  ROW LEVEL SECURITY;
+ALTER TABLE product_modifier_groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_modifier_groups FORCE  ROW LEVEL SECURITY;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'modifier_groups' AND policyname = 'modifier_groups_tenant_isolation') THEN
+        CREATE POLICY modifier_groups_tenant_isolation ON modifier_groups
+            USING (tenant_id = current_setting('app.current_tenant', true));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'modifier_options' AND policyname = 'modifier_options_tenant_isolation') THEN
+        CREATE POLICY modifier_options_tenant_isolation ON modifier_options
+            USING (tenant_id = current_setting('app.current_tenant', true));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'product_modifier_groups' AND policyname = 'product_modifier_groups_tenant_isolation') THEN
+        CREATE POLICY product_modifier_groups_tenant_isolation ON product_modifier_groups
+            USING (tenant_id = current_setting('app.current_tenant', true));
+    END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_modifier_groups_legacy
+    ON modifier_groups (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_modifier_options_group
+    ON modifier_options (tenant_id, modifier_group_id) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_modifier_options_legacy
+    ON modifier_options (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_product_modifier_groups_product
+    ON product_modifier_groups (tenant_id, product_id);
+
+-- == V012 ==
+CREATE TABLE IF NOT EXISTS gold_price_history (
+    id          BIGSERIAL     PRIMARY KEY,
+    tenant_id   VARCHAR(50)   NOT NULL,
+    code        VARCHAR(50)   NOT NULL,
+    label       VARCHAR(100),
+    buy         NUMERIC(20,0) NOT NULL DEFAULT 0,
+    sell        NUMERIC(20,0) NOT NULL DEFAULT 0,
+    pawn        NUMERIC(20,0) NOT NULL DEFAULT 0,
+    recorded_at TIMESTAMP     NOT NULL DEFAULT NOW(),
+    legacy_id   VARCHAR(50)   DEFAULT NULL,
+    created_at  TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMP,
+    deleted     BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at  TIMESTAMP
+);
+ALTER TABLE gold_price_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE gold_price_history FORCE  ROW LEVEL SECURITY;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'gold_price_history' AND policyname = 'gold_price_history_tenant_isolation') THEN
+        CREATE POLICY gold_price_history_tenant_isolation ON gold_price_history
+            USING (tenant_id = current_setting('app.current_tenant', true));
+    END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_gold_price_history_code_time
+    ON gold_price_history (tenant_id, code, recorded_at) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_gold_price_history_legacy
+    ON gold_price_history (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+
+-- == V013 ==
+CREATE INDEX IF NOT EXISTS idx_orders_parent_order_id
+    ON orders (tenant_id, parent_order_id) WHERE parent_order_id IS NOT NULL;
+
+-- == V014 ==
+CREATE TABLE IF NOT EXISTS table_reservations (
+    id                 BIGSERIAL PRIMARY KEY,
+    tenant_id          VARCHAR(50)   NOT NULL,
+    table_id           BIGINT        NOT NULL REFERENCES shop_table(id),
+    table_label        VARCHAR(100)  NOT NULL,        -- snapshot of the table number for display
+    reserved_at        TIMESTAMP     NOT NULL,        -- date + time the guest is expected
+    party_size         INT           NOT NULL DEFAULT 2,
+    customer_id        BIGINT,
+    customer_name      VARCHAR(255),
+    customer_phone     VARCHAR(20),
+    status             VARCHAR(20)   NOT NULL DEFAULT 'RESERVED', -- RESERVED | SEATED | CANCELLED | NO_SHOW
+    note               TEXT,
+    legacy_id          VARCHAR(50)   DEFAULT NULL,
+    created_by         VARCHAR(255)  NOT NULL,
+    created_at         TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMP     NOT NULL DEFAULT NOW(),
+    deleted            BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at         TIMESTAMP
+);
+ALTER TABLE table_reservations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE table_reservations FORCE  ROW LEVEL SECURITY;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies
+        WHERE tablename = 'table_reservations' AND policyname = 'table_reservations_tenant_isolation') THEN
+        CREATE POLICY table_reservations_tenant_isolation ON table_reservations
+            USING (tenant_id = current_setting('app.current_tenant', true));
+    END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_table_reservations_when
+    ON table_reservations (tenant_id, reserved_at) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_table_reservations_table
+    ON table_reservations (tenant_id, table_id) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_table_reservations_legacy
+    ON table_reservations (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+
+-- == V016 ==
+CREATE INDEX IF NOT EXISTS idx_orders_delivery_status
+    ON orders (tenant_id, delivery_status)
+    WHERE delivery_status IS NOT NULL AND deleted = FALSE;
+
+-- == V019 ==
+CREATE TABLE IF NOT EXISTS customer_debt (
+    id                  BIGSERIAL     PRIMARY KEY,
+    tenant_id           VARCHAR(50)   NOT NULL,
+    customer_id         BIGINT        NOT NULL,
+    customer_name       VARCHAR(255),
+    order_id            BIGINT,
+    order_number        VARCHAR(50),
+    original_amount     DECIMAL(15,2) NOT NULL DEFAULT 0,
+    paid_amount         DECIMAL(15,2) NOT NULL DEFAULT 0,
+    outstanding_amount  DECIMAL(15,2) NOT NULL DEFAULT 0,
+    due_date            DATE,
+    status              VARCHAR(20)   NOT NULL DEFAULT 'OPEN', -- OPEN | PARTIAL | PAID
+    note                TEXT,
+    legacy_id           VARCHAR(50)   DEFAULT NULL,
+    created_by          VARCHAR(255)  NOT NULL,
+    created_at          TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMP     NOT NULL DEFAULT NOW(),
+    deleted             BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at          TIMESTAMP,
+    installment_count INTEGER       DEFAULT NULL,  -- folded from V033
+    down_payment      DECIMAL(15,2)  DEFAULT NULL  -- folded from V033
+);
+CREATE TABLE IF NOT EXISTS debt_payment (
+    id              BIGSERIAL     PRIMARY KEY,
+    tenant_id       VARCHAR(50)   NOT NULL,
+    customer_id     BIGINT        NOT NULL,
+    debt_id         BIGINT,       -- tenant-scoped in app + RLS; no cross-tenant FK (cf. order_id on customer_debt)
+    amount          DECIMAL(15,2) NOT NULL DEFAULT 0,
+    method          VARCHAR(30)   NOT NULL DEFAULT 'CASH', -- CASH | TRANSFER | CARD
+    note            TEXT,
+    paid_at         TIMESTAMP     NOT NULL DEFAULT NOW(),
+    legacy_id       VARCHAR(50)   DEFAULT NULL,
+    created_by      VARCHAR(255)  NOT NULL,
+    created_at      TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP     NOT NULL DEFAULT NOW(),
+    deleted         BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at      TIMESTAMP
+);
+ALTER TABLE customer_debt ENABLE ROW LEVEL SECURITY;
+ALTER TABLE customer_debt FORCE  ROW LEVEL SECURITY;
+ALTER TABLE debt_payment  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE debt_payment  FORCE  ROW LEVEL SECURITY;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies
+        WHERE tablename = 'customer_debt' AND policyname = 'customer_debt_tenant_isolation') THEN
+        CREATE POLICY customer_debt_tenant_isolation ON customer_debt
+            USING (tenant_id = current_setting('app.current_tenant', true));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies
+        WHERE tablename = 'debt_payment' AND policyname = 'debt_payment_tenant_isolation') THEN
+        CREATE POLICY debt_payment_tenant_isolation ON debt_payment
+            USING (tenant_id = current_setting('app.current_tenant', true));
+    END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_customer_debt_customer
+    ON customer_debt (tenant_id, customer_id) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_customer_debt_status
+    ON customer_debt (tenant_id, status) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_customer_debt_order
+    ON customer_debt (tenant_id, order_id) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_customer_debt_legacy
+    ON customer_debt (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_debt_payment_customer
+    ON debt_payment (tenant_id, customer_id);
+CREATE INDEX IF NOT EXISTS idx_debt_payment_debt
+    ON debt_payment (tenant_id, debt_id);
+CREATE INDEX IF NOT EXISTS idx_debt_payment_legacy
+    ON debt_payment (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+
+-- == V023 ==
+CREATE INDEX IF NOT EXISTS idx_orders_is_quote
+    ON orders (tenant_id, is_quote) WHERE deleted = FALSE AND is_quote = TRUE;
+
+-- == V027 ==
+CREATE INDEX IF NOT EXISTS idx_bookings_recurrence_group
+    ON bookings (tenant_id, recurrence_group_id) WHERE recurrence_group_id IS NOT NULL;
+
+-- == V028 ==
+CREATE TABLE IF NOT EXISTS booking_resource_rate (
+    id            BIGSERIAL     PRIMARY KEY,
+    tenant_id     VARCHAR(50)   NOT NULL,
+    resource_id   BIGINT        NOT NULL REFERENCES booking_resources(id),
+    day_kind      VARCHAR(10)   NOT NULL DEFAULT 'ALL',   -- ALL | WEEKDAY | WEEKEND
+    start_time    TIME          NOT NULL,
+    end_time      TIME          NOT NULL,
+    rate          DECIMAL(15,2) NOT NULL DEFAULT 0,
+    sort_order    INT           NOT NULL DEFAULT 0,
+    legacy_id     VARCHAR(50)   DEFAULT NULL,
+    created_by    VARCHAR(255)  NOT NULL,
+    created_at    TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMP     NOT NULL DEFAULT NOW(),
+    deleted       BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at    TIMESTAMP
+);
+ALTER TABLE booking_resource_rate ENABLE ROW LEVEL SECURITY;
+ALTER TABLE booking_resource_rate FORCE  ROW LEVEL SECURITY;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies
+        WHERE tablename = 'booking_resource_rate' AND policyname = 'booking_resource_rate_tenant_isolation') THEN
+        CREATE POLICY booking_resource_rate_tenant_isolation ON booking_resource_rate
+            USING (tenant_id = current_setting('app.current_tenant', true));
+    END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_booking_resource_rate_resource
+    ON booking_resource_rate (tenant_id, resource_id) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_booking_resource_rate_legacy
+    ON booking_resource_rate (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+
+-- == V029 ==
+CREATE TABLE IF NOT EXISTS buyback (
+    buyback_id        BIGSERIAL     PRIMARY KEY,
+    tenant_id         VARCHAR(50)   NOT NULL,
+    customer_id       BIGINT        DEFAULT NULL,   -- seller (null = walk-in); CCCD via customers.id_number
+    customer_name     VARCHAR(255)  DEFAULT NULL,   -- denormalised (mirrors pawn.customer_name)
+    item_name         VARCHAR(255)  NOT NULL,
+    item_description  TEXT          DEFAULT NULL,
+    item_category     VARCHAR(50)   DEFAULT NULL,   -- mirrors pawn_category buckets
+    acquisition_price DECIMAL(15,2) NOT NULL,       -- cash paid to acquire
+    resale_price      DECIMAL(15,2) DEFAULT NULL,   -- final sale price (set when SOLD)
+    status            VARCHAR(20)   NOT NULL DEFAULT 'PURCHASED',  -- PURCHASED / LISTED / SOLD / CANCELLED
+    product_id        BIGINT        DEFAULT NULL,   -- linked resale Product (set when LISTED)
+    order_id          BIGINT        DEFAULT NULL,   -- resale Order (set when SOLD)
+    purchase_date     TIMESTAMP     NOT NULL,
+    sold_date         TIMESTAMP     DEFAULT NULL,
+    canceled_reason   VARCHAR(255)  DEFAULT NULL,
+    legacy_id         VARCHAR(50)   DEFAULT NULL,
+    visible           BOOLEAN       DEFAULT TRUE,
+    created_by        VARCHAR(100)  DEFAULT NULL,
+    created_at        TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_by        VARCHAR(100)  DEFAULT NULL,
+    updated_at        TIMESTAMP     NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_buyback_acq_price CHECK (acquisition_price >= 0),
+    CONSTRAINT chk_buyback_status    CHECK (status IN ('PURCHASED','LISTED','SOLD','CANCELLED'))
+);
+CREATE INDEX IF NOT EXISTS idx_buyback_tenant    ON buyback (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_buyback_status    ON buyback (tenant_id, status) WHERE visible = TRUE;
+CREATE INDEX IF NOT EXISTS idx_buyback_legacy_id ON buyback (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+ALTER TABLE buyback ENABLE ROW LEVEL SECURITY;
+ALTER TABLE buyback FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON buyback
+    USING (tenant_id = current_setting('app.current_tenant', true));
+
+-- == V031 ==
+CREATE TABLE IF NOT EXISTS vehicle_unit (
+    id                BIGSERIAL     PRIMARY KEY,
+    tenant_id         VARCHAR(50)   NOT NULL,
+    product_id        BIGINT        NOT NULL,             -- catalog Product (the model/listing)
+    frame_no          VARCHAR(100)  DEFAULT NULL,         -- số khung (UNIQUE per tenant)
+    engine_no         VARCHAR(100)  DEFAULT NULL,         -- số máy   (UNIQUE per tenant)
+    license_plate     VARCHAR(20)   DEFAULT NULL,         -- biển số (nếu có)
+    color             VARCHAR(50)   DEFAULT NULL,
+    odometer_km       INTEGER       DEFAULT NULL,         -- số km đã đi (xe cũ)
+    purchase_price    DECIMAL(15,2) DEFAULT NULL,         -- giá nhập / giá thu
+    current_value     DECIMAL(15,2) DEFAULT NULL,         -- định giá hiện tại (xe cũ)
+    status            VARCHAR(20)   NOT NULL DEFAULT 'IN_STOCK',  -- IN_STOCK/RESERVED/SOLD/TRADED_IN/DAMAGED
+    condition_grade   VARCHAR(30)   DEFAULT NULL,         -- Mới / Cũ
+    warranty_months   INTEGER       DEFAULT NULL,         -- bảo hành khi bán (tháng)
+    warranty_exp      DATE          DEFAULT NULL,         -- ngày hết bảo hành (đặt khi bán)
+    paperwork_status  VARCHAR(30)   DEFAULT NULL,         -- Đủ / Thiếu / Đang sang tên
+    sold_to           BIGINT        DEFAULT NULL,         -- customer_id người mua
+    sold_to_name      VARCHAR(255)  DEFAULT NULL,
+    sold_order_id     BIGINT        DEFAULT NULL,
+    sold_date         TIMESTAMP     DEFAULT NULL,
+    notes             TEXT          DEFAULT NULL,
+    legacy_id         VARCHAR(50)   DEFAULT NULL,
+    created_by        VARCHAR(255)  DEFAULT NULL,
+    created_at        TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMP     NOT NULL DEFAULT NOW(),
+    deleted           BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at        TIMESTAMP,
+    CONSTRAINT chk_vehicle_unit_status
+        CHECK (status IN ('IN_STOCK','RESERVED','SOLD','TRADED_IN','DAMAGED'))
+);
+CREATE INDEX IF NOT EXISTS idx_vehicle_unit_tenant_status
+    ON vehicle_unit (tenant_id, status) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_vehicle_unit_product
+    ON vehicle_unit (tenant_id, product_id) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_vehicle_unit_plate
+    ON vehicle_unit (tenant_id, license_plate) WHERE license_plate IS NOT NULL AND deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_vehicle_unit_legacy
+    ON vehicle_unit (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_vehicle_unit_frame_no
+    ON vehicle_unit (tenant_id, frame_no) WHERE frame_no IS NOT NULL AND deleted = FALSE;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_vehicle_unit_engine_no
+    ON vehicle_unit (tenant_id, engine_no) WHERE engine_no IS NOT NULL AND deleted = FALSE;
+ALTER TABLE vehicle_unit ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vehicle_unit FORCE  ROW LEVEL SECURITY;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies
+        WHERE tablename = 'vehicle_unit' AND policyname = 'vehicle_unit_tenant_isolation') THEN
+        CREATE POLICY vehicle_unit_tenant_isolation ON vehicle_unit
+            USING (tenant_id = current_setting('app.current_tenant', true));
+    END IF;
+END $$;
+
+-- == V032 ==
+CREATE TABLE IF NOT EXISTS trade_in (
+    id                BIGSERIAL     PRIMARY KEY,
+    tenant_id         VARCHAR(50)   NOT NULL,
+    trade_in_number   VARCHAR(30)   NOT NULL,            -- mã phiếu (TI-yyyyMMdd-xxx)
+    -- seller
+    seller_id         BIGINT        DEFAULT NULL,        -- customer_id (null = walk-in)
+    seller_name       VARCHAR(255)  DEFAULT NULL,
+    seller_phone      VARCHAR(20)   DEFAULT NULL,
+    seller_id_number  VARCHAR(30)   DEFAULT NULL,        -- CCCD
+    -- incoming used vehicle
+    vehicle_type      VARCHAR(30)   DEFAULT NULL,        -- MOTORBIKE / E_BIKE / BICYCLE
+    brand             VARCHAR(100)  DEFAULT NULL,
+    model             VARCHAR(100)  DEFAULT NULL,
+    year              INTEGER       DEFAULT NULL,
+    frame_no          VARCHAR(100)  DEFAULT NULL,        -- số khung
+    engine_no         VARCHAR(100)  DEFAULT NULL,        -- số máy
+    license_plate     VARCHAR(20)   DEFAULT NULL,
+    color             VARCHAR(50)   DEFAULT NULL,
+    odometer_km       INTEGER       DEFAULT NULL,
+    condition_notes   TEXT          DEFAULT NULL,
+    trade_value       DECIMAL(15,2) NOT NULL,            -- giá thu xe cũ (valuation)
+    -- settlement
+    mode              VARCHAR(20)   NOT NULL DEFAULT 'NETTED',  -- NETTED (đổi mới) / STANDALONE (mua đứt)
+    new_sale_order_id BIGINT        DEFAULT NULL,        -- linked new-vehicle sale order (NETTED)
+    new_price         DECIMAL(15,2) DEFAULT NULL,        -- giá xe mới (NETTED)
+    net_amount        DECIMAL(15,2) DEFAULT NULL,        -- new_price − trade_value (phải trả)
+    -- resale linkage (auto-created used unit)
+    resale_product_id BIGINT        DEFAULT NULL,
+    resale_unit_id    BIGINT        DEFAULT NULL,        -- vehicle_unit created from this trade-in
+    status            VARCHAR(20)   NOT NULL DEFAULT 'COMPLETED', -- COMPLETED / CANCELLED
+    canceled_reason   VARCHAR(255)  DEFAULT NULL,
+    legacy_id         VARCHAR(50)   DEFAULT NULL,
+    created_by        VARCHAR(255)  NOT NULL,
+    created_at        TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMP     NOT NULL DEFAULT NOW(),
+    deleted           BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at        TIMESTAMP,
+    CONSTRAINT chk_trade_in_value  CHECK (trade_value >= 0),
+    CONSTRAINT chk_trade_in_mode   CHECK (mode IN ('NETTED','STANDALONE')),
+    CONSTRAINT chk_trade_in_status CHECK (status IN ('COMPLETED','CANCELLED'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_trade_in_number
+    ON trade_in (tenant_id, trade_in_number) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_trade_in_tenant_status
+    ON trade_in (tenant_id, status) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_trade_in_created_by
+    ON trade_in (tenant_id, created_by) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_trade_in_seller
+    ON trade_in (tenant_id, seller_id) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_trade_in_legacy
+    ON trade_in (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+ALTER TABLE trade_in ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trade_in FORCE  ROW LEVEL SECURITY;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies
+        WHERE tablename = 'trade_in' AND policyname = 'trade_in_tenant_isolation') THEN
+        CREATE POLICY trade_in_tenant_isolation ON trade_in
+            USING (tenant_id = current_setting('app.current_tenant', true));
+    END IF;
+END $$;
+
+-- == V033 ==
+CREATE INDEX IF NOT EXISTS idx_customer_debt_installment
+    ON customer_debt (tenant_id, installment_count) WHERE installment_count IS NOT NULL AND deleted = FALSE;
+CREATE TABLE IF NOT EXISTS installment_schedule (
+    id              BIGSERIAL     PRIMARY KEY,
+    tenant_id       VARCHAR(50)   NOT NULL,
+    debt_id         BIGINT        NOT NULL,             -- FK customer_debt.id (the contract)
+    order_id        BIGINT        DEFAULT NULL,
+    installment_no  INTEGER       NOT NULL,             -- kỳ thứ (1..N)
+    due_date        DATE          NOT NULL,
+    amount          DECIMAL(15,2) NOT NULL,             -- tiền phải trả kỳ này
+    interest_pct    DECIMAL(6,3)  DEFAULT NULL,         -- reserved (interest-free now)
+    paid            BOOLEAN       NOT NULL DEFAULT FALSE,
+    paid_amount     DECIMAL(15,2) DEFAULT NULL,
+    paid_date       DATE          DEFAULT NULL,
+    paid_by         VARCHAR(255)  DEFAULT NULL,
+    legacy_id       VARCHAR(50)   DEFAULT NULL,
+    created_at      TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP     NOT NULL DEFAULT NOW(),
+    deleted         BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at      TIMESTAMP,
+    CONSTRAINT chk_installment_amount CHECK (amount >= 0)
+);
+CREATE INDEX IF NOT EXISTS idx_installment_debt
+    ON installment_schedule (tenant_id, debt_id) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_installment_due
+    ON installment_schedule (tenant_id, due_date) WHERE paid = FALSE AND deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_installment_legacy
+    ON installment_schedule (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+ALTER TABLE installment_schedule ENABLE ROW LEVEL SECURITY;
+ALTER TABLE installment_schedule FORCE  ROW LEVEL SECURITY;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies
+        WHERE tablename = 'installment_schedule' AND policyname = 'installment_schedule_tenant_isolation') THEN
+        CREATE POLICY installment_schedule_tenant_isolation ON installment_schedule
+            USING (tenant_id = current_setting('app.current_tenant', true));
+    END IF;
+END $$;
+
+-- == V034 ==
+CREATE INDEX IF NOT EXISTS idx_product_catalog_isbn
+    ON product_catalog (isbn) WHERE isbn IS NOT NULL;
+
+-- == V035 ==
+CREATE TABLE IF NOT EXISTS consignment (
+    id                BIGSERIAL     PRIMARY KEY,
+    tenant_id         VARCHAR(50)   NOT NULL,
+    publisher_id      BIGINT        DEFAULT NULL,   -- vendors.id (nhà cung cấp ký gửi); null = ad-hoc
+    publisher_name    VARCHAR(255)  NOT NULL,       -- denormalised so the slip prints standalone
+    placement_number  VARCHAR(30)   NOT NULL,       -- mã phiếu ký gửi (KG-yyyyMMdd-xxx)
+    placement_date    DATE          NOT NULL,       -- ngày nhận hàng ký gửi
+    status            VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE',  -- ACTIVE / SETTLED / CANCELLED
+    note              VARCHAR(500)  DEFAULT NULL,
+    settled_from      DATE          DEFAULT NULL,   -- kỳ thanh toán (từ)
+    settled_to        DATE          DEFAULT NULL,   -- kỳ thanh toán (đến)
+    settled_date      TIMESTAMP     DEFAULT NULL,
+    settled_amount    DECIMAL(15,2) DEFAULT NULL,   -- tổng tiền phải trả NCC theo doanh số
+    legacy_id         VARCHAR(50)   DEFAULT NULL,
+    created_by        VARCHAR(100)  DEFAULT NULL,
+    updated_by        VARCHAR(100)  DEFAULT NULL,
+    created_at        TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMP     DEFAULT NOW(),
+    deleted           BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at        TIMESTAMP     DEFAULT NULL,
+    CONSTRAINT chk_consignment_status CHECK (status IN ('ACTIVE','SETTLED','CANCELLED'))
+);
+CREATE INDEX IF NOT EXISTS idx_consignment_tenant    ON consignment (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_consignment_status    ON consignment (tenant_id, status) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_consignment_publisher ON consignment (tenant_id, publisher_id) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_consignment_legacy_id ON consignment (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+ALTER TABLE consignment ENABLE ROW LEVEL SECURITY;
+ALTER TABLE consignment FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON consignment
+    USING (tenant_id = current_setting('app.current_tenant', true));
+CREATE TABLE IF NOT EXISTS consignment_item (
+    id                BIGSERIAL     PRIMARY KEY,
+    tenant_id         VARCHAR(50)   NOT NULL,
+    consignment_id    BIGINT        NOT NULL,
+    product_id        BIGINT        DEFAULT NULL,   -- the consigned title as an ordinary Product
+    product_name      VARCHAR(255)  NOT NULL,       -- denormalised
+    quantity_placed   INT           NOT NULL DEFAULT 0,   -- số lượng nhận ký gửi
+    unit_price        DECIMAL(15,2) NOT NULL DEFAULT 0,    -- giá phải trả NCC mỗi cuốn bán được
+    legacy_id         VARCHAR(50)   DEFAULT NULL,
+    created_at        TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMP     DEFAULT NOW(),
+    deleted           BOOLEAN       NOT NULL DEFAULT FALSE,
+    deleted_at        TIMESTAMP     DEFAULT NULL,
+    CONSTRAINT chk_consignment_item_qty CHECK (quantity_placed >= 0)
+);
+CREATE INDEX IF NOT EXISTS idx_consignment_item_tenant     ON consignment_item (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_consignment_item_parent     ON consignment_item (consignment_id) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_consignment_item_product    ON consignment_item (tenant_id, product_id) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_consignment_item_legacy_id  ON consignment_item (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+ALTER TABLE consignment_item ENABLE ROW LEVEL SECURITY;
+ALTER TABLE consignment_item FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON consignment_item
+    USING (tenant_id = current_setting('app.current_tenant', true));
+
+-- == V036 ==
+ALTER TABLE activity_log ALTER COLUMN description DROP NOT NULL;
+
+-- == V037 ==
+ALTER TABLE notifications ALTER COLUMN title DROP NOT NULL;

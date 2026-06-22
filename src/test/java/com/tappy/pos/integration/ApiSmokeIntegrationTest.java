@@ -99,23 +99,11 @@ class ApiSmokeIntegrationTest {
         List<String> versions = jdbc.queryForList(
                 "select version from flyway_schema_history where success = true order by installed_rank",
                 String.class);
-        // V001 = consolidated bootstrap; V002/V003 = bakery pre-order + recipe; V004 = repair
-        // module; V005 = per-variant barcode index; V006 = FnB service charge; V007 = order channel;
-        // V008 = FnB modifier groups; V009 = modifier selections on lines; V010 = room housekeeping;
-        // V011 = customer id_number (KYC); V012 = shop-own gold-price history; V013 = order split/merge;
-        // V014 = table reservations; V015 = loyalty stamp card; V016 = order delivery; V017 = order
-        // stamps awarded; V018 = order prescription; V019 = customer debt (công nợ); V020 = product alt-unit;
-        // V021 = order-item sell unit; V022 = wholesale price + customer type; V023 = order quote (báo giá);
-        // V024 = pawn signature; V025 = rename tennis-court shop type; V026 = booking deposit;
-        // V027 = booking recurrence; V028 = booking resource rate; V029 = buyback; V030 = trade-in +
-        // installment features; V031 = vehicle unit; V032 = trade-in; V033 = installment schedule;
-        // V034 = product catalog ISBN; V035 = consignment; V036 = activity-log i18n (description_key/args);
-        // V037 = notification i18n (title_key/message_key + args); V038 = order notes/reasons i18n;
-        // V039 = order table_label i18n; V040 = force RLS on incremental tables;
-        // V041 = combo_items tenant_id + RLS.
-        assertThat(versions).containsExactly("001", "002", "003", "004", "005", "006", "007", "008", "009",
-                "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023",
-                "024", "025", "026", "027", "028", "029", "030", "031", "032", "033", "034", "035", "036", "037", "038", "039", "040", "041");
+        // V001 is the single consolidated bootstrap: all pre-production migrations (the former
+        // V002–V044) were folded into it (ALTERs merged into their CREATE TABLE, new tables +
+        // RLS appended, seed data merged, pure data-migrations dropped). There is now exactly
+        // one applied migration.
+        assertThat(versions).containsExactly("001");
 
         // Tables created by the bootstrap (formerly separate booking/cash-drawer migrations).
         assertThat(tableExists("tenants")).isTrue();

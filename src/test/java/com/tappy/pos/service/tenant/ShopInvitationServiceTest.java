@@ -202,7 +202,7 @@ class ShopInvitationServiceTest {
         when(tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(List.of("CASHIER")))
                 .thenReturn(List.of("POS", "ORDER"));
         when(jwtTokenProvider.generateTokenWithRolesAndFeatures(eq("newbie"), eq(List.of("CASHIER")),
-                eq(List.of("POS", "ORDER")), eq(false), eq("NAIL_SHOP"), eq("shop1"))).thenReturn("JWT");
+                eq(List.of("POS", "ORDER")), eq(false), eq("NAIL_SHOP"), eq("shop1"), any())).thenReturn("JWT");
 
         Map<String, Object> result = service.join("abc234", "newbie");
 
