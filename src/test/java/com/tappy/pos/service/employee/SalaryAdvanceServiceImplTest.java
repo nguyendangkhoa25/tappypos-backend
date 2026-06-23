@@ -104,7 +104,7 @@ class SalaryAdvanceServiceImplTest {
         verify(advanceRepository).save(any(SalaryAdvance.class));
         verify(activityLogService).logAsync(eq("tenant1"), eq("testuser"), isNull(),
                 eq(ActivityAction.SALARY_ADVANCE_CREATED), eq("SALARY_ADVANCE"),
-                anyString(), anyString(), isNull());
+                anyString(), anyString(), isNull(), any(), any());
     }
 
     @Test
@@ -202,7 +202,7 @@ class SalaryAdvanceServiceImplTest {
         verify(advanceRepository).delete(advance);
         verify(activityLogService).logAsync(eq("tenant1"), eq("testuser"), isNull(),
                 eq(ActivityAction.SALARY_ADVANCE_DELETED), eq("SALARY_ADVANCE"),
-                anyString(), anyString(), isNull());
+                anyString(), anyString(), isNull(), any());
     }
 
     @Test

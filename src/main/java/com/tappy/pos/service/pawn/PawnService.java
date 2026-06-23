@@ -30,6 +30,12 @@ public interface PawnService {
 
     PawnResponse extendPawn(Long pawnId, PawnRequest pawnRequest);
 
+    /** Stores the borrower's drawn signature against a PAWNED contract (digital contract, §4d). */
+    PawnResponse signContract(Long pawnId, SignPawnRequest request);
+
+    /** Clears the stored signature so the contract can be re-signed. */
+    PawnResponse removeSignature(Long pawnId);
+
     PawnKPIs getPawnKPIs(DateFilterRequest dateFilter);
 
     FileSystemResource exportPawns(SearchPawnRequest searchRequest) throws IOException;
@@ -51,4 +57,11 @@ public interface PawnService {
     PawnResponse lookupByCode(String code);
 
     Map<String, Object> getCustomerPawnSummary(Long customerId);
+
+    /**
+     * Per-customer pawn KPI rankings for the given date range. Returns a map with five lists —
+     * topPawnedAmount, topPawnedCount, topCompletedPawnAmount, topCompletedPawnCount, topInterestAmount —
+     * each a ranking of customers used by the customer pawn-KPI dashboard widget.
+     */
+    Map<String, Object> getCustomerPawnKpi(DateFilterRequest filter);
 }

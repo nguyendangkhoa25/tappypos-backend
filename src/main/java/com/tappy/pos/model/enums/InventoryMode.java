@@ -23,5 +23,6 @@ public enum InventoryMode {
 
     public static final java.util.Set<String> UNIQUE_CODES =
             java.util.Set.of("JEWELRY", "WATCH", "BIKE", "CAR", "MOTORBIKE",
+                             "E_BIKE", "BICYCLE",
                              "SILVER", "SILVER_FIXED", "GEM_DIAMOND");
 }

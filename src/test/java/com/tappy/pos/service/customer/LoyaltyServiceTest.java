@@ -1,5 +1,9 @@
 package com.tappy.pos.service.customer;
 
+import com.tappy.pos.service.audit.ActivityLogService;
+
+import com.tappy.pos.config.AuthContext;
+
 import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.loyalty.CreateLoyaltyTierRequest;
@@ -48,6 +52,12 @@ class LoyaltyServiceTest {
     @Mock private CustomerRepository customerRepository;
     @Mock private MessageService messageService;
     @Mock private TenantContext tenantContext;
+
+    @Mock
+    private AuthContext authContext;
+
+    @Mock
+    private ActivityLogService activityLogService;
 
     @InjectMocks
     private LoyaltyService loyaltyService;

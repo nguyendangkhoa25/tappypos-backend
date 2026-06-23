@@ -89,12 +89,17 @@ public class JwtTokenProvider {
     }
 
     public String generateTokenWithRolesAndFeatures(String username, java.util.List<String> roles, java.util.List<String> features, boolean isMasterUser, String shopType, String tenantId) {
+        return generateTokenWithRolesAndFeatures(username, roles, features, isMasterUser, shopType, tenantId, null);
+    }
+
+    public String generateTokenWithRolesAndFeatures(String username, java.util.List<String> roles, java.util.List<String> features, boolean isMasterUser, String shopType, String tenantId, Integer featuresVersion) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("roles", roles);
         claims.put("features", features);
         claims.put("isMasterUser", isMasterUser);
         if (shopType != null) claims.put("shopType", shopType);
         if (tenantId != null) claims.put("tid", java.util.List.of(tenantId));
+        if (featuresVersion != null) claims.put("fv", featuresVersion);
         return generateTokenWithClaims(username, claims);
     }
 
@@ -114,6 +119,10 @@ public class JwtTokenProvider {
      * tenantId is null for master users and embedded for shop users to allow cross-tenant forgery detection.
      */
     public String generateTokenWithSession(String username, java.util.List<String> roles, java.util.List<String> features, boolean isMasterUser, String sessionId, String shopType, String tenantId) {
+        return generateTokenWithSession(username, roles, features, isMasterUser, sessionId, shopType, tenantId, null);
+    }
+
+    public String generateTokenWithSession(String username, java.util.List<String> roles, java.util.List<String> features, boolean isMasterUser, String sessionId, String shopType, String tenantId, Integer featuresVersion) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("roles", roles);
         claims.put("features", features);
@@ -121,6 +130,7 @@ public class JwtTokenProvider {
         claims.put("sid", sessionId);
         if (shopType != null) claims.put("shopType", shopType);
         if (tenantId != null) claims.put("tid", java.util.List.of(tenantId));
+        if (featuresVersion != null) claims.put("fv", featuresVersion);
         return generateTokenWithClaims(username, claims);
     }
 
@@ -237,6 +247,15 @@ public class JwtTokenProvider {
             return (java.util.List<String>) featuresObj;
         }
         return new java.util.ArrayList<>();
+    }
+
+    /**
+     * Extract the features-version (`fv`) claim from the token.
+     * Returns null for tokens issued before this feature (backward compatible).
+     */
+    public Integer getFeaturesVersionFromToken(String token) {
+        Object fv = getClaimsFromToken(token).get("fv");
+        return fv instanceof Number ? ((Number) fv).intValue() : null;
     }
 
     /**

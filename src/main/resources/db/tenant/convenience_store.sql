@@ -65,6 +65,68 @@ VALUES
     (current_setting('app.current_tenant', true), 'Nhà cung cấp thực phẩm & tiêu dùng',  'VND-002', NULL, NULL, 'NET_30', TRUE, FALSE)
 ON CONFLICT (code, tenant_id) DO NOTHING;
 
+-- ── 5. Sample products ────────────────────────────────────────
+-- Starter catalogue so the shop has something sellable on day one (per the seed
+-- convention every shop type ships 15–40 sample items). All FOOD/BEVERAGE/CONVENIENCE.
+INSERT INTO product
+    (tenant_id, sku, name, description, price, cost_price, unit, product_type_id, status)
+SELECT
+    current_setting('app.current_tenant', true),
+    CONCAT('CVS-DEMO-', LPAD(seq.n::text, 3, '0')),
+    seq.item_name, seq.item_desc, seq.item_price, seq.item_cost, seq.item_unit,
+    pt.id, 'ACTIVE'
+FROM (VALUES
+    (1,  'Nước suối Lavie 500ml',       'Nước suối đóng chai 500ml',            5000,   3000,  'bottle', 'BEVERAGE'),
+    (2,  'Coca-Cola lon 330ml',         'Nước ngọt có ga lon 330ml',           10000,   6500,  'can',    'BEVERAGE'),
+    (3,  'Trà xanh không độ 455ml',     'Trà xanh đóng chai 455ml',            10000,   6000,  'bottle', 'BEVERAGE'),
+    (4,  'Bia Tiger lon 330ml',         'Bia lon 330ml',                       18000,  13000,  'can',    'BEVERAGE'),
+    (5,  'Mì gói Hảo Hảo',              'Mì ăn liền tôm chua cay',              4500,   2800,  'piece',  'FOOD'),
+    (6,  'Bánh mì sandwich',            'Bánh mì sandwich đóng gói',           15000,   9000,  'piece',  'FOOD'),
+    (7,  'Snack khoai tây Lays',        'Snack khoai tây vị tự nhiên',         12000,   7500,  'piece',  'FOOD'),
+    (8,  'Kẹo singum Doublemint',       'Kẹo cao su bạc hà',                    8000,   4500,  'piece',  'FOOD'),
+    (9,  'Sữa tươi Vinamilk 180ml',     'Sữa tươi tiệt trùng hộp 180ml',        8000,   5500,  'box',    'FOOD'),
+    (10, 'Khăn giấy Pulppy',            'Khăn giấy rút hộp',                   20000,  12000,  'piece',  'CONVENIENCE'),
+    (11, 'Bàn chải đánh răng',          'Bàn chải đánh răng người lớn',        15000,   8000,  'piece',  'CONVENIENCE'),
+    (12, 'Nước rửa chén Sunlight 750g', 'Nước rửa chén chai 750g',             28000,  18000,  'bottle', 'CONVENIENCE')
+) AS seq(n, item_name, item_desc, item_price, item_cost, item_unit, type_code)
+JOIN product_type pt
+    ON pt.code = seq.type_code
+   AND pt.tenant_id = current_setting('app.current_tenant', true)
+ON CONFLICT (sku, tenant_id) DO NOTHING;
+
+-- ── 6. Product → category links ───────────────────────────────
+INSERT INTO product_category (tenant_id, product_id, category_id)
+SELECT current_setting('app.current_tenant', true), p.id, c.id
+FROM (VALUES
+    ('CVS-DEMO-001', 'Đồ uống'),
+    ('CVS-DEMO-002', 'Đồ uống'),
+    ('CVS-DEMO-003', 'Đồ uống'),
+    ('CVS-DEMO-004', 'Đồ uống'),
+    ('CVS-DEMO-005', 'Thực phẩm'),
+    ('CVS-DEMO-006', 'Thực phẩm'),
+    ('CVS-DEMO-007', 'Bánh kẹo & Snacks'),
+    ('CVS-DEMO-008', 'Bánh kẹo & Snacks'),
+    ('CVS-DEMO-009', 'Sữa & Sản phẩm sữa'),
+    ('CVS-DEMO-010', 'Vệ sinh cá nhân'),
+    ('CVS-DEMO-011', 'Vệ sinh cá nhân'),
+    ('CVS-DEMO-012', 'Đồ gia dụng')
+) AS m(sku, cat)
+JOIN product p ON p.sku = m.sku AND p.tenant_id = current_setting('app.current_tenant', true)
+JOIN category c ON c.name = m.cat AND c.parent_id IS NULL
+    AND c.tenant_id = current_setting('app.current_tenant', true)
+ON CONFLICT (product_id, category_id) DO NOTHING;
+
+-- ── 7. Inventory for sample products ──────────────────────────
+INSERT INTO inventory
+    (tenant_id, product_id, quantity_in_stock, reorder_level, reorder_quantity,
+     unit_cost, warehouse_location, deleted)
+SELECT
+    p.tenant_id, p.id, 100, 20, 50, p.cost_price, 'Quầy hàng', FALSE
+FROM product p
+WHERE p.sku LIKE 'CVS-DEMO-%'
+  AND p.tenant_id = current_setting('app.current_tenant', true)
+ON CONFLICT (product_id) WHERE variant_id IS NULL AND deleted = false DO NOTHING;
+
 -- ── 8. Loyalty program ───────────────────────────────────────
 INSERT INTO loyalty_programs
     (tenant_id, points_per_amount, amount_per_points, redemption_points_per_discount,
@@ -96,7 +158,7 @@ INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_def
   "showCashDetails": true,
   "paperWidth": "80mm",
   "autoClose": true
-}', TRUE, 'TRACKED'),
+}', TRUE),
     -- Product stamp: barcode + expiry for FMCG
     (current_setting('app.current_tenant', true), 'PRODUCT_STAMP', 'Tem sản phẩm', '{
   "showShopName": true,
@@ -108,7 +170,7 @@ INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_def
   "showExpiry": true,
   "labelWidth": 60,
   "labelHeight": 38
-}', TRUE, 'TRACKED'),
+}', TRUE),
     -- Inventory stamp: batch + expiry + location for stock management
     (current_setting('app.current_tenant', true), 'INVENTORY_STAMP', 'Tem kho', '{
   "showShopName": true,
@@ -120,7 +182,7 @@ INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_def
   "showExpiry": true,
   "labelWidth": 60,
   "labelHeight": 38
-}', TRUE, 'TRACKED')
+}', TRUE)
 ON CONFLICT (template_type, name, tenant_id) DO NOTHING;
 
 -- ── 11. Attribute groups & definitions (CONVENIENCE type) ─────

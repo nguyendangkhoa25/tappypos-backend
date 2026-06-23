@@ -7,9 +7,11 @@ public enum ShopType {
     JEWELRY("Trang sức / Vàng bạc",         "Jewelry / Gold"),
     PAWN_SHOP("Tiệm cầm đồ",                "Pawn Shop"),
     CONVENIENCE_STORE("Tạp hóa / Bán lẻ tổng hợp",   "Convenience Store / General Retail"),
+    BUILDING_MATERIALS("Cửa hàng vật liệu xây dựng", "Building Materials Store"),
     PHARMACY("Nhà thuốc / Dược phẩm",       "Pharmacy / Drugstore"),
     ELECTRONICS("Điện tử / Điện máy",       "Electronics"),
     FOOD_BEVERAGE("Thực phẩm / Đồ uống",    "Food & Beverage"),
+    BAKERY("Tiệm bánh",                     "Bakery"),
     FASHION("Thời trang / May mặc",         "Fashion / Clothing"),
     BARBER_SHOP("Tiệm cắt tóc / Salon",     "Barber Shop / Salon"),
     BARBER_SHOP_MEN("Tiệm tóc nam / Barber",         "Men's Barber Shop"),
@@ -28,7 +30,11 @@ public enum ShopType {
     PUB_GOAT("Quán nhậu chuyên dê",         "Goat Pub"),
     PUB_BEEF("Quán nhậu chuyên bò",         "Beef Pub"),
     BILLIARDS_HALL("Quán bida / Billiards",  "Billiards Hall"),
-    TENNIS_COURT("Sân tennis / Sân thể thao", "Tennis Court"),
+    SPORT_COURT("Sân tennis / Sân thể thao", "Sports Court"),
+    HOTEL("Khách sạn",                       "Hotel"),
+    MOTEL("Nhà nghỉ",                        "Motel"),
+    HOMESTAY("Homestay / Nhà nghỉ dưỡng",    "Homestay"),
+    VEHICLE_SHOP("Mua bán xe máy / xe đạp điện / xe đạp", "Vehicle Shop"),
     OTHER("Khác",                           "Other");
 
     private final String displayName;

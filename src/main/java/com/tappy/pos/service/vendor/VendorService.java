@@ -74,7 +74,7 @@ public class VendorService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.VENDOR_CREATED, "VENDOR", String.valueOf(saved.getId()),
-                "Thêm nhà cung cấp: " + saved.getName(), null);
+                "activity.vendor.created", null, saved.getName());
         return mapToDTO(saved);
     }
 
@@ -106,7 +106,7 @@ public class VendorService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.VENDOR_UPDATED, "VENDOR", String.valueOf(updated.getId()),
-                "Cập nhật nhà cung cấp: " + updated.getName(), null);
+                "activity.vendor.updated", null, updated.getName());
         return mapToDTO(updated);
     }
 
@@ -117,6 +117,10 @@ public class VendorService {
                 .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.vendor.not.found", id)));
         vendor.softDelete();
         vendorRepository.save(vendor);
+        String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.VENDOR_DELETED, "VENDOR", String.valueOf(vendor.getId()),
+                "activity.vendor.deleted", null, vendor.getName());
     }
 
     public VendorDTO mapToDTO(Vendor v) {

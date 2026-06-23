@@ -13,6 +13,7 @@ import com.tappy.pos.model.dto.finance.DefaultExpenseRequest;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.finance.DefaultExpenseService;
 import com.tappy.pos.service.finance.ShopExpenseService;
+import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.service.notification.NotificationService;
 import com.tappy.pos.service.tenant.TenantFeatureService;
 import com.tappy.pos.service.tenant.TenantProvisioningService;
@@ -96,6 +97,12 @@ public class OnboardingController {
                 "NOTIFICATION", "FEEDBACK", "ACTIVITY_LOG", "SHOP_INFO",
                 "PRINT_TEMPLATE", "BANK_ACCOUNT", "INVOICE", "ACCOUNTING"
         ));
+        m.put(ShopType.BUILDING_MATERIALS, List.of(
+                "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "PRODUCT", "POS", "INVENTORY",
+                "CUSTOMER", "EMPLOYEE", "EXPENSE", "REVENUE", "USER", "VENDOR",
+                "NOTIFICATION", "FEEDBACK", "ACTIVITY_LOG", "SHOP_INFO",
+                "PRINT_TEMPLATE", "BANK_ACCOUNT", "INVOICE", "ACCOUNTING"
+        ));
         m.put(ShopType.PHARMACY, List.of(
                 "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "PRODUCT", "POS", "INVENTORY",
                 "CUSTOMER", "EMPLOYEE", "EXPENSE", "REVENUE", "USER", "VENDOR",
@@ -114,6 +121,15 @@ public class OnboardingController {
                 "NOTIFICATION", "FEEDBACK", "ACTIVITY_LOG", "SHOP_INFO",
                 "PRINT_TEMPLATE", "BANK_ACCOUNT", "INVOICE", "ACCOUNTING"
         ));
+        // Bakery (tiệm bánh): retail counter + back office + APPOINTMENT (cake pre-orders)
+        // + GOOGLE_DRIVE (custom cake design photos). Mirrors the BAKERY feature profile.
+        m.put(ShopType.BAKERY, List.of(
+                "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "PRODUCT", "POS", "INVENTORY",
+                "CUSTOMER", "LOYALTY", "APPOINTMENT", "EMPLOYEE", "EXPENSE", "REVENUE",
+                "USER", "VENDOR", "PROMOTION", "NOTIFICATION", "FEEDBACK", "ACTIVITY_LOG",
+                "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "INVOICE", "ACCOUNTING",
+                "GOOGLE_DRIVE"
+        ));
         List<String> pawnBase = List.of(
                 "DASHBOARD", "PAWN", "ORDER", "ORDER_VIEW_ALL", "POS", "PRODUCT", "CUSTOMER",
                 "EMPLOYEE", "EXPENSE", "REVENUE", "USER",
@@ -127,7 +143,9 @@ public class OnboardingController {
 
     private static final Map<String, ShopType> SHOP_TYPE_MAP = Map.ofEntries(
             Map.entry("CONVENIENCE_STORE",  ShopType.CONVENIENCE_STORE),
+            Map.entry("BUILDING_MATERIALS", ShopType.BUILDING_MATERIALS),
             Map.entry("FOOD_BEVERAGE",      ShopType.FOOD_BEVERAGE),
+            Map.entry("BAKERY",             ShopType.BAKERY),
             Map.entry("RESTAURANT",         ShopType.RESTAURANT),
             Map.entry("FASHION",            ShopType.FASHION),
             Map.entry("ELECTRONICS",        ShopType.ELECTRONICS),
@@ -156,7 +174,9 @@ public class OnboardingController {
     static {
         Map<ShopType, String> m = new EnumMap<>(ShopType.class);
         m.put(ShopType.CONVENIENCE_STORE, "gen");
+        m.put(ShopType.BUILDING_MATERIALS, "vlxd");
         m.put(ShopType.FOOD_BEVERAGE, "food");
+        m.put(ShopType.BAKERY, "bake");
         m.put(ShopType.RESTAURANT, "res");
         m.put(ShopType.FASHION, "fsh");
         m.put(ShopType.ELECTRONICS, "elec");
@@ -186,7 +206,9 @@ public class OnboardingController {
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getShopTypes() {
         List<Map<String, Object>> types = Arrays.asList(
                 shopEntry("CONVENIENCE_STORE", "Cửa hàng tổng hợp"),
+                shopEntry("BUILDING_MATERIALS", "Cửa hàng vật liệu xây dựng"),
                 shopEntry("FOOD_BEVERAGE", "Thực phẩm / Đồ uống"),
+                shopEntry("BAKERY", "Tiệm bánh"),
                 shopEntry("RESTAURANT", "Quán ăn / Nhà hàng"),
                 shopEntry("COFFEE_SHOP", "Quán cà phê"),
                 shopEntry("PUB",         "Quán nhậu"),
@@ -336,7 +358,8 @@ public class OnboardingController {
             List<String> featureNames = tenantFeatureService.getAccessibleFeaturesByRoleAndTenant(roleNames);
 
             String accessToken = jwtTokenProvider.generateTokenWithRolesAndFeatures(
-                    username, roleNames, featureNames, false, shopType.name(), tenantId);
+                    username, roleNames, featureNames, false, shopType.name(), tenantId,
+                    tenantEntity.getFeaturesVersion());
 
             log.info("Self-provisioned tenant {} for user {} with {} features",
                     tenantId, username, featureNames.size());
@@ -660,15 +683,14 @@ public class OnboardingController {
 
     private void sendWelcomeNotification(Tenant tenant, String username, String tenantId) {
         try {
-            Locale vi = new Locale("vi");
             String expiryFormatted = tenant.getExpirationDate() != null
                     ? tenant.getExpirationDate().format(VN_DATE)
                     : LocalDate.now().plusYears(1).format(VN_DATE);
-            String title = messageService.getMessage("notification.shop.welcome.title", vi);
-            String message = messageService.getMessage("notification.shop.welcome.self.message", vi,
-                    tenant.getName(), expiryFormatted);
             notificationService.pushSystemAsync(username, Notification.NotificationType.SYSTEM,
-                    title, message, "TENANT", tenant.getId(), tenantId);
+                    LocalizedText.of("notification.shop.welcome.title"),
+                    LocalizedText.of("notification.shop.welcome.self.message",
+                            tenant.getName(), expiryFormatted),
+                    "TENANT", tenant.getId(), tenantId);
         } catch (Exception e) {
             log.warn("Failed to send welcome notification to {}: {}", username, e.getMessage());
         }

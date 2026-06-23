@@ -17,4 +17,8 @@ public class LoyaltyProgramDTO {
     private BigDecimal redemptionDiscountAmount;
     private Integer minRedemptionPoints;
     private Boolean isActive;
+    // Stamp card ("mua N ly tặng 1")
+    private Boolean stampCardEnabled;
+    private Integer stampCardSize;
+    private String stampCardReward;
 }

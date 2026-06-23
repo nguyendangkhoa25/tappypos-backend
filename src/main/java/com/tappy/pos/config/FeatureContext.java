@@ -19,11 +19,22 @@ public class FeatureContext {
 
     private static final ThreadLocal<Set<String>> currentFeatures = new ThreadLocal<>();
     private static final ThreadLocal<Boolean> masterUserFlag = new ThreadLocal<>();
+    private static final ThreadLocal<Integer> tokenFeaturesVersion = new ThreadLocal<>();
 
     public void set(List<String> features, boolean isMasterUser) {
+        set(features, isMasterUser, null);
+    }
+
+    public void set(List<String> features, boolean isMasterUser, Integer featuresVersion) {
         currentFeatures.set(features != null ? new HashSet<>(features) : Collections.emptySet());
         masterUserFlag.set(isMasterUser);
-        log.debug("FeatureContext set: isMasterUser={}, features={}", isMasterUser, features);
+        tokenFeaturesVersion.set(featuresVersion);
+        log.debug("FeatureContext set: isMasterUser={}, fv={}, features={}", isMasterUser, featuresVersion, features);
+    }
+
+    /** The `fv` claim from the current request's JWT, or null for older tokens / no token. */
+    public Integer getTokenFeaturesVersion() {
+        return tokenFeaturesVersion.get();
     }
 
     public boolean hasFeature(String feature) {
@@ -38,5 +49,6 @@ public class FeatureContext {
     public void clear() {
         currentFeatures.remove();
         masterUserFlag.remove();
+        tokenFeaturesVersion.remove();
     }
 }

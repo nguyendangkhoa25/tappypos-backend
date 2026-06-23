@@ -19,6 +19,7 @@ import com.tappy.pos.repository.employee.SalaryRepository;
 import com.tappy.pos.repository.order.OrderItemRepository;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -104,7 +105,7 @@ public class SalaryServiceImpl implements SalaryService {
         activityLogService.logAsync(
                 tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.SALARY_GENERATED, "SALARY",
-                null, "Tạo bảng lương tháng " + month + "/" + year, null);
+                null, "activity.salary.generated", null, month, year);
 
         return result;
     }
@@ -167,7 +168,7 @@ public class SalaryServiceImpl implements SalaryService {
         salary.setStatus(SalaryStatus.APPROVED);
         salary.setApprovedAt(LocalDateTime.now());
         Salary saved = salaryRepository.save(salary);
-        logAction(ActivityAction.SALARY_APPROVED, saved.getId(), "Phê duyệt lương " + saved.getEmployeeName());
+        logAction(ActivityAction.SALARY_APPROVED, saved.getId(), "activity.salary.approved", saved.getEmployeeName());
 
         if (request != null && request.isSendNotification()) {
             pushApprovalNotification(saved);
@@ -184,7 +185,7 @@ public class SalaryServiceImpl implements SalaryService {
         salary.setPaidAt(LocalDateTime.now());
         Salary saved = salaryRepository.save(salary);
         orderItemRepository.markSalaryCalculated(saved.getId());
-        logAction(ActivityAction.SALARY_PAID, saved.getId(), "Thanh toán lương " + saved.getEmployeeName());
+        logAction(ActivityAction.SALARY_PAID, saved.getId(), "activity.salary.paid", saved.getEmployeeName());
         if (request != null && request.isSendNotification()) {
             pushPaymentNotification(saved);
         }
@@ -261,14 +262,13 @@ public class SalaryServiceImpl implements SalaryService {
             employeeRepository.findById(salary.getEmployeeId()).ifPresent(emp -> {
                 if (emp.getUserId() == null) return;
                 userRepository.findById(emp.getUserId()).ifPresent(user -> {
-                    String title   = "Bảng lương đã được phê duyệt";
-                    String message = "Bảng lương tháng " + salary.getMonth() + "/" + salary.getYear()
-                            + " của bạn đã được phê duyệt. Tổng lương: "
-                            + String.format("%,.0f", salary.getTotalAmount()) + " ₫";
+                    String amountStr = String.format("%,.0f", salary.getTotalAmount()) + " ₫";
                     notificationService.pushSystemAsync(
                             user.getUsername(),
                             Notification.NotificationType.SYSTEM,
-                            title, message,
+                            LocalizedText.of("notification.salary.approved.title"),
+                            LocalizedText.of("notification.salary.approved.message",
+                                    String.valueOf(salary.getMonth()), String.valueOf(salary.getYear()), amountStr),
                             "SALARY", salary.getId(),
                             tenantContext.getCurrentTenantId());
                 });
@@ -283,14 +283,13 @@ public class SalaryServiceImpl implements SalaryService {
             employeeRepository.findById(salary.getEmployeeId()).ifPresent(emp -> {
                 if (emp.getUserId() == null) return;
                 userRepository.findById(emp.getUserId()).ifPresent(user -> {
-                    String title   = "Lương đã được thanh toán";
-                    String message = "Lương tháng " + salary.getMonth() + "/" + salary.getYear()
-                            + " của bạn đã được thanh toán. Tổng lương: "
-                            + String.format("%,.0f", salary.getTotalAmount()) + " ₫";
+                    String amountStr = String.format("%,.0f", salary.getTotalAmount()) + " ₫";
                     notificationService.pushSystemAsync(
                             user.getUsername(),
                             Notification.NotificationType.SYSTEM,
-                            title, message,
+                            LocalizedText.of("notification.salary.paid.title"),
+                            LocalizedText.of("notification.salary.paid.message",
+                                    String.valueOf(salary.getMonth()), String.valueOf(salary.getYear()), amountStr),
                             "SALARY", salary.getId(),
                             tenantContext.getCurrentTenantId());
                 });
@@ -306,10 +305,10 @@ public class SalaryServiceImpl implements SalaryService {
                         messageService.getMessage("error.salary.not.found", id)));
     }
 
-    private void logAction(ActivityAction action, Long targetId, String desc) {
+    private void logAction(ActivityAction action, Long targetId, String messageKey, Object... args) {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
-                action, "SALARY", targetId == null ? null : targetId.toString(), desc, null);
+                action, "SALARY", targetId == null ? null : targetId.toString(), messageKey, null, args);
     }
 
     private SalaryDTO mapToDTO(Salary s) {

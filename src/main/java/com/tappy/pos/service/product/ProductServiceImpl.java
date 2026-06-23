@@ -27,6 +27,7 @@ import java.util.stream.Collectors;
 import com.tappy.pos.service.audit.ActivityLogService;
 import com.tappy.pos.service.storage.R2StorageService;
 import com.tappy.pos.service.storage.R2CleanupService;
+import com.tappy.pos.client.GoogleBooksClient;
 import com.tappy.pos.client.OpenFoodFactsClient;
 import com.tappy.pos.util.BarcodeValidator;
 import net.coobird.thumbnailator.Thumbnails;
@@ -50,9 +51,12 @@ public class ProductServiceImpl implements ProductService {
     private final TenantContext tenantContext;
     private final ProductCatalogRepository productCatalogRepository;
     private final OpenFoodFactsClient openFoodFactsClient;
+    private final GoogleBooksClient googleBooksClient;
     private final ProductCatalogService productCatalogService;
     private final InventoryRepository inventoryRepository;
     private final ProductVariantRepository productVariantRepository;
+    private final ProductVariantService productVariantService;
+    private final com.tappy.pos.repository.modifier.ProductModifierGroupRepository productModifierGroupRepository;
     private final R2StorageService r2StorageService;
     private final R2CleanupService r2CleanupService;
     private final com.tappy.pos.repository.order.OrderItemRepository orderItemRepository;
@@ -95,9 +99,16 @@ public class ProductServiceImpl implements ProductService {
                 .commissionRate(request.getCommissionRate())
                 .durationMinutes(request.getDurationMinutes() != null ? request.getDurationMinutes() : 0)
                 .unit(request.getUnit())
+                .altUnit(request.getAltUnit())
+                .altUnitFactor(request.getAltUnitFactor())
+                .altUnitPrice(request.getAltUnitPrice())
+                .wholesalePrice(request.getWholesalePrice())
                 .shelfLocation(request.getShelfLocation())
                 .sourcePawnId(request.getSourcePawnId())
                 .inventoryMode(com.tappy.pos.model.enums.InventoryMode.derive(productType.getCode(), request.getSourcePawnId()))
+                .productKind(request.getProductKind() != null
+                        ? com.tappy.pos.model.enums.ProductKind.valueOf(request.getProductKind())
+                        : com.tappy.pos.model.enums.ProductKind.FINISHED)
                 .vendor(vendor)
                 .status(Product.ProductStatus.valueOf(request.getStatus()))
                 .deleted(false)
@@ -208,7 +219,7 @@ public class ProductServiceImpl implements ProductService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.PRODUCT_CREATED, "PRODUCT", savedProduct.getId().toString(),
-                "Created product: " + savedProduct.getName(), null);
+                "activity.product.created", null, savedProduct.getName());
 
         return mapToDTO(savedProduct);
     }
@@ -247,8 +258,15 @@ public class ProductServiceImpl implements ProductService {
             product.setDurationMinutes(request.getDurationMinutes());
         }
         product.setUnit(request.getUnit());
+        product.setAltUnit(request.getAltUnit());
+        product.setAltUnitFactor(request.getAltUnitFactor());
+        product.setAltUnitPrice(request.getAltUnitPrice());
+        product.setWholesalePrice(request.getWholesalePrice());
         product.setShelfLocation(request.getShelfLocation());
         product.setStatus(Product.ProductStatus.valueOf(request.getStatus()));
+        if (request.getProductKind() != null && !request.getProductKind().isBlank()) {
+            product.setProductKind(com.tappy.pos.model.enums.ProductKind.valueOf(request.getProductKind()));
+        }
 
         if (request.getVendorId() != null) {
             Vendor vendor = vendorRepository.findById(request.getVendorId())
@@ -328,7 +346,7 @@ public class ProductServiceImpl implements ProductService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.PRODUCT_UPDATED, "PRODUCT", updated.getId().toString(),
-                "Updated product: " + updated.getName(), null);
+                "activity.product.updated", null, updated.getName());
 
         return mapToDTO(updated);
     }
@@ -354,7 +372,7 @@ public class ProductServiceImpl implements ProductService {
 
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.PRODUCT_DELETED, "PRODUCT", id.toString(),
-                "Deleted product: " + productName, null);
+                "activity.product.deleted", null, productName);
     }
 
     @Override
@@ -403,7 +421,7 @@ public class ProductServiceImpl implements ProductService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.PRODUCT_IMAGE_UPDATED, "PRODUCT", id.toString(),
-                "Updated image for product: " + product.getName(), null);
+                "activity.product.image.updated", null, product.getName());
 
         log.info("Product image uploaded — productId: {}, key: {}", id, key);
         return mapToDTO(product);
@@ -425,7 +443,7 @@ public class ProductServiceImpl implements ProductService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.PRODUCT_IMAGE_DELETED, "PRODUCT", id.toString(),
-                "Deleted image for product: " + product.getName(), null);
+                "activity.product.image.deleted", null, product.getName());
 
         log.info("Product image deleted — productId: {}", id);
     }
@@ -457,8 +475,11 @@ public class ProductServiceImpl implements ProductService {
         Set<Long> productIdsWithVariants = productIds.isEmpty()
                 ? Collections.emptySet()
                 : productVariantRepository.findProductIdsWithActiveVariants(productIds);
+        Set<Long> productIdsWithModifiers = productIds.isEmpty()
+                ? Collections.emptySet()
+                : productModifierGroupRepository.findProductIdsWithModifiers(productIds);
 
-        return products.map(p -> mapToDTOWithVariantFlag(p, productIdsWithVariants.contains(p.getId())));
+        return products.map(p -> mapToDTOWithVariantFlag(p, productIdsWithVariants.contains(p.getId()), productIdsWithModifiers.contains(p.getId())));
     }
 
     @Override
@@ -470,7 +491,10 @@ public class ProductServiceImpl implements ProductService {
         Set<Long> productIdsWithVariants = productIds.isEmpty()
                 ? Collections.emptySet()
                 : productVariantRepository.findProductIdsWithActiveVariants(productIds);
-        return products.map(p -> mapToDTOWithVariantFlag(p, productIdsWithVariants.contains(p.getId())));
+        Set<Long> productIdsWithModifiers = productIds.isEmpty()
+                ? Collections.emptySet()
+                : productModifierGroupRepository.findProductIdsWithModifiers(productIds);
+        return products.map(p -> mapToDTOWithVariantFlag(p, productIdsWithVariants.contains(p.getId()), productIdsWithModifiers.contains(p.getId())));
     }
 
     @Override
@@ -482,7 +506,10 @@ public class ProductServiceImpl implements ProductService {
         Set<Long> productIdsWithVariants = productIds.isEmpty()
                 ? Collections.emptySet()
                 : productVariantRepository.findProductIdsWithActiveVariants(productIds);
-        return products.map(p -> mapToDTOWithVariantFlag(p, productIdsWithVariants.contains(p.getId())));
+        Set<Long> productIdsWithModifiers = productIds.isEmpty()
+                ? Collections.emptySet()
+                : productModifierGroupRepository.findProductIdsWithModifiers(productIds);
+        return products.map(p -> mapToDTOWithVariantFlag(p, productIdsWithVariants.contains(p.getId()), productIdsWithModifiers.contains(p.getId())));
     }
 
     @Override
@@ -588,7 +615,7 @@ public class ProductServiceImpl implements ProductService {
         return max + 1;
     }
 
-    private ProductDTO mapToDTOWithVariantFlag(Product product, boolean hasVariants) {
+    private ProductDTO mapToDTOWithVariantFlag(Product product, boolean hasVariants, boolean hasModifiers) {
         Map<String, Object> attributes = new HashMap<>();
         for (ProductAttributeValue attrValue : product.getAttributeValues()) {
             attributes.put(attrValue.getAttribute().getCode(), attrValue.getValue());
@@ -629,6 +656,10 @@ public class ProductServiceImpl implements ProductService {
                 .commissionRate(product.getCommissionRate())
                 .durationMinutes(product.getDurationMinutes())
                 .unit(product.getUnit())
+                .altUnit(product.getAltUnit())
+                .altUnitFactor(product.getAltUnitFactor())
+                .altUnitPrice(product.getAltUnitPrice())
+                .wholesalePrice(product.getWholesalePrice())
                 .vendorId(product.getVendor() != null ? product.getVendor().getId() : null)
                 .vendorName(product.getVendor() != null ? product.getVendor().getName() : null)
                 .shelfLocation(product.getShelfLocation())
@@ -637,11 +668,13 @@ public class ProductServiceImpl implements ProductService {
                 .categoryNames(categoryNames)
                 .attributes(attributes)
                 .hasVariants(hasVariants)
+                .hasModifiers(hasModifiers)
                 .stockQuantity(stockQuantity)
                 .inStock(inStock)
                 .imageUrl(product.getImageUrl())
                 .sourcePawnId(product.getSourcePawnId())
                 .inventoryMode(product.getInventoryMode().name())
+                .productKind(product.getProductKind() != null ? product.getProductKind().name() : null)
                 .createdAt(product.getCreatedAt())
                 .updatedAt(product.getUpdatedAt())
                 .build();
@@ -662,6 +695,7 @@ public class ProductServiceImpl implements ProductService {
                 .collect(Collectors.toSet());
 
         boolean hasVariants = productVariantRepository.existsByProductIdAndDeletedAtIsNull(product.getId());
+        boolean hasModifiers = productModifierGroupRepository.existsByProductId(product.getId());
 
         boolean tracksStock = product.getInventoryMode() != com.tappy.pos.model.enums.InventoryMode.NO_INVENTORY;
         Long stockQuantity = null;
@@ -690,6 +724,10 @@ public class ProductServiceImpl implements ProductService {
                 .commissionRate(product.getCommissionRate())
                 .durationMinutes(product.getDurationMinutes())
                 .unit(product.getUnit())
+                .altUnit(product.getAltUnit())
+                .altUnitFactor(product.getAltUnitFactor())
+                .altUnitPrice(product.getAltUnitPrice())
+                .wholesalePrice(product.getWholesalePrice())
                 .vendorId(product.getVendor() != null ? product.getVendor().getId() : null)
                 .vendorName(product.getVendor() != null ? product.getVendor().getName() : null)
                 .shelfLocation(product.getShelfLocation())
@@ -698,11 +736,13 @@ public class ProductServiceImpl implements ProductService {
                 .categoryNames(categoryNames)
                 .attributes(attributes)
                 .hasVariants(hasVariants)
+                .hasModifiers(hasModifiers)
                 .stockQuantity(stockQuantity)
                 .inStock(inStock)
                 .imageUrl(product.getImageUrl())
                 .sourcePawnId(product.getSourcePawnId())
                 .inventoryMode(product.getInventoryMode().name())
+                .productKind(product.getProductKind() != null ? product.getProductKind().name() : null)
                 .createdAt(product.getCreatedAt())
                 .updatedAt(product.getUpdatedAt())
                 .build();
@@ -724,6 +764,20 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public BarcodeLookupResult lookupByBarcode(String barcode) {
+        // Layer 0: a per-variant barcode (fashion size/color SKU) — resolve the exact variant
+        // before the product-level barcode so scanning a SKU adds that exact size/color.
+        var variantHit = productVariantService.findActiveByBarcode(barcode);
+        if (variantHit.isPresent()) {
+            var parent = productRepository.findByIdAndDeletedFalse(variantHit.get().getProductId());
+            if (parent.isPresent()) {
+                return BarcodeLookupResult.builder()
+                        .source(BarcodeLookupResult.Source.SHOP_VARIANT)
+                        .product(mapToDTO(parent.get()))
+                        .variant(variantHit.get())
+                        .build();
+            }
+        }
+
         // Layer 1: shop's own inventory
         var shopProduct = productRepository.findByBarcodeAndDeletedFalse(barcode);
         if (shopProduct.isPresent()) {
@@ -748,6 +802,28 @@ public class ProductServiceImpl implements ProductService {
                             .description(c.getDescription())
                             .build())
                     .build();
+        }
+
+        // Layer 3a: live book lookup — an ISBN-13 (978/979 EAN-13) is a book and won't be in
+        // Open Food Facts, so route it to Google Books before the OFF fetch.
+        if (googleBooksClient.isEnabled() && BarcodeValidator.isIsbn13(barcode)) {
+            var bookHit = googleBooksClient.fetchByIsbn(barcode);
+            if (bookHit.isPresent()) {
+                var b = bookHit.get();
+                // Persist asynchronously so the caller gets a fast response
+                productCatalogService.saveFromBookAsync(b);
+                return BarcodeLookupResult.builder()
+                        .source(BarcodeLookupResult.Source.CATALOG)
+                        .catalog(BarcodeLookupResult.CatalogHint.builder()
+                                .barcode(barcode)
+                                .name(b.title != null ? b.title.trim() : barcode)
+                                .brand(b.publisher != null ? b.publisher.trim() : b.author)
+                                .categoryHint(b.category)
+                                .unit("Cuốn")
+                                .imageUrl(b.imageUrl)
+                                .build())
+                        .build();
+            }
         }
 
         // Layer 3: live Open Food Facts lookup — only when enabled and barcode is structurally valid

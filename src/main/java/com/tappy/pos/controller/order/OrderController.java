@@ -4,6 +4,7 @@ import com.tappy.pos.model.dto.ApiResponse;
 import com.tappy.pos.model.dto.tenant.ReceiptPreviewRequest;
 import com.tappy.pos.model.dto.order.AddOrderItemRequest;
 import com.tappy.pos.model.dto.order.CancelOrderRequest;
+import com.tappy.pos.model.dto.order.SettlePreOrderRequest;
 import com.tappy.pos.model.dto.order.MyWorkStatsDTO;
 import com.tappy.pos.model.dto.order.OrderDTO;
 import com.tappy.pos.model.dto.order.OrderItemDTO;
@@ -338,6 +339,20 @@ public class OrderController {
      * GET /api/orders/{id}
      * Returns a single order with its items.
      */
+    /** Quotations (báo giá) — orders flagged is_quote. */
+    @GetMapping("/quotes")
+    public ResponseEntity<ApiResponse<java.util.List<OrderDTO>>> getQuotes() {
+        log.info("Endpoint: GET /orders/quotes");
+        return ResponseEntity.ok(ApiResponse.success(orderService.getQuotes(), "OK"));
+    }
+
+    /** Convert a quotation into a real order (deduct stock + complete). */
+    @PostMapping("/{id}/convert-quote")
+    public ResponseEntity<ApiResponse<OrderDTO>> convertQuote(@PathVariable Long id) {
+        log.info("Endpoint: POST /orders/{}/convert-quote", id);
+        return ResponseEntity.ok(ApiResponse.success(orderService.convertQuote(id), "Quote converted"));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<OrderDTO>> getOrderById(@PathVariable Long id) {
         log.info("Endpoint: GET /orders/{}", id);
@@ -382,6 +397,50 @@ public class OrderController {
         return ResponseEntity.ok(ApiResponse.success(order, "Order cancelled successfully"));
     }
 
+    // ── Pre-order / deposit (đặt hàng + tiền cọc) — Phase 2 ─────────────────────
+    // Capability is a MODE of ORDER — no new feature flag (class-level @RequiresFeature("ORDER")).
+
+    /**
+     * GET /api/orders/preorders?status&from&to
+     * Pickup queue: pre-orders sorted by pickup time. Defaults to PENDING when status omitted.
+     * Scoped own-vs-all by ORDER_VIEW_ALL.
+     */
+    @GetMapping("/preorders")
+    public ResponseEntity<ApiResponse<Page<OrderDTO>>> getPreOrders(
+            @RequestParam(required = false, defaultValue = "PENDING") String status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        log.info("Endpoint: GET /orders/preorders status={} from={} to={}", status, from, to);
+        Page<OrderDTO> result = orderService.getPreOrders(status, from, to, PageRequest.of(page, size));
+        return ResponseEntity.ok(ApiResponse.success(result, "Pre-orders retrieved successfully"));
+    }
+
+    /**
+     * GET /api/orders/preorders/summary
+     * Dashboard summary: deposits held + upcoming pickup counts.
+     */
+    @GetMapping("/preorders/summary")
+    public ResponseEntity<ApiResponse<com.tappy.pos.model.dto.order.PreOrderSummaryDTO>> getPreOrderSummary() {
+        return ResponseEntity.ok(ApiResponse.success(orderService.getPreOrderSummary(), "Pre-order summary retrieved"));
+    }
+
+    /**
+     * POST /api/orders/preorders/{id}/settle
+     * Collect the remaining balance (còn lại) on a PENDING pre-order at pickup and complete it.
+     * Body: { paymentMethod, amountReceived }
+     */
+    @PostMapping("/preorders/{id}/settle")
+    public ResponseEntity<ApiResponse<OrderDTO>> settlePreOrder(
+            @PathVariable Long id,
+            @RequestBody(required = false) SettlePreOrderRequest request) {
+        log.info("Endpoint: POST /orders/preorders/{}/settle", id);
+        if (request == null) request = new SettlePreOrderRequest();
+        OrderDTO order = orderService.settlePreOrder(id, request);
+        return ResponseEntity.ok(ApiResponse.success(order, "Pre-order settled successfully"));
+    }
+
     /**
      * POST /api/orders/{id}/void
      * Transition COMPLETED → VOIDED. Restores inventory for all items.
@@ -395,6 +454,17 @@ public class OrderController {
         if (request == null) request = new VoidOrderRequest();
         OrderDTO order = orderService.voidOrder(id, request);
         return ResponseEntity.ok(ApiResponse.success(order, "Order voided successfully"));
+    }
+
+    /** Size/color swap on a completed order line — return the item's variant, issue another of the same product. */
+    @PostMapping("/{orderId}/items/{itemId}/exchange")
+    public ResponseEntity<ApiResponse<OrderDTO>> exchangeOrderItem(
+            @PathVariable Long orderId,
+            @PathVariable Long itemId,
+            @RequestBody @jakarta.validation.Valid com.tappy.pos.model.dto.order.ExchangeOrderItemRequest request) {
+        log.info("Endpoint: POST /orders/{}/items/{}/exchange", orderId, itemId);
+        OrderDTO order = orderService.exchangeOrderItem(orderId, itemId, request);
+        return ResponseEntity.ok(ApiResponse.success(order, "Order item exchanged successfully"));
     }
 
     /**
@@ -617,6 +687,28 @@ public class OrderController {
         return ResponseEntity.ok(ApiResponse.success(order, "Order paid and completed"));
     }
 
+    // ── Split / merge bill (FnB table tabs) ─────────────────────────────────────
+
+    /** POST /api/orders/{id}/split — split a running tab into child checks (by item or evenly). */
+    @PostMapping("/{id}/split")
+    public ResponseEntity<ApiResponse<List<OrderDTO>>> splitBill(
+            @PathVariable Long id,
+            @Valid @RequestBody com.tappy.pos.model.dto.order.SplitBillRequest request) {
+        log.info("Endpoint: POST /orders/{}/split mode={}", id, request.getMode());
+        List<OrderDTO> checks = orderService.splitBill(id, request);
+        return ResponseEntity.ok(ApiResponse.success(checks, "Bill split"));
+    }
+
+    /** POST /api/orders/{id}/merge — fold the source order's items into this order (gộp bill). */
+    @PostMapping("/{id}/merge")
+    public ResponseEntity<ApiResponse<OrderDTO>> mergeBill(
+            @PathVariable Long id,
+            @Valid @RequestBody com.tappy.pos.model.dto.order.MergeBillRequest request) {
+        log.info("Endpoint: POST /orders/{}/merge source={}", id, request.getSourceOrderId());
+        OrderDTO order = orderService.mergeBill(id, request);
+        return ResponseEntity.ok(ApiResponse.success(order, "Bills merged"));
+    }
+
     // ── Staff performance endpoints (requires ORDER_VIEW_ALL) ──────────────────
 
     @GetMapping("/by-staff/summary")
@@ -706,5 +798,17 @@ public class OrderController {
         log.info("Endpoint: PATCH /orders/{}/reject", orderId);
         String reason = request != null ? request.getReason() : null;
         return ResponseEntity.ok(ApiResponse.success(orderService.rejectOrder(orderId, reason), "Order rejected"));
+    }
+
+    /** PATCH /api/orders/{id}/delivery-status — advance a delivery order's status. */
+    @PatchMapping("/{orderId}/delivery-status")
+    public ResponseEntity<ApiResponse<OrderDTO>> updateDeliveryStatus(
+            @PathVariable Long orderId,
+            @RequestBody java.util.Map<String, String> body) {
+        com.tappy.pos.model.entity.order.Order.DeliveryStatus status =
+                com.tappy.pos.model.entity.order.Order.DeliveryStatus.valueOf(body.get("status"));
+        log.info("Endpoint: PATCH /orders/{}/delivery-status → {}", orderId, status);
+        return ResponseEntity.ok(ApiResponse.success(
+                orderService.updateDeliveryStatus(orderId, status), "Delivery status updated"));
     }
 }

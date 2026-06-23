@@ -1,11 +1,15 @@
 package com.tappy.pos.model.dto.audit;
 
-import com.tappy.pos.model.entity.audit.ActivityLog;
 import lombok.Builder;
 import lombok.Getter;
 
 import java.time.LocalDateTime;
 
+/**
+ * The {@code description} is rendered in the reader's locale by
+ * {@code ActivityLogServiceImpl.toDto(...)} — do not build this DTO from a raw entity description,
+ * or i18n is bypassed.
+ */
 @Getter
 @Builder
 public class ActivityLogDTO {
@@ -18,18 +22,4 @@ public class ActivityLogDTO {
     private String description;
     private String ipAddress;
     private LocalDateTime createdAt;
-
-    public static ActivityLogDTO from(ActivityLog log) {
-        return ActivityLogDTO.builder()
-                .id(log.getId())
-                .actorUsername(log.getActorUsername())
-                .actorFullName(log.getActorFullName())
-                .action(log.getAction())
-                .targetType(log.getTargetType())
-                .targetId(log.getTargetId())
-                .description(log.getDescription())
-                .ipAddress(log.getIpAddress())
-                .createdAt(log.getCreatedAt())
-                .build();
-    }
 }

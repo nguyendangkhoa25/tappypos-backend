@@ -38,6 +38,12 @@ public class TenantSeedService {
     private static final Map<ShopType, String> DML_FILES = Map.ofEntries(
         Map.entry(ShopType.PAWN_SHOP,          "db/tenant/pawn_store.sql"),
         Map.entry(ShopType.CONVENIENCE_STORE,  "db/tenant/convenience_store.sql"),
+        Map.entry(ShopType.BUILDING_MATERIALS, "db/tenant/building_materials.sql"),
+        Map.entry(ShopType.PHARMACY,           "db/tenant/pharmacy.sql"),
+        Map.entry(ShopType.BAKERY,             "db/tenant/bakery.sql"),
+        Map.entry(ShopType.FASHION,            "db/tenant/fashion.sql"),
+        Map.entry(ShopType.BOOK_STORE,         "db/tenant/book_store.sql"),
+        Map.entry(ShopType.ELECTRONICS,        "db/tenant/electronics.sql"),
         Map.entry(ShopType.JEWELRY,            "db/tenant/jewelry_store.sql"),
         Map.entry(ShopType.BARBER_SHOP,        "db/tenant/barber_shop.sql"),
         Map.entry(ShopType.BARBER_SHOP_MEN,    "db/tenant/barber_shop_men.sql"),
@@ -50,10 +56,17 @@ public class TenantSeedService {
         Map.entry(ShopType.MAKEUP_STUDIO,      "db/tenant/makeup_studio.sql"),
         Map.entry(ShopType.RESTAURANT,         "db/tenant/restaurant.sql"),
         Map.entry(ShopType.COFFEE_SHOP,        "db/tenant/coffee_shop.sql"),
+        Map.entry(ShopType.FOOD_BEVERAGE,      "db/tenant/food_beverage.sql"),
+        Map.entry(ShopType.BILLIARDS_HALL,     "db/tenant/billiards_hall.sql"),
+        Map.entry(ShopType.SPORT_COURT,        "db/tenant/tennis_court.sql"),
         Map.entry(ShopType.PUB,                "db/tenant/pub.sql"),
         Map.entry(ShopType.PUB_SEAFOOD,        "db/tenant/pub_seafood.sql"),
         Map.entry(ShopType.PUB_GOAT,           "db/tenant/pub_goat.sql"),
-        Map.entry(ShopType.PUB_BEEF,           "db/tenant/pub_beef.sql")
+        Map.entry(ShopType.PUB_BEEF,           "db/tenant/pub_beef.sql"),
+        Map.entry(ShopType.HOTEL,              "db/tenant/lodging.sql"),
+        Map.entry(ShopType.MOTEL,              "db/tenant/lodging.sql"),
+        Map.entry(ShopType.HOMESTAY,           "db/tenant/lodging.sql"),
+        Map.entry(ShopType.VEHICLE_SHOP,       "db/tenant/vehicle_shop.sql")
     );
     private static final String DEFAULT_DML = "db/tenant/general.sql";
 
@@ -68,6 +81,11 @@ public class TenantSeedService {
     private static final Set<ShopType> FOOD_SHOP_TYPES = EnumSet.of(
         ShopType.COFFEE_SHOP, ShopType.FOOD_BEVERAGE, ShopType.RESTAURANT,
         ShopType.PUB, ShopType.PUB_SEAFOOD, ShopType.PUB_GOAT, ShopType.PUB_BEEF
+    );
+
+    /** Lodging shops — get a room-folio checkout receipt ("Phiếu thanh toán phòng") with the room label shown. */
+    private static final Set<ShopType> LODGING_SHOP_TYPES = EnumSet.of(
+        ShopType.HOTEL, ShopType.MOTEL, ShopType.HOMESTAY
     );
 
     /**
@@ -91,12 +109,24 @@ public class TenantSeedService {
         } else if (shopType == ShopType.PHARMACY) {
             templateName = "Hóa đơn thuốc";
             configJson = "{\"headerText\":\"\",\"footerText\":\"Cảm ơn quý khách!\\nChúc bạn mau hồi phục!\",\"showAddress\":true,\"showTaxId\":true,\"showOrderNumber\":true,\"showDateTime\":true,\"showCustomer\":true,\"showTaxBreakdown\":true,\"showCashDetails\":true,\"paperWidth\":\"80mm\",\"autoClose\":true,\"showVietQr\":false}";
+        } else if (LODGING_SHOP_TYPES.contains(shopType)) {
+            templateName = "Phiếu thanh toán phòng";
+            configJson = "{\"headerText\":\"\",\"footerText\":\"Cảm ơn quý khách!\\nHẹn gặp lại!\",\"showAddress\":true,\"showTaxId\":false,\"showOrderNumber\":true,\"showDateTime\":true,\"showCustomer\":true,\"showTaxBreakdown\":false,\"showCashDetails\":true,\"paperWidth\":\"80mm\",\"autoClose\":true,\"showVietQr\":true,\"showTable\":true}";
         } else if (shopType == ShopType.CONVENIENCE_STORE) {
             templateName = "Hóa đơn siêu thị";
             configJson = "{\"headerText\":\"\",\"footerText\":\"Cảm ơn quý khách!\\nHẹn gặp lại!\",\"showAddress\":true,\"showTaxId\":false,\"showOrderNumber\":true,\"showDateTime\":true,\"showCustomer\":false,\"showTaxBreakdown\":false,\"showCashDetails\":true,\"paperWidth\":\"80mm\",\"autoClose\":true,\"showVietQr\":true}";
+        } else if (shopType == ShopType.BUILDING_MATERIALS) {
+            templateName = "Hóa đơn vật liệu xây dựng";
+            configJson = "{\"headerText\":\"\",\"footerText\":\"Cảm ơn quý khách!\\nHẹn gặp lại!\",\"showAddress\":true,\"showTaxId\":true,\"showOrderNumber\":true,\"showDateTime\":true,\"showCustomer\":true,\"showTaxBreakdown\":false,\"showCashDetails\":true,\"paperWidth\":\"80mm\",\"autoClose\":true,\"showVietQr\":true}";
         } else if (shopType == ShopType.FASHION || shopType == ShopType.ELECTRONICS) {
             templateName = "Phiếu bảo hành";
             configJson = "{\"headerText\":\"\",\"footerText\":\"Cảm ơn quý khách!\\nVui lòng giữ hóa đơn để bảo hành.\",\"showAddress\":true,\"showTaxId\":true,\"showOrderNumber\":true,\"showDateTime\":true,\"showCustomer\":true,\"showTaxBreakdown\":true,\"showCashDetails\":true,\"paperWidth\":\"80mm\",\"autoClose\":true,\"showVietQr\":false}";
+        } else if (shopType == ShopType.VEHICLE_SHOP) {
+            // "Phiếu giao xe": handover slip — shows buyer + bảo hành note; số khung/số máy/biển số
+            // are captured on the vehicle_unit and printed from there. Does not auto-close so staff
+            // can confirm the giấy tờ bàn giao before printing. (VEHICLE_SHOP_SHOP_TYPE_PLAN §4f)
+            templateName = "Phiếu giao xe";
+            configJson = "{\"headerText\":\"PHIẾU GIAO XE\",\"footerText\":\"Cảm ơn quý khách!\\nVui lòng giữ phiếu để bảo hành và sang tên.\",\"showAddress\":true,\"showTaxId\":true,\"showOrderNumber\":true,\"showDateTime\":true,\"showCustomer\":true,\"showTaxBreakdown\":true,\"showCashDetails\":true,\"paperWidth\":\"80mm\",\"autoClose\":false,\"showVietQr\":true}";
         } else if (shopType == ShopType.JEWELRY) {
             // Jewelry shops get: PAWN_STAMP contract + Gold Guarantee Certificate (POS_RECEIPT variant)
             seedPawnContractTemplates();

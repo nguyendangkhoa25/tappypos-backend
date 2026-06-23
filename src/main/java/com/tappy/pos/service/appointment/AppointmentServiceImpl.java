@@ -7,9 +7,13 @@ import com.tappy.pos.model.entity.appointment.Appointment;
 import com.tappy.pos.model.entity.appointment.AppointmentServiceItem;
 import com.tappy.pos.model.entity.notification.Notification;
 import com.tappy.pos.model.enums.RoleEnum;
+import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.multitenant.TenantContext;
+import com.tappy.pos.config.AuthContext;
 import com.tappy.pos.repository.appointment.AppointmentRepository;
 import com.tappy.pos.service.MessageService;
+import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,6 +46,8 @@ public class AppointmentServiceImpl implements AppointmentService {
     private final TenantContext tenantContext;
     private final NotificationService notificationService;
     private final MessageService messageService;
+    private final ActivityLogService activityLogService;
+    private final AuthContext authContext;
 
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
@@ -99,6 +105,10 @@ public class AppointmentServiceImpl implements AppointmentService {
         pushAppointmentNotification("notification.appointment.booked.title",
                 "notification.appointment.booked.message", saved, tenantId, username);
 
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.APPOINTMENT_CREATED, "APPOINTMENT", String.valueOf(saved.getId()),
+                "activity.appointment.created", null);
+
         List<String> warnings = buildConflictWarnings(
                 request.getServices(),
                 saved.getScheduledDate(),
@@ -106,6 +116,33 @@ public class AppointmentServiceImpl implements AppointmentService {
                 saved.getDurationMinutes(),
                 saved.getId());
         return mapToDTO(saved, warnings);
+    }
+
+    @Override
+    @Transactional
+    public void createPickupReminder(Long orderId, Long customerId, String customerName,
+                                     String customerPhone, java.time.LocalDateTime pickupTime) {
+        if (pickupTime == null) return;
+        String tenantId = tenantContext.getCurrentTenantId();
+        Appointment appointment = Appointment.builder()
+                .tenantId(tenantId)
+                .appointmentNumber(generateNumber(tenantId))
+                .customerId(customerId)
+                .customerName(customerName != null && !customerName.isBlank()
+                        ? customerName.trim() : messageService.getMessage("appointment.preorder.default.customer"))
+                .customerPhone(customerPhone)
+                .scheduledDate(pickupTime.toLocalDate())
+                .scheduledStartTime(pickupTime.toLocalTime())
+                .durationMinutes(30)
+                .status("PENDING")
+                .note(messageService.getMessage("appointment.preorder.pickup.note"))
+                .linkedOrderId(orderId)
+                .createdBy(currentUsername())
+                .reminderSent(false)
+                .services(new ArrayList<>())
+                .build();
+        appointmentRepository.save(appointment);
+        log.info("Created pickup-reminder appointment {} linked to pre-order {}", appointment.getAppointmentNumber(), orderId);
     }
 
     @Override
@@ -130,6 +167,9 @@ public class AppointmentServiceImpl implements AppointmentService {
         }
 
         Appointment saved = appointmentRepository.save(appointment);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.APPOINTMENT_UPDATED, "APPOINTMENT", String.valueOf(saved.getId()),
+                "activity.appointment.updated", null);
         // Only re-check conflicts when services (and thus employee assignments) changed.
         List<String> warnings = request.getServices() != null
                 ? buildConflictWarnings(request.getServices(), saved.getScheduledDate(),
@@ -146,7 +186,11 @@ public class AppointmentServiceImpl implements AppointmentService {
             throw new BadRequestException(messageService.getMessage("error.appointment.confirm.invalid.status"));
         }
         appointment.setStatus("CONFIRMED");
-        return mapToDTO(appointmentRepository.save(appointment));
+        Appointment saved = appointmentRepository.save(appointment);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.APPOINTMENT_CONFIRMED, "APPOINTMENT", String.valueOf(saved.getId()),
+                "activity.appointment.confirmed", null);
+        return mapToDTO(saved);
     }
 
     @Override
@@ -183,6 +227,9 @@ public class AppointmentServiceImpl implements AppointmentService {
         Appointment saved = appointmentRepository.save(appointment);
         pushAppointmentNotification("notification.appointment.cancelled.title",
                 "notification.appointment.cancelled.message", saved, tenantId, null);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.APPOINTMENT_CANCELLED, "APPOINTMENT", String.valueOf(saved.getId()),
+                "activity.appointment.cancelled", null);
         return mapToDTO(saved);
     }
 
@@ -203,6 +250,9 @@ public class AppointmentServiceImpl implements AppointmentService {
         Appointment appointment = findOrThrow(id);
         appointment.softDelete();
         appointmentRepository.save(appointment);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.APPOINTMENT_DELETED, "APPOINTMENT", String.valueOf(id),
+                "activity.appointment.deleted", null);
     }
 
     @Override
@@ -405,7 +455,6 @@ public class AppointmentServiceImpl implements AppointmentService {
     private void pushAppointmentNotification(String titleKey, String messageKey,
                                               Appointment a, String tenantId, String excludeUser) {
         try {
-            Locale vi = new Locale("vi");
             String services = a.getServices() == null || a.getServices().isEmpty() ? "—"
                     : a.getServices().stream()
                     .map(AppointmentServiceItem::getProductName)
@@ -413,11 +462,11 @@ public class AppointmentServiceImpl implements AppointmentService {
                     .collect(Collectors.joining(", "));
             String time = a.getScheduledStartTime() != null ? a.getScheduledStartTime().format(TIME_FMT) : "";
             String date = a.getScheduledDate() != null ? a.getScheduledDate().format(DATE_FMT) : "";
-            String title = messageService.getMessage(titleKey, vi, a.getAppointmentNumber(), a.getCustomerName());
-            String message = messageService.getMessage(messageKey, vi, a.getCustomerName(), services, time, date);
-            notificationService.pushToRolesAsync(Notification.NotificationType.ORDER, title, message,
+            notificationService.pushToRolesAsync(Notification.NotificationType.ORDER,
+                    LocalizedText.of(titleKey, a.getAppointmentNumber(), a.getCustomerName()),
+                    LocalizedText.of(messageKey, a.getCustomerName(), services, time, date),
                     "APPOINTMENT", a.getId(),
-                    List.of(RoleEnum.SHOP_OWNER.getCode(), RoleEnum.MANAGER.getCode()),
+                    List.of(RoleEnum.SHOP_OWNER.getCode()),
                     tenantId, excludeUser);
         } catch (Exception e) {
             log.warn("Failed to push appointment notification (id={}): {}", a.getId(), e.getMessage());

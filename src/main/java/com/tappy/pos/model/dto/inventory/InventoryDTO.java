@@ -24,6 +24,8 @@ public class InventoryDTO {
     private Long productId;
     private String productName;
     private String productSku;
+    /** FINISHED (default) | INGREDIENT | BOTH — lets POS exclude raw ingredients. */
+    private String productKind;
     private Long variantId;
     private String variantSku;
     private Map<String, String> variantOptions;
@@ -47,6 +49,9 @@ public class InventoryDTO {
     private String inventoryType;
     private Boolean lowStock;
     private Boolean expired;
+    /** True when the product is a prescription-required drug (pharmacy) — drives the POS grid badge.
+     *  Populated by the service via a batch lookup; left null by fromEntity (defaults to not-required). */
+    private Boolean prescriptionRequired;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -73,6 +78,8 @@ public class InventoryDTO {
                 .productId(entity.getProduct() != null ? entity.getProduct().getId() : null)
                 .productName(entity.getProduct() != null ? entity.getProduct().getName() : null)
                 .productSku(entity.getProduct() != null ? entity.getProduct().getSku() : null)
+                .productKind(entity.getProduct() != null && entity.getProduct().getProductKind() != null
+                        ? entity.getProduct().getProductKind().name() : null)
                 .variantId(entity.getVariant() != null ? entity.getVariant().getId() : null)
                 .variantSku(entity.getVariant() != null ? entity.getVariant().getSku() : null)
                 .variantOptions(entity.getVariant() != null ? entity.getVariant().getVariantOptions() : null)

@@ -161,7 +161,7 @@ class SalaryServiceImplTest {
         verify(salaryRepository).save(any(Salary.class));
         verify(orderItemRepository).linkItemsToSalary(eq(1L), eq(1L), eq(5), eq(2026));
         verify(activityLogService).logAsync(eq("tenant1"), eq("testuser"), isNull(),
-                eq(ActivityAction.SALARY_GENERATED), eq("SALARY"), isNull(), anyString(), isNull());
+                eq(ActivityAction.SALARY_GENERATED), eq("SALARY"), isNull(), anyString(), isNull(), any(), any());
     }
 
     @Test
@@ -344,7 +344,7 @@ class SalaryServiceImplTest {
         verify(salaryRepository).save(draftSalary);
         verify(notificationService, never()).pushSystemAsync(any(), any(), any(), any(), any(), any(), any());
         verify(activityLogService).logAsync(eq("tenant1"), eq("testuser"), isNull(),
-                eq(ActivityAction.SALARY_APPROVED), eq("SALARY"), eq("1"), anyString(), isNull());
+                eq(ActivityAction.SALARY_APPROVED), eq("SALARY"), eq("1"), anyString(), isNull(), any());
     }
 
     @Test
@@ -380,7 +380,9 @@ class SalaryServiceImplTest {
 
         verify(notificationService).pushSystemAsync(eq("employee_user"),
                 eq(Notification.NotificationType.SYSTEM),
-                anyString(), anyString(), eq("SALARY"), eq(1L), eq("tenant1"));
+                any(com.tappy.pos.model.i18n.LocalizedText.class),
+                any(com.tappy.pos.model.i18n.LocalizedText.class),
+                eq("SALARY"), eq(1L), eq("tenant1"));
     }
 
     @Test
@@ -412,7 +414,7 @@ class SalaryServiceImplTest {
         assertThat(result).isNotNull();
         verify(orderItemRepository).markSalaryCalculated(1L);
         verify(activityLogService).logAsync(eq("tenant1"), eq("testuser"), isNull(),
-                eq(ActivityAction.SALARY_PAID), eq("SALARY"), eq("1"), anyString(), isNull());
+                eq(ActivityAction.SALARY_PAID), eq("SALARY"), eq("1"), anyString(), isNull(), any());
     }
 
     @Test
@@ -446,7 +448,9 @@ class SalaryServiceImplTest {
 
         verify(notificationService).pushSystemAsync(eq("employee_user"),
                 eq(Notification.NotificationType.SYSTEM),
-                anyString(), anyString(), eq("SALARY"), eq(1L), eq("tenant1"));
+                any(com.tappy.pos.model.i18n.LocalizedText.class),
+                any(com.tappy.pos.model.i18n.LocalizedText.class),
+                eq("SALARY"), eq(1L), eq("tenant1"));
     }
 
     // ── delete ─────────────────────────────────────────────────────────────────

@@ -88,7 +88,7 @@ _Not applicable — initial release._
 
 ## Known Limitations
 
-See `MISSING_FEATURES.md` at the repo root for features with UI stubs but no backend implementation:
+See `../docs/MISSING_FEATURES.md` for features with UI stubs but no backend implementation:
 Revenue/Reporting, Employee Salary/Payroll, Promotions (full engine), My Work (staff view), Product Variants.
 
 ---

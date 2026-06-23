@@ -15,6 +15,7 @@ import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.audit.ActivityLogService;
 import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.service.auth.RoleFeatureService;
+import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.service.notification.NotificationService;
 import com.tappy.pos.service.tenant.AgentService;
 import com.tappy.pos.service.tenant.ShopConfigService;
@@ -144,22 +145,21 @@ public class MultiTenantController {
         String createdBy = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync("master", createdBy, null,
                 ActivityAction.TENANT_CREATED, "TENANT", tenant.getTenantId(),
-                messageService.getMessage("activity.tenant.created", tenant.getName(), tenant.getTenantId()), null);
-        Locale vi = new Locale("vi");
-        String notifTitle = messageService.getMessage("notification.master.tenant.created.title", vi);
-        String notifMsg = messageService.getMessage("notification.master.tenant.created.message", vi,
-                tenant.getName(), tenant.getTenantId(), createdBy);
-        notificationService.pushToRolesAsync(Notification.NotificationType.SYSTEM, notifTitle, notifMsg,
+                "activity.tenant.created", null, tenant.getName(), tenant.getTenantId());
+        notificationService.pushToRolesAsync(Notification.NotificationType.SYSTEM,
+                LocalizedText.of("notification.master.tenant.created.title"),
+                LocalizedText.of("notification.master.tenant.created.message",
+                        tenant.getName(), tenant.getTenantId(), createdBy),
                 "TENANT", tenantEntity.getId(), List.of("MASTER_TENANT"), null);
 
         // Notify only the new shop's admin user directly — avoids cross-tenant fan-out
         String subscriptionType = tenantEntity.getSubscriptionType() != null ? tenantEntity.getSubscriptionType() : "Trial";
         String supportInfo = agentService.getContactInfo(tenantEntity.getVendorId());
-        String welcomeTitle = messageService.getMessage("notification.shop.welcome.title", vi);
-        String welcomeMsg = messageService.getMessage("notification.shop.welcome.message", vi,
-                tenant.getName(), subscriptionType, supportInfo);
         notificationService.pushSystemAsync(request.getAdminUsername(), Notification.NotificationType.SYSTEM,
-                welcomeTitle, welcomeMsg, "TENANT", tenantEntity.getId(), tenant.getTenantId());
+                LocalizedText.of("notification.shop.welcome.title"),
+                LocalizedText.of("notification.shop.welcome.message",
+                        tenant.getName(), subscriptionType, supportInfo),
+                "TENANT", tenantEntity.getId(), tenant.getTenantId());
 
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(ApiResponse.success(tenant, "Tenant created successfully"));
@@ -206,7 +206,7 @@ public class MultiTenantController {
         String updatedBy = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync("master", updatedBy, null,
                 ActivityAction.TENANT_UPDATED, "TENANT", tenantId,
-                messageService.getMessage("activity.tenant.updated", tenant.getName(), tenantId), null);
+                "activity.tenant.updated", null, tenant.getName(), tenantId);
 
         return ResponseEntity.ok(ApiResponse.success(tenant, "Tenant updated successfully"));
     }

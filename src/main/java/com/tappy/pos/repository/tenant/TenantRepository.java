@@ -2,6 +2,7 @@ package com.tappy.pos.repository.tenant;
 
 import com.tappy.pos.model.entity.tenant.Tenant;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -18,4 +19,13 @@ public interface TenantRepository extends JpaRepository<Tenant, Long> {
 
     @Query("SELECT t FROM Tenant t WHERE t.active = true AND t.expirationDate = :targetDate")
     List<Tenant> findActiveTenantsExpiringOn(@Param("targetDate") LocalDate targetDate);
+
+    /**
+     * Atomically bump a tenant's features_version. Used to invalidate already-issued tokens
+     * (stale-token signal) when role→feature mappings change. `tenants` is a master table,
+     * so this UPDATE is unaffected by RLS even when called from a tenant-scoped transaction.
+     */
+    @Modifying
+    @Query("UPDATE Tenant t SET t.featuresVersion = t.featuresVersion + 1 WHERE t.tenantId = :tenantId")
+    void bumpFeaturesVersion(@Param("tenantId") String tenantId);
 }

@@ -18,6 +18,11 @@ public class ComboItem {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // Denormalized from the parent combo so combo_items is a first-class tenant table (RLS, V041).
+    // Set explicitly in ComboServiceImpl when building items; never trust a client-supplied value.
+    @Column(name = "tenant_id", nullable = false)
+    private String tenantId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "combo_id", nullable = false)
     private Combo combo;

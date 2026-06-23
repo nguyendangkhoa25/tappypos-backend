@@ -31,6 +31,9 @@ public class BookingDTO {
     private Integer durationMinutes;
     private BigDecimal hourlyRate;
     private BigDecimal timeAmount;
+    private BigDecimal depositAmount;
+    private Boolean depositPaid;
+    private String recurrenceGroupId;
     private String status;
     private String note;
     private Long linkedOrderId;

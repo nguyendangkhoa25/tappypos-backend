@@ -6,7 +6,10 @@ import com.tappy.pos.model.dto.finance.DefaultExpenseRequest;
 import com.tappy.pos.model.dto.finance.ShopExpenseDTO;
 import com.tappy.pos.model.dto.finance.ShopExpenseRequest;
 import com.tappy.pos.model.entity.finance.DefaultExpense;
+import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.multitenant.TenantContext;
+import com.tappy.pos.config.AuthContext;
+import com.tappy.pos.service.audit.ActivityLogService;
 import com.tappy.pos.repository.finance.DefaultExpenseRepository;
 import com.tappy.pos.repository.finance.ShopExpenseRepository;
 import com.tappy.pos.service.MessageService;
@@ -30,6 +33,8 @@ public class DefaultExpenseServiceImpl implements DefaultExpenseService {
     private final ShopExpenseService shopExpenseService;
     private final TenantContext tenantContext;
     private final MessageService messageService;
+    private final AuthContext authContext;
+    private final ActivityLogService activityLogService;
 
     @Override
     @Transactional(readOnly = true)
@@ -48,7 +53,11 @@ public class DefaultExpenseServiceImpl implements DefaultExpenseService {
                 .paymentDay(request.getPaymentDay())
                 .displayOrder(request.getDisplayOrder() != null ? request.getDisplayOrder() : 0)
                 .build();
-        return toDTO(defaultExpenseRepository.save(expense));
+        DefaultExpense saved = defaultExpenseRepository.save(expense);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.DEFAULT_EXPENSE_CREATED, "DEFAULT_EXPENSE", String.valueOf(saved.getId()),
+                "activity.default.expense.created", null);
+        return toDTO(saved);
     }
 
     @Override
@@ -62,7 +71,11 @@ public class DefaultExpenseServiceImpl implements DefaultExpenseService {
         if (request.getDisplayOrder() != null) {
             expense.setDisplayOrder(request.getDisplayOrder());
         }
-        return toDTO(defaultExpenseRepository.save(expense));
+        DefaultExpense saved = defaultExpenseRepository.save(expense);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.DEFAULT_EXPENSE_UPDATED, "DEFAULT_EXPENSE", String.valueOf(saved.getId()),
+                "activity.default.expense.updated", null);
+        return toDTO(saved);
     }
 
     @Override
@@ -71,6 +84,9 @@ public class DefaultExpenseServiceImpl implements DefaultExpenseService {
         DefaultExpense expense = findActive(id);
         expense.softDelete();
         defaultExpenseRepository.save(expense);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.DEFAULT_EXPENSE_DELETED, "DEFAULT_EXPENSE", String.valueOf(id),
+                "activity.default.expense.deleted", null);
     }
 
     @Override

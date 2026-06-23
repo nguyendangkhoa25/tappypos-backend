@@ -107,7 +107,7 @@ public class PurchaseOrderService {
 
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), currentUser, null,
                 ActivityAction.PURCHASE_ORDER_CREATED, "PURCHASE_ORDER", saved.getPoNumber(),
-                "Tạo đơn nhập hàng " + saved.getPoNumber() + " từ " + vendor.getName(), null);
+                "activity.purchase.order.created", null, saved.getPoNumber(), vendor.getName());
 
         return mapToDTOWithItems(saved);
     }
@@ -191,7 +191,7 @@ public class PurchaseOrderService {
         String currentUser = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), currentUser, null,
                 ActivityAction.PURCHASE_ORDER_RECEIVED, "PURCHASE_ORDER", saved.getPoNumber(),
-                "Nhận hàng đơn nhập " + saved.getPoNumber(), null);
+                "activity.purchase.order.received", null, saved.getPoNumber());
         return mapToDTOWithItems(saved);
     }
 

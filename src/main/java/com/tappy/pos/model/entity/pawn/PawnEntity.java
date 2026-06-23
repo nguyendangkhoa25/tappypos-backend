@@ -126,6 +126,14 @@ public class PawnEntity {
     @Column(name = "customer_name")
     private String customerName;
 
+    // R2 public URL of the borrower's drawn signature (digital pawn contract, §4d).
+    @Column(name = "customer_signature_url", length = 500)
+    private String customerSignatureUrl;
+
+    // When the borrower signed the contract; NULL = unsigned.
+    @Column(name = "signed_at")
+    private LocalDateTime signedAt;
+
     @Builder.Default
     @OneToMany(cascade = CascadeType.REMOVE, orphanRemoval = true)
     @JoinColumn(name = "pawn_id")

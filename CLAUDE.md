@@ -99,7 +99,7 @@ Features are enforced at three levels:
 | `ACCOUNTING` | (stub page — no controller yet) |
 | `AGENT_MGMT` | `AgentController` (master-only; manages platform agents) |
 | `VENDOR` | `VendorController`, `PurchaseOrderController` |
-| `PAWN` | `PawnController`, `BuybackOrderController`, `MarketPriceController`, `GoldPriceController` |
+| `PAWN` | `PawnController`, `MarketPriceController`, `GoldPriceController`, `BuybackController` |
 | `ACTIVITY_LOG` | `ActivityLogController` |
 | `NOTIFICATION` | `NotificationController` — includes `GET/PUT /notifications/preferences` for per-user type opt-in |
 | `FEEDBACK` | `FeedbackController` (shop-user submit methods only; admin review methods use `@MasterDatabaseOnly`) |
@@ -160,8 +160,10 @@ Every mutating service method must call `activityLogService.logAsync(...)` after
 
 **Signature:**
 ```java
-activityLogService.logAsync(tenantId, actorUsername, actorFullName, action, targetType, targetId, description, ipAddress);
+activityLogService.logAsync(tenantId, actorUsername, actorFullName, action, targetType, targetId, messageKey, ipAddress, args...);
 ```
+
+**The description is i18n (render at read time).** Pass an `activity.*` **message key + arguments**, never a rendered string. The key + JSON args are stored (`activity_log.description_key` / `description_args`, V036) and rendered in the **reader's** locale in `ActivityLogServiceImpl.toDto`, so the same row reads correctly in vi or en. Never pass a hardcoded Vietnamese/English literal or a `messageService.getMessage(...)` result as `messageKey` — that re-freezes the language. Pass already-formatted display strings as `args` for numbers/money so `MessageFormat` doesn't re-format them per locale. (Same principle applies to notifications via `LocalizedText` — see "Notification i18n" below.)
 
 **`tenantId` rules — critical for RLS correctness:**
 - Shop operations: pass `tenantContext.getCurrentTenantId()` — stored as the actual tenant ID in the DB.
@@ -179,7 +181,7 @@ For services that use `AuthContext`, use `authContext.getCurrentUsername()` inst
 **Checklist when adding a new service method:**
 1. Add the action to `ActivityAction` enum if it doesn't exist.
 2. Call `logAsync` after the successful repository save (not before, not in a finally block).
-3. Use Vietnamese for `description` — it appears directly in the UI.
+3. Pass an `activity.*` message key (by convention `activity.` + `ACTION.name().toLowerCase().replace('_','.')`, or reuse an existing one) + args. Add the key to **both** `messages_vi.properties` and `messages.properties` (vi/en in sync) — Vietnamese-first.
 4. Add the action to `ACTION_OPTIONS` and `ACTION_COLORS` in `ActivityLogPage.jsx` (frontend).
 5. Add Vietnamese + English translations in `src/i18n/features/activityLog.js`.
 
@@ -266,7 +268,8 @@ Each shop type gets its own seed data file under `src/main/resources/db/tenant/`
 | `CONVENIENCE_STORE` | `db/tenant/convenience_store.sql` |
 | `RESTAURANT`, `COFFEE_SHOP`, `PUB`, `PUB_SEAFOOD`, `PUB_GOAT`, `PUB_BEEF` | one F&B file each (`restaurant.sql`, …) |
 | `BARBER_SHOP`, `BARBER_SHOP_MEN`, `HAIR_SALON`, `NAIL_SHOP`, `LASH_PMU_STUDIO`, `SPA_SHOP`, `MASSAGE_SHOP`, `BEAUTY_CLINIC`, `MAKEUP_STUDIO` | one service file each (`nail_shop.sql`, …) |
-| Unmapped (`PHARMACY`, `ELECTRONICS`, `FASHION`, `FOOD_BEVERAGE`, `BOOK_STORE`, `OTHER`) | `db/tenant/general.sql` (fallback) |
+| `PHARMACY`, `ELECTRONICS`, `FASHION`, `BAKERY`, `BUILDING_MATERIALS`, `BOOK_STORE`, `VEHICLE_SHOP`, `BILLIARDS_HALL`, `SPORT_COURT`, `HOTEL`/`MOTEL`/`HOMESTAY` | one retail file each (`pharmacy.sql`, `book_store.sql`, `lodging.sql`, …) |
+| Unmapped (`FOOD_BEVERAGE`, `OTHER`) | `db/tenant/general.sql` (fallback) |
 
 `TenantSeedService` also categorizes types into two `EnumSet`s used by `seedShopTypeTemplates()`: `SERVICE_SHOP_TYPES` (beauty/personal-service → "Phiếu dịch vụ" template, no table) and `FOOD_SHOP_TYPES` (F&B → "Phiếu dịch vụ" with `showTable`). A plain retail type is in neither and gets the default RECEIPT template.
 
@@ -421,6 +424,22 @@ Groups: `Thông tin sản phẩm` · `Kích thước & Màu sắc`
 | `care_instruction` | Hướng dẫn giặt | TEXT | FALSE | FALSE | FALSE |
 | `country_of_origin` | Xuất xứ | STRING | FALSE | TRUE | TRUE |
 
+**BOOK_STORE (`BOOKS` product type)**
+
+Groups: `Thông tin sách` · `Phân loại & Ấn bản`
+
+| Code | Name (VI) | Type | required | searchable | filterable |
+|------|-----------|------|----------|------------|------------|
+| `isbn` | ISBN / Mã sách | STRING | TRUE | TRUE | FALSE |
+| `author` | Tác giả | STRING | TRUE | TRUE | TRUE |
+| `publisher` | Nhà xuất bản (NXB) | STRING | TRUE | TRUE | TRUE |
+| `translator` | Người dịch | STRING | FALSE | TRUE | FALSE |
+| `genre` | Thể loại | STRING | FALSE | TRUE | TRUE |
+| `publish_year` | Năm xuất bản | NUMBER | FALSE | FALSE | TRUE |
+| `language` | Ngôn ngữ | STRING | FALSE | FALSE | TRUE |
+| `cover_type` | Loại bìa (cứng/mềm) | STRING | FALSE | FALSE | TRUE |
+| `page_count` | Số trang | NUMBER | FALSE | FALSE | FALSE |
+
 #### SQL pattern to use
 
 ```sql
@@ -504,6 +523,13 @@ The `db/tenant/` files are executed by `TenantProvisioningService` at shop creat
 All user-facing strings go through `MessageService` (wraps Spring `MessageSource`). Never hardcode error messages. Locale files:
 - `src/main/resources/i18n/messages.properties` (English)
 - `src/main/resources/i18n/messages_vi.properties` (Vietnamese)
+
+**Never persist rendered localized text — render at read time.** A user-facing string saved to a DB column is frozen in whatever language it was rendered at write time; a reader in another locale can never see it translated. So never store a `messageService.getMessage(...)` result (or a localized literal) in a column that is later shown to a user. Store the **message key + arguments** and render in the reader's locale in the read path. Implemented examples:
+- **Activity log** — `activity_log.description_key` + `description_args` (V036), rendered in `ActivityLogServiceImpl.toDto` (see "Activity Logging" above).
+- **Notification i18n** — `notifications.title_key`/`message_key` + `*_args` (V037). System pushes pass `LocalizedText.of("notification.x.title", args)` to the `NotificationService` push API; `mapToDTO` renders in the reader's locale. The literal `title`/`message` columns are used only for **user-authored** notifications (`create()`) and legacy rows, as a fallback.
+- **Order notes/reasons/table label** — `orders.notes_key`/`cancel_reason_key`/`void_reason_key` + `*_args` (V038) for system-generated split/merge/reject text, and `table_label_key`/`table_label_args` (V039) for the lodging "Phòng {0}" label. `Order.cancel(...)`/`voidOrder(...)` have a 3-arg `(key, argsJson, by)` overload for system text alongside the literal 2-arg overload for user-entered reasons; `OrderServiceImpl.mapToDTO` renders each field, and `generateReceipt` passes the resolved table label into `ReceiptHtmlBuilder.build`. Real F&B table / booking resource names stay in the literal `table_label`. `MessageArgs.toJson/fromJson` (`com.tappy.pos.util`) is the shared codec for the `*_args` JSON.
+
+Genuinely user-authored free text (customer notes, feedback bodies, a reason typed by staff) is stored verbatim — it is not localized system text and must not be turned into a key.
 
 ### Audit Logging
 

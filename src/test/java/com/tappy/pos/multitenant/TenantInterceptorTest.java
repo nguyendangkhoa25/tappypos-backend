@@ -1,5 +1,6 @@
 package com.tappy.pos.multitenant;
 
+import com.tappy.pos.config.FeatureContext;
 import com.tappy.pos.exception.TenantExpiredException;
 import com.tappy.pos.model.entity.tenant.Tenant;
 import com.tappy.pos.repository.tenant.TenantRepository;
@@ -42,6 +43,9 @@ class TenantInterceptorTest {
 
     @Mock
     private MessageService messageService;
+
+    @Mock
+    private FeatureContext featureContext;
 
     @Mock
     private HttpServletRequest request;
@@ -316,6 +320,59 @@ class TenantInterceptorTest {
         // Then
         assertThat(result).isFalse();
         verify(response).setStatus(HttpStatus.BAD_REQUEST.value());
+    }
+
+    @Test
+    @DisplayName("Should reject request with a stale features-version token (TOKEN_STALE)")
+    void testPreHandle_StaleToken() throws Exception {
+        // Given — tenant's features changed (fv=5) but the token was issued at fv=4
+        Tenant tenant = Tenant.builder()
+                .id(1L)
+                .tenantId("test-tenant-001")
+                .active(true)
+                .expirationDate(LocalDate.now().plusDays(30))
+                .featuresVersion(5)
+                .build();
+        when(request.getRequestURI()).thenReturn("/api/v1/orders");
+        when(request.getHeader("X-Tenant-ID")).thenReturn("test-tenant-001");
+        when(tenantRepository.findByTenantId("test-tenant-001")).thenReturn(Optional.of(tenant));
+        doNothing().when(tenantContext).validateTenantNotExpired();
+        when(featureContext.getTokenFeaturesVersion()).thenReturn(4);
+        lenient().when(messageService.getMessage("error.token.stale")).thenReturn("stale");
+
+        // When
+        boolean result = tenantInterceptor.preHandle(request, response, new Object());
+        printWriter.flush();
+
+        // Then
+        assertThat(result).isFalse();
+        verify(response).setStatus(HttpStatus.UNAUTHORIZED.value());
+        assertThat(responseWriter.toString()).contains("TOKEN_STALE");
+    }
+
+    @Test
+    @DisplayName("Should allow request when token features-version matches the tenant")
+    void testPreHandle_MatchingFeaturesVersion() throws Exception {
+        // Given — token fv equals tenant fv
+        Tenant tenant = Tenant.builder()
+                .id(1L)
+                .tenantId("test-tenant-001")
+                .active(true)
+                .expirationDate(LocalDate.now().plusDays(30))
+                .featuresVersion(7)
+                .build();
+        when(request.getRequestURI()).thenReturn("/api/v1/orders");
+        when(request.getHeader("X-Tenant-ID")).thenReturn("test-tenant-001");
+        when(tenantRepository.findByTenantId("test-tenant-001")).thenReturn(Optional.of(tenant));
+        doNothing().when(tenantContext).validateTenantNotExpired();
+        when(featureContext.getTokenFeaturesVersion()).thenReturn(7);
+
+        // When
+        boolean result = tenantInterceptor.preHandle(request, response, new Object());
+
+        // Then
+        assertThat(result).isTrue();
+        verify(tenantContext).setCurrentTenant(tenant);
     }
 
     // ==================== Error Response Tests ====================

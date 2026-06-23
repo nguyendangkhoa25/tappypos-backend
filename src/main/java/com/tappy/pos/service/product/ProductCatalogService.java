@@ -1,5 +1,6 @@
 package com.tappy.pos.service.product;
 
+import com.tappy.pos.client.GoogleBooksClient.BookInfo;
 import com.tappy.pos.client.OpenFoodFactsClient.OffProduct;
 import com.tappy.pos.model.dto.product.ProductCatalogDTO;
 import com.tappy.pos.model.dto.product.ProductCatalogSyncResult;
@@ -21,4 +22,7 @@ public interface ProductCatalogService {
 
     /** Persists an OFF product to the local catalog asynchronously (fire-and-forget). */
     void saveFromOffAsync(OffProduct offProduct);
+
+    /** Persists a Google Books volume to the local catalog asynchronously (fire-and-forget). */
+    void saveFromBookAsync(BookInfo book);
 }

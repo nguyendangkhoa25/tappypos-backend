@@ -139,16 +139,23 @@ public interface UserRepository extends JpaRepository<User, Long> {
     java.util.List<String> findUsernamesByRole(@Param("roleName") String roleName);
 
     /**
-     * Get active usernames by any of the given role names — scoped to the current tenant.
+     * Get active usernames by any of the given role names — scoped to an explicit tenant.
      * DISTINCT prevents duplicates when a user holds multiple matching roles.
+     *
+     * <p>Uses an explicit {@code :tenantId} bind (not {@code current_tenant_id()}) because the
+     * main caller, {@code NotificationService.pushToRolesAsync}, runs on an @Async thread with
+     * {@code @Transactional(NOT_SUPPORTED)} — so {@code TenantRlsAspect} never sets
+     * {@code app.current_tenant} and {@code current_tenant_id()} would be NULL, matching only
+     * master users. Pass {@code null} to target master-context users (tenant_id IS NULL).
      */
     @Query(value = "SELECT DISTINCT u.username FROM users u " +
                    "INNER JOIN user_roles ur ON u.id = ur.user_id " +
                    "INNER JOIN roles r ON ur.role_id = r.id " +
                    "WHERE r.name IN :roleNames AND u.active = true AND u.deleted_at IS NULL " +
-                   "AND u.tenant_id IS NOT DISTINCT FROM current_tenant_id()",
+                   "AND u.tenant_id IS NOT DISTINCT FROM :tenantId",
            nativeQuery = true)
-    java.util.List<String> findUsernamesByRoleNames(@Param("roleNames") java.util.List<String> roleNames);
+    java.util.List<String> findUsernamesByRoleNames(@Param("roleNames") java.util.List<String> roleNames,
+                                                    @Param("tenantId") String tenantId);
 
     /**
      * Count how many users belong to a given tenant (used for the deletion audit log).
@@ -170,6 +177,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
     /**
      * Returns the subset of the given usernames whose roles grant the specified feature.
      * Used to compute feature-based notification defaults for users without a pref row.
+     *
+     * <p>Uses an explicit {@code :tenantId} bind (not {@code current_setting('app.current_tenant')})
+     * for the same reason as {@link #findUsernamesByRoleNames}: the caller runs on an @Async thread
+     * with no transaction, so {@code app.current_tenant} is never set on the connection.
      */
     @Query(value = "SELECT DISTINCT u.username FROM users u " +
            "INNER JOIN user_roles ur ON u.id = ur.user_id " +
@@ -179,10 +190,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
            "WHERE u.username IN :usernames AND f.name = :featureName " +
            "AND u.active = TRUE AND u.deleted_at IS NULL " +
            "AND f.deleted = FALSE AND f.active = TRUE " +
-           "AND r.tenant_id IS NOT DISTINCT FROM current_setting('app.current_tenant', true)",
+           "AND r.tenant_id IS NOT DISTINCT FROM :tenantId",
            nativeQuery = true)
     java.util.Set<String> findUsernamesWithFeature(
             @Param("usernames") java.util.List<String> usernames,
-            @Param("featureName") String featureName);
+            @Param("featureName") String featureName,
+            @Param("tenantId") String tenantId);
 }
 

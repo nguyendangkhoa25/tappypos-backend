@@ -43,8 +43,21 @@ public class ActivityLog {
     @Column(name = "target_id", length = 100)
     private String targetId;
 
-    @Column(name = "description", nullable = false, length = 500)
+    /**
+     * Legacy rendered text. Populated only on pre-V036 rows (and never on new rows, which use
+     * {@link #descriptionKey} + {@link #descriptionArgs}). Read path falls back to this when
+     * descriptionKey is null. See V036__activity_log_i18n.sql.
+     */
+    @Column(name = "description", length = 500)
     private String description;
+
+    /** i18n message key, e.g. {@code activity.product.created}. Rendered in the reader's locale on read. */
+    @Column(name = "description_key", length = 150)
+    private String descriptionKey;
+
+    /** JSON array of stringified message arguments, e.g. {@code ["Áo thun"]}. */
+    @Column(name = "description_args", columnDefinition = "text")
+    private String descriptionArgs;
 
     @Column(name = "ip_address", length = 45)
     private String ipAddress;

@@ -16,7 +16,9 @@ public class CustomerDTO {
     private String name;
     private String phone;
     private String email;
+    private String customerType;
     private String notes;
+    private String idNumber;
 
     // Social IDs
     private String zaloId;

@@ -14,6 +14,9 @@ import com.tappy.pos.repository.customer.LoyaltyTierRepository;
 import com.tappy.pos.repository.customer.LoyaltyTransactionRepository;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.multitenant.TenantContext;
+import com.tappy.pos.config.AuthContext;
+import com.tappy.pos.model.enums.ActivityAction;
+import com.tappy.pos.service.audit.ActivityLogService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -38,6 +41,8 @@ public class LoyaltyService {
     private final CustomerRepository customerRepository;
     private final MessageService messageService;
     private final TenantContext tenantContext;
+    private final ActivityLogService activityLogService;
+    private final AuthContext authContext;
 
     // ── Program ──────────────────────────────────────────────────────────────
 
@@ -61,6 +66,9 @@ public class LoyaltyService {
         if (req.getRedemptionDiscountAmount() != null) program.setRedemptionDiscountAmount(req.getRedemptionDiscountAmount());
         if (req.getMinRedemptionPoints() != null) program.setMinRedemptionPoints(req.getMinRedemptionPoints());
         if (req.getIsActive() != null) program.setIsActive(req.getIsActive());
+        if (req.getStampCardEnabled() != null) program.setStampCardEnabled(req.getStampCardEnabled());
+        if (req.getStampCardSize() != null && req.getStampCardSize() > 0) program.setStampCardSize(req.getStampCardSize());
+        if (req.getStampCardReward() != null && !req.getStampCardReward().isBlank()) program.setStampCardReward(req.getStampCardReward());
 
         return mapProgramToDTO(programRepository.save(program));
     }
@@ -119,6 +127,9 @@ public class LoyaltyService {
         LoyaltyTierDTO nextTier = tierRepository.findNextTierForSpend(totalSpent).map(this::mapTierToDTO).orElse(null);
         BigDecimal amountToNext = nextTier != null ? nextTier.getMinSpend().subtract(totalSpent) : null;
 
+        LoyaltyProgram program = programRepository.findActiveProgram().orElse(null);
+        boolean stampEnabled = program != null && Boolean.TRUE.equals(program.getStampCardEnabled());
+
         return CustomerLoyaltySummaryDTO.builder()
                 .customerId(customerId)
                 .customerName(customer.getName())
@@ -127,6 +138,11 @@ public class LoyaltyService {
                 .currentTier(currentTier)
                 .nextTier(nextTier)
                 .amountToNextTier(amountToNext)
+                .stampCardEnabled(stampEnabled)
+                .stampCount(customer.getStampCount() != null ? customer.getStampCount() : 0)
+                .stampCardSize(program != null ? program.getStampCardSize() : null)
+                .stampRewards(customer.getStampRewards() != null ? customer.getStampRewards() : 0)
+                .stampCardReward(program != null ? program.getStampCardReward() : null)
                 .build();
     }
 
@@ -189,6 +205,61 @@ public class LoyaltyService {
     }
 
     /**
+     * Accrue stamp-card stamps on a completed order ("mua N ly tặng 1"). No-op unless the
+     * tenant has opted into the stamp card, so every other shop type is unaffected.
+     * Each qualifying unit (cup/món) is one stamp; whenever the card fills, it converts to a
+     * free-item reward and the count rolls over. Failures must never break the order flow.
+     *
+     * @param stampQty number of stamps to add (typically the total item quantity in the order)
+     */
+    public void awardStampsForOrder(Long customerId, Long orderId, int stampQty) {
+        if (customerId == null || stampQty <= 0) return;
+
+        LoyaltyProgram program = programRepository.findActiveProgram().orElse(null);
+        if (program == null || !Boolean.TRUE.equals(program.getStampCardEnabled())) return;
+
+        int size = program.getStampCardSize() != null && program.getStampCardSize() > 0
+                ? program.getStampCardSize() : 10;
+
+        Customer customer = customerRepository.findByIdActive(customerId).orElse(null);
+        if (customer == null) return;
+
+        int total = (customer.getStampCount() != null ? customer.getStampCount() : 0) + stampQty;
+        int newRewards = total / size;
+        int remaining = total % size;
+
+        customer.setStampCount(remaining);
+        if (newRewards > 0) {
+            int rewards = (customer.getStampRewards() != null ? customer.getStampRewards() : 0) + newRewards;
+            customer.setStampRewards(rewards);
+        }
+        customerRepository.save(customer);
+
+        log.info("Awarded {} stamp(s) to customer {} for order {} (card {}/{}, +{} reward(s))",
+                stampQty, customerId, orderId, remaining, size, newRewards);
+    }
+
+    /**
+     * Redeem one filled stamp-card reward (staff gives the free item). Decrements the
+     * available-reward counter and returns the refreshed loyalty summary.
+     */
+    public CustomerLoyaltySummaryDTO redeemStampReward(Long customerId) {
+        Customer customer = customerRepository.findByIdActive(customerId)
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.customer.not.found", customerId)));
+
+        int rewards = customer.getStampRewards() != null ? customer.getStampRewards() : 0;
+        if (rewards <= 0) {
+            throw new BadRequestException(messageService.getMessage("error.loyalty.noStampReward"));
+        }
+        customer.setStampRewards(rewards - 1);
+        customerRepository.save(customer);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.LOYALTY_REDEEMED, "CUSTOMER", String.valueOf(customerId),
+                "activity.loyalty.redeemed", null);
+        return getCustomerLoyalty(customerId);
+    }
+
+    /**
      * Manually adjust customer points (positive = add, negative = deduct).
      */
     public LoyaltyTransactionDTO adjustPoints(Long customerId, int points, String description) {
@@ -210,6 +281,10 @@ public class LoyaltyService {
                 .balanceAfter(balanceAfter)
                 .description(description != null ? description : "Điều chỉnh điểm thủ công")
                 .build());
+
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.LOYALTY_ADJUSTED, "LOYALTY", String.valueOf(customerId),
+                "activity.loyalty.adjusted", null);
 
         return mapTransactionToDTO(tx);
     }
@@ -252,6 +327,10 @@ public class LoyaltyService {
                 .description("Đổi " + pointsToRedeem + " điểm lấy " + discountAmount.toPlainString() + " VND")
                 .build());
 
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.LOYALTY_REDEEMED, "LOYALTY", String.valueOf(customerId),
+                "activity.loyalty.redeemed", null);
+
         return discountAmount;
     }
 
@@ -277,6 +356,9 @@ public class LoyaltyService {
                 .redemptionDiscountAmount(p.getRedemptionDiscountAmount())
                 .minRedemptionPoints(p.getMinRedemptionPoints())
                 .isActive(p.getIsActive())
+                .stampCardEnabled(p.getStampCardEnabled())
+                .stampCardSize(p.getStampCardSize())
+                .stampCardReward(p.getStampCardReward())
                 .build();
     }
 

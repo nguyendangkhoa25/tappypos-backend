@@ -2,7 +2,10 @@ package com.tappy.pos.service.pawn;
 
 import com.tappy.pos.config.AuthContext;
 import com.tappy.pos.config.FeatureContext;
+import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.exception.PawnStatusNotAllowException;
+import com.tappy.pos.service.storage.R2CleanupService;
+import com.tappy.pos.service.storage.R2StorageService;
 import com.tappy.pos.service.tenant.ShopInfoService;
 import com.tappy.pos.service.audit.ActivityLogService;
 import com.tappy.pos.service.MessageService;
@@ -67,9 +70,15 @@ public class PawnServiceImpl implements PawnService {
     private final PawnRealEstateRepository realEstateRepository;
     private final PawnGeneralRepository generalRepository;
     private final PawnJewelryRepository jewelryRepository;
+    private final R2StorageService r2StorageService;
+    private final R2CleanupService r2CleanupService;
 
     @Value("${schedule.cleanup.pawn.cutoffMonths:3}")
     private int cutoffMonths;
+
+    /** Cap on a decoded signature PNG — a finger-drawn signature is well under this. */
+    private static final int MAX_SIGNATURE_BYTES = 256 * 1024;
+    private static final byte[] PNG_MAGIC = {(byte) 0x89, 'P', 'N', 'G'};
 
     @Override
     public PawnResponse createPawn(PawnRequest pawnRequest) {
@@ -106,7 +115,7 @@ public class PawnServiceImpl implements PawnService {
         saveItemDetail(savedEntity.getPawnId(), tenantContext.getCurrentTenantId(), pawnRequest);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.PAWN_CREATED, "PAWN", String.valueOf(savedEntity.getPawnId()),
-                messageService.getMessage("activity.pawn.created", savedEntity.getItemName()), null);
+                "activity.pawn.created", null, savedEntity.getItemName());
         return getPawnDetails(savedEntity.getPawnId());
     }
 
@@ -144,12 +153,12 @@ public class PawnServiceImpl implements PawnService {
         if (StringUtils.isNotEmpty(pawnRequest.getRequestType()) && pawnRequest.getRequestType().equalsIgnoreCase("REDEEMED")) {
             activityAction = ActivityAction.PAWN_REDEEMED;
         }
-        String updateDesc = activityAction == ActivityAction.PAWN_REDEEMED
-                ? messageService.getMessage("activity.pawn.redeemed", savedEntity.getItemName())
-                : messageService.getMessage("activity.pawn.updated", savedEntity.getItemName());
+        String updateKey = activityAction == ActivityAction.PAWN_REDEEMED
+                ? "activity.pawn.redeemed"
+                : "activity.pawn.updated";
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 activityAction, "PAWN", String.valueOf(savedEntity.getPawnId()),
-                updateDesc, null);
+                updateKey, null, savedEntity.getItemName());
         return getPawnDetails(savedEntity.getPawnId());
     }
 
@@ -207,6 +216,7 @@ public class PawnServiceImpl implements PawnService {
                     .id(customer.getId())
                     .name(customer.getName())
                     .phone(customer.getPhone())
+                    .idNumber(customer.getIdNumber())
                     .build();
             pawnResponse.setCustomer(customerDTO);
             // Prefer the name stored on the pawn itself (set at creation for visiting guests).
@@ -214,12 +224,107 @@ public class PawnServiceImpl implements PawnService {
                     ? pawnEntity.getCustomerName() : customer.getName();
             pawnResponse.setCustomerName(resolvedName);
             pawnResponse.setPhone(customer.getPhone());
+            pawnResponse.setCustomerIdNumber(customer.getIdNumber());
         });
         enrichWithItemDetail(pawnResponse, pawnId, pawnEntity.getPawnCategory());
         List<PawnAuditEntity> auditEntities = auditRepository.findByPawnIdOrderByActionIdAsc(pawnId);
         List<PawnAudit> pawnAudits = auditEntities.stream().map(pawnMapper::auditFromPawnAuditEntity).toList();
         pawnResponse.setAudits(pawnAudits);
         return pawnResponse;
+    }
+
+    @Override
+    public PawnResponse signContract(Long pawnId, SignPawnRequest request) {
+        PawnEntity pawnEntity = loadPawnWithOwnershipGuard(pawnId);
+        // Only an active contract can be signed (not redeemed/forfeited/cancelled).
+        if (pawnEntity.getPawnStatus() != PawnStatus.PAWNED) {
+            throw new PawnStatusNotAllowException(messageService.getMessage(
+                    "error.pawn.statusNotAllowed", new Object[]{pawnEntity.getPawnStatus()}));
+        }
+
+        byte[] png = decodeSignaturePng(request.getSignature());
+
+        // Upload the new signature first; only delete the old object once the new one is stored.
+        String oldKey = r2StorageService.keyFromUrl(pawnEntity.getCustomerSignatureUrl());
+        String key = "pawn-signatures/" + tenantContext.getCurrentTenantId() + "/"
+                + pawnId + "-" + UUID.randomUUID() + ".png";
+        String url = r2StorageService.upload(key, png, "image/png");
+
+        pawnEntity.setCustomerSignatureUrl(StringUtils.isBlank(url) ? null : url);
+        pawnEntity.setSignedAt(LocalDateTime.now());
+        pawnEntity.setUpdatedBy(authContext.getCurrentUsername());
+        pawnEntity.setUpdatedAt(LocalDateTime.now());
+        pawnRepository.save(pawnEntity);
+
+        r2CleanupService.deleteAsync(oldKey);
+
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.PAWN_SIGNED, "PAWN", String.valueOf(pawnId),
+                "activity.pawn.signed", null, pawnId);
+
+        return getPawnDetails(pawnId);
+    }
+
+    @Override
+    public PawnResponse removeSignature(Long pawnId) {
+        PawnEntity pawnEntity = loadPawnWithOwnershipGuard(pawnId);
+        String oldKey = r2StorageService.keyFromUrl(pawnEntity.getCustomerSignatureUrl());
+        pawnEntity.setCustomerSignatureUrl(null);
+        pawnEntity.setSignedAt(null);
+        pawnEntity.setUpdatedBy(authContext.getCurrentUsername());
+        pawnEntity.setUpdatedAt(LocalDateTime.now());
+        pawnRepository.save(pawnEntity);
+        r2CleanupService.deleteAsync(oldKey);
+        return getPawnDetails(pawnId);
+    }
+
+    /**
+     * Loads a pawn and enforces the PAWN_VIEW_ALL ownership guard — a staffer who cannot view a
+     * contract cannot sign/modify it. Throws 404 (not 403) to avoid leaking record existence,
+     * mirroring {@link #getPawnDetails}.
+     */
+    private PawnEntity loadPawnWithOwnershipGuard(Long pawnId) {
+        PawnEntity pawnEntity = pawnRepository.findById(pawnId).orElseThrow(ResourceNotFoundException::new);
+        if (!featureContext.hasFeature("PAWN_VIEW_ALL")) {
+            String currentUser = authContext.getCurrentUsername();
+            if (!currentUser.equals(pawnEntity.getCreatedBy())) {
+                log.warn("User {} attempted to modify pawn {} created by {} without PAWN_VIEW_ALL",
+                        currentUser, pawnId, pawnEntity.getCreatedBy());
+                throw new ResourceNotFoundException();
+            }
+        }
+        return pawnEntity;
+    }
+
+    /** Decodes a PNG data URL / base64 signature, validating it is a PNG within the size cap. */
+    private byte[] decodeSignaturePng(String signature) {
+        String base64 = signature == null ? "" : signature.trim();
+        int comma = base64.indexOf(',');
+        if (base64.startsWith("data:") && comma > 0) {
+            base64 = base64.substring(comma + 1);
+        }
+        base64 = base64.replaceAll("\\s", "");
+        byte[] bytes;
+        try {
+            bytes = Base64.getDecoder().decode(base64);
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException(messageService.getMessage("error.pawn.signatureInvalid"));
+        }
+        if (bytes.length < PNG_MAGIC.length || !startsWith(bytes, PNG_MAGIC)) {
+            throw new BadRequestException(messageService.getMessage("error.pawn.signatureInvalid"));
+        }
+        if (bytes.length > MAX_SIGNATURE_BYTES) {
+            throw new BadRequestException(messageService.getMessage("error.pawn.signatureTooLarge"));
+        }
+        return bytes;
+    }
+
+    private static boolean startsWith(byte[] data, byte[] prefix) {
+        if (data.length < prefix.length) return false;
+        for (int i = 0; i < prefix.length; i++) {
+            if (data[i] != prefix[i]) return false;
+        }
+        return true;
     }
 
     @Override
@@ -258,7 +363,7 @@ public class PawnServiceImpl implements PawnService {
             pawnEntities.forEach(pawnEntity -> activityLogService.logAsync(
                     tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                     ActivityAction.PAWN_DELETED, "PAWN", String.valueOf(pawnEntity.getPawnId()),
-                    messageService.getMessage("activity.pawn.deleted", pawnEntity.getItemName()), null));
+                    "activity.pawn.deleted", null, pawnEntity.getItemName()));
         }
     }
 
@@ -274,7 +379,7 @@ public class PawnServiceImpl implements PawnService {
         PawnEntity savedEntity = pawnRepository.save(pawnEntity);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.PAWN_CANCEL, "PAWN", String.valueOf(savedEntity.getPawnId()),
-                messageService.getMessage("activity.pawn.cancelled", savedEntity.getItemName()), null);
+                "activity.pawn.cancelled", null, savedEntity.getItemName());
         return getPawnDetails(savedEntity.getPawnId());
     }
 
@@ -310,7 +415,7 @@ public class PawnServiceImpl implements PawnService {
         PawnEntity savedEntity = pawnRepository.save(pawnEntity);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.PAWN_FORFEIT, "PAWN", String.valueOf(savedEntity.getPawnId()),
-                messageService.getMessage("activity.pawn.forfeited", savedEntity.getItemName()), null);
+                "activity.pawn.forfeited", null, savedEntity.getItemName());
         return getPawnDetails(savedEntity.getPawnId());
     }
 
@@ -332,12 +437,14 @@ public class PawnServiceImpl implements PawnService {
                     .id(customer.getId())
                     .name(customer.getName())
                     .phone(customer.getPhone())
+                    .idNumber(customer.getIdNumber())
                     .build();
             pawnResponse.setCustomer(customerDTO);
             String resolvedName = StringUtils.isNotEmpty(pawnEntity.getCustomerName())
                     ? pawnEntity.getCustomerName() : customer.getName();
             pawnResponse.setCustomerName(resolvedName);
             pawnResponse.setPhone(customer.getPhone());
+            pawnResponse.setCustomerIdNumber(customer.getIdNumber());
         });
         if (redeemRequest != null && redeemRequest.getRedeemDate() != null) {
             redeemDate = DateTimeUtil.fromLocalDateTime(redeemRequest.getRedeemDate());
@@ -529,7 +636,7 @@ public class PawnServiceImpl implements PawnService {
         pawnRepository.save(pawnEntity);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.PAWN_REQUEST_MONEY, "PAWN", String.valueOf(pawnEntity.getPawnId()),
-                messageService.getMessage("activity.pawn.request_money", pawnEntity.getItemName()), null);
+                "activity.pawn.request_money", null, pawnEntity.getItemName());
         return pawnMapper.fromReqMoneyEntity(reqMoneyEntity);
     }
 
@@ -579,10 +686,10 @@ public class PawnServiceImpl implements PawnService {
         }
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.PAWN_EXTEND, "PAWN", String.valueOf(redeemedPawn.getPawnId()),
-                messageService.getMessage("activity.pawn.extended", redeemedPawn.getItemName()), null);
+                "activity.pawn.extended", null, redeemedPawn.getItemName());
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
                 ActivityAction.PAWN_CREATED, "PAWN", String.valueOf(savedExtendEntity.getPawnId()),
-                messageService.getMessage("activity.pawn.extended.new", savedExtendEntity.getItemName()), null);
+                "activity.pawn.extended.new", null, savedExtendEntity.getItemName());
         return getPawnDetails(savedExtendEntity.getPawnId());
     }
 
@@ -660,6 +767,7 @@ public class PawnServiceImpl implements PawnService {
                 .extendedPawnAmount(extended.getExtendedPawnAmount())
                 .interestPawnAmount(getInterestPawnAmount(fromDate, toDate, visibleFlag))
                 .closedPawnPureAmount(redeemPawn.getClosedPawnPureAmount() + forfeited.getClosedPawnPureAmount())
+                .unsignedContractCount(pawnRepository.countUnsignedActivePawnContracts().intValue())
                 .build();
     }
 
@@ -990,6 +1098,39 @@ public class PawnServiceImpl implements PawnService {
             result.add(m);
         }
         return result;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Object> getCustomerPawnKpi(DateFilterRequest filter) {
+        boolean visibleItemFlag = shopInfoService.getExcludeVisibleItemFlag();
+        LocalDateTime fromDate = Instant.ofEpochMilli(filter.getFromDate()).atZone(ZoneId.systemDefault()).toLocalDateTime();
+        LocalDateTime toDate = Instant.ofEpochMilli(filter.getToDate()).atZone(ZoneId.systemDefault()).toLocalDateTime();
+        Pageable top = org.springframework.data.domain.PageRequest.of(0, 5);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("topPawnedAmount", mapCustomerKpiRows(pawnRepository.findTopCustomersByPawnAmount(fromDate, toDate, visibleItemFlag, top)));
+        result.put("topPawnedCount", mapCustomerKpiRows(pawnRepository.findTopCustomersByPawnCount(fromDate, toDate, visibleItemFlag, top)));
+        result.put("topCompletedPawnAmount", mapCustomerKpiRows(pawnRepository.findTopCustomersByCompletedAmount(fromDate, toDate, visibleItemFlag, top)));
+        result.put("topCompletedPawnCount", mapCustomerKpiRows(pawnRepository.findTopCustomersByCompletedCount(fromDate, toDate, visibleItemFlag, top)));
+        result.put("topInterestAmount", mapCustomerKpiRows(pawnRepository.findTopCustomersByInterestAmount(fromDate, toDate, visibleItemFlag, top)));
+        return result;
+    }
+
+    /** Maps a grouped-by-customer KPI row [customerId, customerName, count, pawnAmount, interestAmount]
+     *  to the field names the customer pawn-KPI widget renders. */
+    private List<Map<String, Object>> mapCustomerKpiRows(List<Object[]> rows) {
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (Object[] row : rows) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("customerId", row[0]);
+            m.put("name", row[1] != null ? row[1].toString() : "Khách vãng lai");
+            m.put("pawnCount", row[2] != null ? ((Number) row[2]).intValue() : 0);
+            m.put("pawnAmount", row[3] != null ? ((Number) row[3]).longValue() : 0L);
+            m.put("interestAmount", row[4] != null ? ((Number) row[4]).longValue() : 0L);
+            list.add(m);
+        }
+        return list;
     }
 
     @Transactional(readOnly = true)

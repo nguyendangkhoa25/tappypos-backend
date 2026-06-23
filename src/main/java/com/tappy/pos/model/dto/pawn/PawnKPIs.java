@@ -25,6 +25,8 @@ public class PawnKPIs {
     private long interestPawnAmount;
     private int upcomingCount;
     private long upcomingAmount;
+    /** Active (PAWNED) contracts not yet signed by the borrower — "Hợp đồng chưa ký" (§4d). Current-state, not date-bound. */
+    private int unsignedContractCount;
     /** SUM(pawnAmount) only for REDEEMED+FORFEITED contracts closed in the period — excludes additional draws. Used for avgLoan on closed cohort. */
     private long closedPawnPureAmount;
 }

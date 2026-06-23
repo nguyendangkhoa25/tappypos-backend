@@ -16,6 +16,10 @@ import com.tappy.pos.repository.product.ProductRepository;
 import com.tappy.pos.repository.product.ProductVariantRepository;
 import com.tappy.pos.repository.product.VariantTypeRepository;
 import com.tappy.pos.service.MessageService;
+import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.config.AuthContext;
+import com.tappy.pos.model.enums.ActivityAction;
+import com.tappy.pos.multitenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -39,6 +43,9 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     private final VariantTypeRepository variantTypeRepository;
     private final InventoryRepository inventoryRepository;
     private final MessageService messageService;
+    private final ActivityLogService activityLogService;
+    private final TenantContext tenantContext;
+    private final AuthContext authContext;
 
     @Override
     @Transactional(readOnly = true)
@@ -48,6 +55,53 @@ public class ProductVariantServiceImpl implements ProductVariantService {
                 .stream()
                 .map(v -> mapToDTO(v, v.getProduct().getPrice()))
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.Optional<ProductVariantDTO> findActiveByBarcode(String barcode) {
+        if (barcode == null || barcode.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        return productVariantRepository.findFirstByBarcodeAndDeletedAtIsNull(barcode.trim())
+                .filter(v -> v.getStatus() == ProductVariant.VariantStatus.ACTIVE)
+                .map(v -> mapToDTO(v, v.getProduct().getPrice()));
+    }
+
+    @Override
+    public List<ProductVariantDTO> bulkUpdate(Long productId, com.tappy.pos.model.dto.product.BulkVariantUpdateRequest req) {
+        Product product = requireProduct(productId);
+        List<ProductVariantDTO> result = new ArrayList<>();
+        for (var cell : req.getVariants()) {
+            ProductVariant variant = productVariantRepository
+                    .findByIdAndProductIdAndDeletedAtIsNull(cell.getVariantId(), productId)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            messageService.getMessage("error.product.not.found", cell.getVariantId())));
+            variant.setPriceOverride(cell.getPriceOverride());
+            variant.setCostOverride(cell.getCostOverride());
+            ProductVariant saved = productVariantRepository.save(variant);
+
+            if (cell.getQuantityInStock() != null) {
+                long target = Math.max(0L, cell.getQuantityInStock());
+                Inventory inv = inventoryRepository
+                        .findByProductIdAndVariantIdForUpdate(productId, saved.getId())
+                        .orElse(null);
+                if (inv == null) {
+                    createVariantInventory(saved, product);
+                    inv = inventoryRepository.findByProductIdAndVariantIdForUpdate(productId, saved.getId())
+                            .orElseThrow(() -> new ResourceNotFoundException(
+                                    messageService.getMessage("error.product.not.found", cell.getVariantId())));
+                }
+                inv.setQuantityInStock(target);
+                inventoryRepository.save(inv);
+            }
+            result.add(mapToDTO(saved, product.getPrice()));
+        }
+        log.info("Bulk-updated {} variants for product {}", result.size(), productId);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.PRODUCT_VARIANT_UPDATED, "PRODUCT_VARIANT", String.valueOf(productId),
+                "activity.product.variant.bulk_updated", null, result.size());
+        return result;
     }
 
     @Override
@@ -71,6 +125,9 @@ public class ProductVariantServiceImpl implements ProductVariantService {
             zeroOutProductLevelInventory(productId);
         }
         log.info("Created variant {} for product {}", saved.getId(), productId);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.PRODUCT_VARIANT_CREATED, "PRODUCT_VARIANT", String.valueOf(saved.getId()),
+                "activity.product.variant.created", null, saved.getSku());
         return mapToDTO(saved, product.getPrice());
     }
 
@@ -95,6 +152,9 @@ public class ProductVariantServiceImpl implements ProductVariantService {
 
         ProductVariant saved = productVariantRepository.save(variant);
         log.info("Updated variant {} for product {}", variantId, productId);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.PRODUCT_VARIANT_UPDATED, "PRODUCT_VARIANT", String.valueOf(saved.getId()),
+                "activity.product.variant.updated", null, saved.getSku());
         return mapToDTO(saved, product.getPrice());
     }
 
@@ -115,6 +175,9 @@ public class ProductVariantServiceImpl implements ProductVariantService {
         variant.setDeleted(true);
         productVariantRepository.save(variant);
         log.info("Deleted variant {} for product {}", variantId, productId);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.PRODUCT_VARIANT_DELETED, "PRODUCT_VARIANT", String.valueOf(variant.getId()),
+                "activity.product.variant.deleted", null, variant.getSku());
     }
 
     @Override
@@ -177,6 +240,9 @@ public class ProductVariantServiceImpl implements ProductVariantService {
         }
 
         log.info("Generated {} variants for product {}", created.size(), productId);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.PRODUCT_VARIANT_GENERATED, "PRODUCT_VARIANT", String.valueOf(productId),
+                "activity.product.variant.generated", null, String.valueOf(created.size()), product.getName());
         return created;
     }
 

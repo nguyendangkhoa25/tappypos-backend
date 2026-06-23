@@ -114,6 +114,10 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
     Optional<Inventory> findByProductIdAndVariantId(@Param("productId") Long productId,
                                                      @Param("variantId") Long variantId);
 
+    /** On-hand stock per variant for the tenant (fashion analytics). Rows: [variantId, quantityInStock]. */
+    @Query("SELECT i.variant.id, i.quantityInStock FROM Inventory i WHERE i.deleted = false AND i.variant IS NOT NULL")
+    List<Object[]> findOnHandByVariant();
+
     /**
      * Find the product-level inventory row (variant_id IS NULL).
      * Used when zeroing out product-level stock on first variant creation.

@@ -36,11 +36,19 @@ public class OrderItem extends TenantAwareEntity {
     @Column(nullable = false)
     private Integer quantity;
 
+    /** Chosen sell unit (e.g. "bao"); null = product base unit. */
+    @Column(name = "sell_unit", length = 20)
+    private String sellUnit;
+
+    /** Base units per sell unit (e.g. 50 → 1 bao = 50 kg); null/1 = normal single-unit line. */
+    @Column(name = "unit_factor", precision = 15, scale = 3)
+    private BigDecimal unitFactor;
+
     @Positive(message = "Unit price must be positive")
-    @Column(name = "unit_price", nullable = false, precision = 10, scale = 2)
+    @Column(name = "unit_price", nullable = false, precision = 15, scale = 2)
     private BigDecimal unitPrice;
 
-    @Column(name = "amount", nullable = false, precision = 10, scale = 2)
+    @Column(name = "amount", nullable = false, precision = 15, scale = 2)
     private BigDecimal amount;
 
     @Builder.Default
@@ -52,7 +60,7 @@ public class OrderItem extends TenantAwareEntity {
     private BigDecimal costAmount = BigDecimal.ZERO;
 
     @Builder.Default
-    @Column(name = "amount_before_tax", precision = 10, scale = 2, columnDefinition = "DECIMAL(10,2) DEFAULT 0")
+    @Column(name = "amount_before_tax", precision = 15, scale = 2, columnDefinition = "DECIMAL(15,2) DEFAULT 0")
     private BigDecimal amountBeforeTax = BigDecimal.ZERO;
 
     @Builder.Default
@@ -60,7 +68,7 @@ public class OrderItem extends TenantAwareEntity {
     private BigDecimal taxPercentage = BigDecimal.ZERO;
 
     @Builder.Default
-    @Column(name = "tax_amount", precision = 10, scale = 2)
+    @Column(name = "tax_amount", precision = 15, scale = 2)
     private BigDecimal taxAmount = BigDecimal.ZERO;
 
     @Column(name = "assigned_employee_id")
@@ -74,7 +82,7 @@ public class OrderItem extends TenantAwareEntity {
     private BigDecimal commissionRate = BigDecimal.ZERO;
 
     @Builder.Default
-    @Column(name = "commission_amount", precision = 10, scale = 2, columnDefinition = "DECIMAL(10,2) DEFAULT 0")
+    @Column(name = "commission_amount", precision = 15, scale = 2, columnDefinition = "DECIMAL(15,2) DEFAULT 0")
     private BigDecimal commissionAmount = BigDecimal.ZERO;
 
     @Builder.Default
@@ -101,9 +109,19 @@ public class OrderItem extends TenantAwareEntity {
     @Column(name = "metadata", columnDefinition = "jsonb")
     private String metadata;
 
+    /** Chosen modifier options as JSON: [{groupName, optionName, priceDelta}] (FnB). */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "modifiers", columnDefinition = "jsonb")
+    private String modifiers;
+
     /** Per-item customer note (e.g. "ít đường", "không hành", "thêm đá"). */
     @Column(name = "note", length = 500)
     private String note;
+
+    /** True when this line was a prescription-required drug (pharmacy dispensing paper trail). */
+    @Builder.Default
+    @Column(name = "prescription_required", nullable = false, columnDefinition = "BOOLEAN DEFAULT FALSE")
+    private Boolean prescriptionRequired = false;
 
     /** Combo this item was sold as part of; null for standalone items. */
     @Column(name = "combo_id")
@@ -135,6 +153,13 @@ public class OrderItem extends TenantAwareEntity {
         if (this.unitCost != null && this.quantity != null) {
             this.costAmount = this.unitCost.multiply(new BigDecimal(this.quantity));
         }
+    }
+
+    /** Quantity expressed in the product's BASE unit for stock deduction: round(quantity × unitFactor). */
+    public long baseQuantity() {
+        int qty = quantity != null ? quantity : 0;
+        if (unitFactor == null || unitFactor.signum() <= 0) return qty;
+        return unitFactor.multiply(BigDecimal.valueOf(qty)).setScale(0, java.math.RoundingMode.HALF_UP).longValueExact();
     }
 }
 

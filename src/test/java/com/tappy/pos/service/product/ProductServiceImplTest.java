@@ -1,5 +1,8 @@
 package com.tappy.pos.service.product;
+import com.tappy.pos.model.enums.ActivityAction;
+import com.tappy.pos.model.entity.inventory.Inventory;
 
+import com.tappy.pos.client.GoogleBooksClient;
 import com.tappy.pos.client.OpenFoodFactsClient;
 import com.tappy.pos.exception.DuplicateResourceException;
 import com.tappy.pos.exception.ResourceNotFoundException;
@@ -89,6 +92,9 @@ class ProductServiceImplTest {
     private OpenFoodFactsClient openFoodFactsClient;
 
     @Mock
+    private GoogleBooksClient googleBooksClient;
+
+    @Mock
     private ProductCatalogService productCatalogService;
 
     @Mock
@@ -105,6 +111,12 @@ class ProductServiceImplTest {
 
     @Mock
     private OrderItemRepository orderItemRepository;
+
+    @Mock
+    private com.tappy.pos.repository.modifier.ProductModifierGroupRepository productModifierGroupRepository;
+
+    @Mock
+    private ProductVariantService productVariantService;
 
     @InjectMocks
     private ProductServiceImpl productService;
@@ -1906,6 +1918,772 @@ class ProductServiceImplTest {
 
         assertThat(result.getSource()).isEqualTo(BarcodeLookupResult.Source.NONE);
         verify(openFoodFactsClient, never()).fetchByBarcode(anyString());
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    //  ADDED COVERAGE: image upload/delete, visibility, summary, stats,
+    //  getBySourcePawnId, getAllProducts filter branches, lookup variant/ISBN,
+    //  mapToDTO stock variants, getAllProductTypes null unit, create/update edge.
+    // ════════════════════════════════════════════════════════════════════════
+
+    private static byte[] tinyPng() throws java.io.IOException {
+        java.awt.image.BufferedImage img =
+                new java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D g = img.createGraphics();
+        g.setColor(java.awt.Color.RED);
+        g.fillRect(0, 0, 8, 8);
+        g.dispose();
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(img, "png", out);
+        return out.toByteArray();
+    }
+
+    // ── uploadImage ────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("uploadImage: null content type → IllegalArgumentException")
+    void uploadImage_nullContentType_throws() {
+        org.springframework.web.multipart.MultipartFile file =
+                new org.springframework.mock.web.MockMultipartFile("file", "x.png", null, new byte[]{1});
+        lenient().when(messageService.getMessage(eq("error.product.image.invalid.type"), any(Object[].class)))
+                .thenReturn("Invalid type");
+
+        assertThatThrownBy(() -> productService.uploadImage(1L, file))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(productRepository, never()).findByIdAndDeletedFalse(anyLong());
+    }
+
+    @Test
+    @DisplayName("uploadImage: non-image content type → IllegalArgumentException")
+    void uploadImage_invalidContentType_throws() {
+        org.springframework.web.multipart.MultipartFile file =
+                new org.springframework.mock.web.MockMultipartFile("file", "x.txt", "text/plain", new byte[]{1});
+        lenient().when(messageService.getMessage(eq("error.product.image.invalid.type"), any(Object[].class)))
+                .thenReturn("Invalid type");
+
+        assertThatThrownBy(() -> productService.uploadImage(1L, file))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("uploadImage: product not found → ResourceNotFoundException")
+    void uploadImage_productNotFound_throws() {
+        org.springframework.web.multipart.MultipartFile file =
+                new org.springframework.mock.web.MockMultipartFile("file", "x.png", "image/png", new byte[]{1});
+        when(productRepository.findByIdAndDeletedFalse(99L)).thenReturn(Optional.empty());
+        lenient().when(messageService.getMessage(eq("error.product.not.found"), any(Object[].class)))
+                .thenReturn("Not found");
+
+        assertThatThrownBy(() -> productService.uploadImage(99L, file))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("uploadImage: invalid image bytes → RuntimeException (process failed)")
+    void uploadImage_badImageBytes_throwsRuntime() {
+        org.springframework.web.multipart.MultipartFile file =
+                new org.springframework.mock.web.MockMultipartFile(
+                        "file", "x.png", "image/png", new byte[]{0, 1, 2, 3});
+        when(productRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(product));
+        lenient().when(messageService.getMessage(eq("error.product.image.process.failed"), any(Object[].class)))
+                .thenReturn("Process failed");
+
+        assertThatThrownBy(() -> productService.uploadImage(1L, file))
+                .isInstanceOf(RuntimeException.class);
+        verify(r2StorageService, never()).upload(anyString(), any(), anyString());
+    }
+
+    @Test
+    @DisplayName("uploadImage: success — compresses, uploads, sets URL, logs")
+    void uploadImage_success() throws Exception {
+        org.springframework.web.multipart.MultipartFile file =
+                new org.springframework.mock.web.MockMultipartFile("file", "x.png", "image/png", tinyPng());
+        when(productRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(product));
+        when(tenantContext.getCurrentTenantId()).thenReturn("shop-1");
+        when(r2StorageService.upload(anyString(), any(byte[].class), eq("image/jpeg")))
+                .thenReturn("https://cdn/products/shop-1/1.jpg");
+        when(productRepository.save(any(Product.class))).thenReturn(product);
+
+        ProductDTO result = productService.uploadImage(1L, file);
+
+        assertThat(result).isNotNull();
+        assertThat(product.getImageUrl()).isEqualTo("https://cdn/products/shop-1/1.jpg");
+        verify(r2StorageService).upload(anyString(), any(byte[].class), eq("image/jpeg"));
+        verify(activityLogService).logAsync(anyString(), anyString(), any(),
+                eq(ActivityAction.PRODUCT_IMAGE_UPDATED), eq("PRODUCT"), anyString(),
+                anyString(), any(), any());
+    }
+
+    @Test
+    @DisplayName("uploadImage: blank upload URL — imageUrl set to null")
+    void uploadImage_blankUrl_setsNull() throws Exception {
+        org.springframework.web.multipart.MultipartFile file =
+                new org.springframework.mock.web.MockMultipartFile("file", "x.png", "image/png", tinyPng());
+        product.setImageUrl("old");
+        when(productRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(product));
+        when(tenantContext.getCurrentTenantId()).thenReturn("shop-1");
+        when(r2StorageService.upload(anyString(), any(byte[].class), eq("image/jpeg"))).thenReturn("   ");
+        when(productRepository.save(any(Product.class))).thenReturn(product);
+
+        productService.uploadImage(1L, file);
+
+        assertThat(product.getImageUrl()).isNull();
+    }
+
+    // ── deleteImage ────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("deleteImage: clears imageUrl, cleans R2, logs")
+    void deleteImage_success() {
+        product.setImageUrl("https://cdn/old.jpg");
+        when(productRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(product));
+        when(productRepository.save(any(Product.class))).thenReturn(product);
+
+        productService.deleteImage(1L);
+
+        assertThat(product.getImageUrl()).isNull();
+        verify(r2StorageService).keyFromUrl("https://cdn/old.jpg");
+        verify(productRepository).save(product);
+        verify(activityLogService).logAsync(any(), anyString(), any(),
+                eq(ActivityAction.PRODUCT_IMAGE_DELETED), eq("PRODUCT"), anyString(),
+                anyString(), any(), any());
+    }
+
+    @Test
+    @DisplayName("deleteImage: product not found → ResourceNotFoundException")
+    void deleteImage_notFound_throws() {
+        when(productRepository.findByIdAndDeletedFalse(99L)).thenReturn(Optional.empty());
+        lenient().when(messageService.getMessage(eq("error.product.not.found"), any(Object[].class)))
+                .thenReturn("Not found");
+
+        assertThatThrownBy(() -> productService.deleteImage(99L))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── setVisibility ──────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("setVisibility: active=true sets ACTIVE")
+    void setVisibility_active() {
+        when(productRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(product));
+        when(productRepository.save(any(Product.class))).thenReturn(product);
+
+        productService.setVisibility(1L, true);
+
+        assertThat(product.getStatus()).isEqualTo(Product.ProductStatus.ACTIVE);
+        verify(productRepository).save(product);
+    }
+
+    @Test
+    @DisplayName("setVisibility: active=false sets INACTIVE")
+    void setVisibility_inactive() {
+        when(productRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(product));
+        when(productRepository.save(any(Product.class))).thenReturn(product);
+
+        productService.setVisibility(1L, false);
+
+        assertThat(product.getStatus()).isEqualTo(Product.ProductStatus.INACTIVE);
+    }
+
+    @Test
+    @DisplayName("setVisibility: product not found → ResourceNotFoundException")
+    void setVisibility_notFound_throws() {
+        when(productRepository.findByIdAndDeletedFalse(99L)).thenReturn(Optional.empty());
+        lenient().when(messageService.getMessage(eq("product.not.found"), any(Object[].class)))
+                .thenReturn("Not found");
+
+        assertThatThrownBy(() -> productService.setVisibility(99L, true))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── getSummary ─────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getSummary: aggregates total/outOfStock/lowStock counts")
+    void getSummary_success() {
+        when(productRepository.countActive()).thenReturn(42L);
+        when(inventoryRepository.countOutOfStock()).thenReturn(3L);
+        when(inventoryRepository.countLowStock()).thenReturn(5L);
+
+        ProductSummaryDTO result = productService.getSummary();
+
+        assertThat(result.getTotal()).isEqualTo(42L);
+        assertThat(result.getOutOfStock()).isEqualTo(3L);
+        assertThat(result.getLowStock()).isEqualTo(5L);
+    }
+
+    // ── getBySourcePawnId ──────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getBySourcePawnId: present → mapped DTO")
+    void getBySourcePawnId_found() {
+        when(productRepository.findBySourcePawnIdAndDeletedFalse(55L)).thenReturn(Optional.of(product));
+
+        Optional<ProductDTO> result = productService.getBySourcePawnId(55L);
+
+        assertThat(result).isPresent();
+        assertThat(result.get().getId()).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("getBySourcePawnId: absent → empty")
+    void getBySourcePawnId_notFound() {
+        when(productRepository.findBySourcePawnIdAndDeletedFalse(55L)).thenReturn(Optional.empty());
+
+        assertThat(productService.getBySourcePawnId(55L)).isEmpty();
+    }
+
+    // ── getProductStats ────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getProductStats: empty period rows → all defaults")
+    void getProductStats_emptyRows() {
+        when(orderItemRepository.getProductPeriodStats(eq(1L), any())).thenReturn(java.util.List.of());
+        when(orderItemRepository.getProductMonthRevenue(eq(1L), anyInt(), anyInt())).thenReturn(null);
+        when(orderItemRepository.getTopCustomersForProduct(eq(1L), any(), any()))
+                .thenReturn(java.util.List.of());
+        when(orderItemRepository.getTopEmployeesForProduct(eq(1L), any(), any()))
+                .thenReturn(java.util.List.of());
+
+        ProductStatsDTO result = productService.getProductStats(1L, 30);
+
+        assertThat(result.getOrderCount()).isZero();
+        assertThat(result.getQtySold()).isZero();
+        assertThat(result.getRevenue()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(result.getLastSoldAt()).isNull();
+        assertThat(result.getRevenueThisMonth()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(result.getRevenueLastMonth()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(result.getTopCustomers()).isEmpty();
+        assertThat(result.getTopEmployees()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("getProductStats: populated rows → mapped values incl. top buyers/employees")
+    void getProductStats_populated() {
+        java.sql.Timestamp ts = java.sql.Timestamp.valueOf(java.time.LocalDateTime.of(2026, 6, 1, 10, 0));
+        when(orderItemRepository.getProductPeriodStats(eq(1L), any()))
+                .thenReturn(java.util.List.<Object[]>of(
+                        new Object[]{7L, 20L, new BigDecimal("1500000"), ts}));
+        when(orderItemRepository.getProductMonthRevenue(eq(1L), anyInt(), anyInt()))
+                .thenReturn(new BigDecimal("800000"));
+        when(orderItemRepository.getTopCustomersForProduct(eq(1L), any(), any()))
+                .thenReturn(java.util.List.<Object[]>of(
+                        new Object[]{"Nguyen Van A", 4L, new BigDecimal("600000")}));
+        when(orderItemRepository.getTopEmployeesForProduct(eq(1L), any(), any()))
+                .thenReturn(java.util.List.<Object[]>of(
+                        new Object[]{"Tran Thi B", 3L}));
+
+        ProductStatsDTO result = productService.getProductStats(1L, 30);
+
+        assertThat(result.getOrderCount()).isEqualTo(7L);
+        assertThat(result.getQtySold()).isEqualTo(20L);
+        assertThat(result.getRevenue()).isEqualByComparingTo(new BigDecimal("1500000"));
+        assertThat(result.getLastSoldAt()).isNotNull();
+        assertThat(result.getTopCustomers()).hasSize(1);
+        assertThat(result.getTopCustomers().getFirst().getName()).isEqualTo("Nguyen Van A");
+        assertThat(result.getTopCustomers().getFirst().getTotalSpend())
+                .isEqualByComparingTo(new BigDecimal("600000"));
+        assertThat(result.getTopEmployees()).hasSize(1);
+        assertThat(result.getTopEmployees().getFirst().getName()).isEqualTo("Tran Thi B");
+        assertThat(result.getTopEmployees().getFirst().getOrderCount()).isEqualTo(3L);
+    }
+
+    @Test
+    @DisplayName("getProductStats: null cells in rows → coerced to defaults")
+    void getProductStats_nullCells() {
+        when(orderItemRepository.getProductPeriodStats(eq(1L), any()))
+                .thenReturn(java.util.List.<Object[]>of(new Object[]{null, null, null, null}));
+        when(orderItemRepository.getProductMonthRevenue(eq(1L), anyInt(), anyInt())).thenReturn(null);
+        when(orderItemRepository.getTopCustomersForProduct(eq(1L), any(), any()))
+                .thenReturn(java.util.List.<Object[]>of(new Object[]{null, null, null}));
+        when(orderItemRepository.getTopEmployeesForProduct(eq(1L), any(), any()))
+                .thenReturn(java.util.List.<Object[]>of(new Object[]{null, null}));
+
+        ProductStatsDTO result = productService.getProductStats(1L, 7);
+
+        assertThat(result.getOrderCount()).isZero();
+        assertThat(result.getRevenue()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(result.getLastSoldAt()).isNull();
+        assertThat(result.getTopCustomers().getFirst().getName()).isEmpty();
+        assertThat(result.getTopCustomers().getFirst().getTotalSpend())
+                .isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(result.getTopEmployees().getFirst().getName()).isEmpty();
+        assertThat(result.getTopEmployees().getFirst().getOrderCount()).isZero();
+    }
+
+    // ── getAllProducts: every filter branch ──────────────────────────────────
+
+    @Test
+    @DisplayName("getAllProducts: productTypeId filter (no pawn origin)")
+    void getAllProducts_byProductType() {
+        Page<Product> page = new PageImpl<>(List.of(product));
+        when(productRepository.findByDeletedFalseAndStatusAndProductTypeIdOrderByCreatedAtDesc(
+                Product.ProductStatus.ACTIVE, 1L, Pageable.unpaged())).thenReturn(page);
+
+        Page<ProductDTO> result = productService.getAllProducts("ACTIVE", null, 1L, false, Pageable.unpaged());
+
+        assertThat(result.getContent()).hasSize(1);
+        verify(productRepository).findByDeletedFalseAndStatusAndProductTypeIdOrderByCreatedAtDesc(
+                Product.ProductStatus.ACTIVE, 1L, Pageable.unpaged());
+    }
+
+    @Test
+    @DisplayName("getAllProducts: productTypeId + pawnOriginOnly")
+    void getAllProducts_byProductTypeAndPawnOrigin() {
+        Page<Product> page = new PageImpl<>(List.of(product));
+        when(productRepository.findByDeletedFalseAndStatusAndProductTypeIdAndSourcePawnIdIsNotNullOrderByCreatedAtDesc(
+                Product.ProductStatus.ACTIVE, 1L, Pageable.unpaged())).thenReturn(page);
+
+        Page<ProductDTO> result = productService.getAllProducts("ACTIVE", null, 1L, true, Pageable.unpaged());
+
+        assertThat(result.getContent()).hasSize(1);
+        verify(productRepository).findByDeletedFalseAndStatusAndProductTypeIdAndSourcePawnIdIsNotNullOrderByCreatedAtDesc(
+                Product.ProductStatus.ACTIVE, 1L, Pageable.unpaged());
+    }
+
+    @Test
+    @DisplayName("getAllProducts: pawnOriginOnly with categoryId")
+    void getAllProducts_pawnOrigin_withCategory() {
+        Page<Product> page = new PageImpl<>(List.of(product));
+        when(productRepository.findByStatusAndCategoryIdAndSourcePawnIdIsNotNull(
+                Product.ProductStatus.ACTIVE, 9L, Pageable.unpaged())).thenReturn(page);
+
+        Page<ProductDTO> result = productService.getAllProducts("ACTIVE", 9L, null, true, Pageable.unpaged());
+
+        assertThat(result.getContent()).hasSize(1);
+        verify(productRepository).findByStatusAndCategoryIdAndSourcePawnIdIsNotNull(
+                Product.ProductStatus.ACTIVE, 9L, Pageable.unpaged());
+    }
+
+    @Test
+    @DisplayName("getAllProducts: pawnOriginOnly without categoryId")
+    void getAllProducts_pawnOrigin_noCategory() {
+        Page<Product> page = new PageImpl<>(List.of(product));
+        when(productRepository.findByDeletedFalseAndStatusAndSourcePawnIdIsNotNullOrderByCreatedAtDesc(
+                Product.ProductStatus.ACTIVE, Pageable.unpaged())).thenReturn(page);
+
+        Page<ProductDTO> result = productService.getAllProducts("ACTIVE", null, null, true, Pageable.unpaged());
+
+        assertThat(result.getContent()).hasSize(1);
+        verify(productRepository).findByDeletedFalseAndStatusAndSourcePawnIdIsNotNullOrderByCreatedAtDesc(
+                Product.ProductStatus.ACTIVE, Pageable.unpaged());
+    }
+
+    @Test
+    @DisplayName("getAllProducts: categoryId only (no pawn origin)")
+    void getAllProducts_byCategory() {
+        Page<Product> page = new PageImpl<>(List.of(product));
+        when(productRepository.findByStatusAndCategoryId(
+                Product.ProductStatus.ACTIVE, 9L, Pageable.unpaged())).thenReturn(page);
+
+        Page<ProductDTO> result = productService.getAllProducts("ACTIVE", 9L, null, false, Pageable.unpaged());
+
+        assertThat(result.getContent()).hasSize(1);
+        verify(productRepository).findByStatusAndCategoryId(
+                Product.ProductStatus.ACTIVE, 9L, Pageable.unpaged());
+    }
+
+    @Test
+    @DisplayName("getAllProducts: maps variant & modifier flags from id-sets")
+    void getAllProducts_mapsVariantAndModifierFlags() {
+        Page<Product> page = new PageImpl<>(List.of(product));
+        when(productRepository.findByDeletedFalseAndStatusOrderByCreatedAtDesc(
+                Product.ProductStatus.ACTIVE, Pageable.unpaged())).thenReturn(page);
+        when(productVariantRepository.findProductIdsWithActiveVariants(anyList()))
+                .thenReturn(java.util.Set.of(1L));
+        when(productModifierGroupRepository.findProductIdsWithModifiers(anyList()))
+                .thenReturn(java.util.Set.of(1L));
+
+        Page<ProductDTO> result = productService.getAllProducts("ACTIVE", null, null, false, Pageable.unpaged());
+
+        assertThat(result.getContent().getFirst().getHasVariants()).isTrue();
+        assertThat(result.getContent().getFirst().getHasModifiers()).isTrue();
+    }
+
+    // ── mapToDTOWithVariantFlag: stock branches via getAllProducts ────────────
+
+    @Test
+    @DisplayName("getAllProducts: TRACKED product with inventory row → inStock + quantity")
+    void getAllProducts_trackedInStock() {
+        product.setInventoryMode(com.tappy.pos.model.enums.InventoryMode.TRACKED);
+        Page<Product> page = new PageImpl<>(List.of(product));
+        when(productRepository.findByDeletedFalseAndStatusOrderByCreatedAtDesc(
+                Product.ProductStatus.ACTIVE, Pageable.unpaged())).thenReturn(page);
+        Inventory inv = Inventory.builder().quantityInStock(12L).build();
+        when(inventoryRepository.findByProductId(1L)).thenReturn(Optional.of(inv));
+
+        Page<ProductDTO> result = productService.getAllProducts("ACTIVE", null, null, false, Pageable.unpaged());
+
+        ProductDTO dto = result.getContent().getFirst();
+        assertThat(dto.getStockQuantity()).isEqualTo(12L);
+        assertThat(dto.getInStock()).isTrue();
+    }
+
+    @Test
+    @DisplayName("getAllProducts: TRACKED product with no inventory row → inStock=false, qty null")
+    void getAllProducts_trackedNoInventoryRow() {
+        product.setInventoryMode(com.tappy.pos.model.enums.InventoryMode.TRACKED);
+        Page<Product> page = new PageImpl<>(List.of(product));
+        when(productRepository.findByDeletedFalseAndStatusOrderByCreatedAtDesc(
+                Product.ProductStatus.ACTIVE, Pageable.unpaged())).thenReturn(page);
+        when(inventoryRepository.findByProductId(1L)).thenReturn(Optional.empty());
+
+        Page<ProductDTO> result = productService.getAllProducts("ACTIVE", null, null, false, Pageable.unpaged());
+
+        ProductDTO dto = result.getContent().getFirst();
+        assertThat(dto.getStockQuantity()).isNull();
+        assertThat(dto.getInStock()).isFalse();
+    }
+
+    @Test
+    @DisplayName("getAllProducts: NO_INVENTORY product → stock fields null, no inventory lookup")
+    void getAllProducts_noInventoryMode() {
+        product.setInventoryMode(com.tappy.pos.model.enums.InventoryMode.NO_INVENTORY);
+        Page<Product> page = new PageImpl<>(List.of(product));
+        when(productRepository.findByDeletedFalseAndStatusOrderByCreatedAtDesc(
+                Product.ProductStatus.ACTIVE, Pageable.unpaged())).thenReturn(page);
+
+        Page<ProductDTO> result = productService.getAllProducts("ACTIVE", null, null, false, Pageable.unpaged());
+
+        ProductDTO dto = result.getContent().getFirst();
+        assertThat(dto.getStockQuantity()).isNull();
+        assertThat(dto.getInStock()).isNull();
+        verify(inventoryRepository, never()).findByProductId(anyLong());
+    }
+
+    // ── mapToDTO (single): stock-in via getProductById ───────────────────────
+
+    @Test
+    @DisplayName("getProductById: TRACKED product with stock → inStock true")
+    void getProductById_trackedInStock() {
+        product.setInventoryMode(com.tappy.pos.model.enums.InventoryMode.TRACKED);
+        when(productRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(product));
+        when(productVariantRepository.existsByProductIdAndDeletedAtIsNull(1L)).thenReturn(true);
+        when(productModifierGroupRepository.existsByProductId(1L)).thenReturn(false);
+        when(inventoryRepository.findByProductId(1L))
+                .thenReturn(Optional.of(Inventory.builder().quantityInStock(3L).build()));
+
+        ProductDTO result = productService.getProductById(1L);
+
+        assertThat(result.getInStock()).isTrue();
+        assertThat(result.getStockQuantity()).isEqualTo(3L);
+        assertThat(result.getHasVariants()).isTrue();
+    }
+
+    @Test
+    @DisplayName("getProductById: TRACKED product, zero stock → inStock false")
+    void getProductById_trackedZeroStock() {
+        product.setInventoryMode(com.tappy.pos.model.enums.InventoryMode.TRACKED);
+        when(productRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(product));
+        when(inventoryRepository.findByProductId(1L))
+                .thenReturn(Optional.of(Inventory.builder().quantityInStock(0L).build()));
+
+        ProductDTO result = productService.getProductById(1L);
+
+        assertThat(result.getInStock()).isFalse();
+        assertThat(result.getStockQuantity()).isEqualTo(0L);
+    }
+
+    // ── getAllProductTypes: null defaultUnit falls back to "piece" ───────────
+
+    @Test
+    @DisplayName("getAllProductTypes: null defaultUnit → 'piece'")
+    void getAllProductTypes_nullDefaultUnit() {
+        ProductType pt = ProductType.builder().id(3L).code("SERVICE").name("Dịch vụ").build();
+        pt.setDefaultUnit(null);
+        when(productTypeRepository.findAll()).thenReturn(List.of(pt));
+
+        List<ProductTypeDTO> result = productService.getAllProductTypes();
+
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().getDefaultUnit()).isEqualTo("piece");
+    }
+
+    // ── createProduct: TRACKED with initialQuantity ──────────────────────────
+
+    @Test
+    @DisplayName("createProduct: TRACKED with initialQuantity → inventory row created")
+    void createProduct_trackedWithInitialQuantity() {
+        Product saved = Product.builder()
+                .id(20L).productType(productType).sku("TRK-001").name("Tracked Item")
+                .price(BigDecimal.TEN).costPrice(BigDecimal.valueOf(5))
+                .status(Product.ProductStatus.ACTIVE)
+                .inventoryMode(com.tappy.pos.model.enums.InventoryMode.TRACKED)
+                .attributeValues(new HashSet<>()).categories(new HashSet<>()).build();
+
+        CreateProductRequest req = CreateProductRequest.builder()
+                .productTypeId(1L).sku("TRK-001").name("Tracked Item")
+                .price(BigDecimal.TEN).costPrice(BigDecimal.valueOf(5)).status("ACTIVE")
+                .initialQuantity(25).build();
+
+        when(productRepository.findBySkuAndDeletedFalse("TRK-001")).thenReturn(Optional.empty());
+        when(productTypeRepository.findById(1L)).thenReturn(Optional.of(productType));
+        when(productRepository.save(any(Product.class))).thenReturn(saved);
+        when(tenantContext.getCurrentTenantId()).thenReturn("shop-1");
+
+        productService.createProduct(req);
+
+        verify(inventoryRepository).save(argThat(inv ->
+                inv.getQuantityInStock() == 25L && "Quầy".equals(inv.getWarehouseLocation())));
+    }
+
+    @Test
+    @DisplayName("createProduct: TRACKED without initialQuantity → no inventory row")
+    void createProduct_trackedNoInitialQuantity() {
+        Product saved = Product.builder()
+                .id(21L).productType(productType).sku("TRK-002").name("Tracked NoQty")
+                .price(BigDecimal.TEN).status(Product.ProductStatus.ACTIVE)
+                .inventoryMode(com.tappy.pos.model.enums.InventoryMode.TRACKED)
+                .attributeValues(new HashSet<>()).categories(new HashSet<>()).build();
+
+        CreateProductRequest req = CreateProductRequest.builder()
+                .productTypeId(1L).sku("TRK-002").name("Tracked NoQty")
+                .price(BigDecimal.TEN).status("ACTIVE").build();
+
+        when(productRepository.findBySkuAndDeletedFalse("TRK-002")).thenReturn(Optional.empty());
+        when(productTypeRepository.findById(1L)).thenReturn(Optional.of(productType));
+        when(productRepository.save(any(Product.class))).thenReturn(saved);
+
+        productService.createProduct(req);
+
+        verify(inventoryRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("createProduct: explicit productKind INGREDIENT is parsed")
+    void createProduct_withProductKind() {
+        Product saved = Product.builder()
+                .id(22L).productType(productType).sku("KIND-001").name("Raw")
+                .price(BigDecimal.TEN).status(Product.ProductStatus.ACTIVE)
+                .inventoryMode(com.tappy.pos.model.enums.InventoryMode.TRACKED)
+                .productKind(com.tappy.pos.model.enums.ProductKind.INGREDIENT)
+                .attributeValues(new HashSet<>()).categories(new HashSet<>()).build();
+
+        CreateProductRequest req = CreateProductRequest.builder()
+                .productTypeId(1L).sku("KIND-001").name("Raw")
+                .price(BigDecimal.TEN).status("ACTIVE")
+                .productKind("INGREDIENT").build();
+
+        when(productRepository.findBySkuAndDeletedFalse("KIND-001")).thenReturn(Optional.empty());
+        when(productTypeRepository.findById(1L)).thenReturn(Optional.of(productType));
+        when(productRepository.save(any(Product.class))).thenReturn(saved);
+
+        ProductDTO result = productService.createProduct(req);
+
+        assertThat(result.getProductKind()).isEqualTo("INGREDIENT");
+        verify(productRepository).save(argThat(p ->
+                p.getProductKind() == com.tappy.pos.model.enums.ProductKind.INGREDIENT));
+    }
+
+    // ── updateProduct edge cases ─────────────────────────────────────────────
+
+    @Test
+    @DisplayName("updateProduct: productKind + durationMinutes applied")
+    void updateProduct_productKindAndDuration() {
+        UpdateProductRequest req = UpdateProductRequest.builder()
+                .name("Svc").description("d").price(BigDecimal.TEN).status("ACTIVE")
+                .productKind("INGREDIENT").durationMinutes(45).build();
+
+        when(productRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(product));
+        when(productRepository.save(any(Product.class))).thenReturn(product);
+
+        productService.updateProduct(1L, req);
+
+        assertThat(product.getProductKind()).isEqualTo(com.tappy.pos.model.enums.ProductKind.INGREDIENT);
+        assertThat(product.getDurationMinutes()).isEqualTo(45);
+    }
+
+    @Test
+    @DisplayName("updateProduct: null vendorId clears existing vendor")
+    void updateProduct_nullVendorClearsVendor() {
+        com.tappy.pos.model.entity.vendor.Vendor existing = new com.tappy.pos.model.entity.vendor.Vendor();
+        existing.setId(8L);
+        product.setVendor(existing);
+
+        UpdateProductRequest req = UpdateProductRequest.builder()
+                .name("x").description("d").price(BigDecimal.TEN).status("ACTIVE")
+                .vendorId(null).build();
+
+        when(productRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(product));
+        when(productRepository.save(any(Product.class))).thenReturn(product);
+
+        productService.updateProduct(1L, req);
+
+        assertThat(product.getVendor()).isNull();
+        verify(vendorRepository, never()).findById(anyLong());
+    }
+
+    @Test
+    @DisplayName("updateProduct: vendor not found → ResourceNotFoundException")
+    void updateProduct_vendorNotFound_throws() {
+        UpdateProductRequest req = UpdateProductRequest.builder()
+                .name("x").description("d").price(BigDecimal.TEN).status("ACTIVE")
+                .vendorId(404L).build();
+
+        when(productRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(product));
+        when(vendorRepository.findById(404L)).thenReturn(Optional.empty());
+        lenient().when(messageService.getMessage(eq("error.vendor.not.found"), any(Object[].class)))
+                .thenReturn("Vendor not found");
+
+        assertThatThrownBy(() -> productService.updateProduct(1L, req))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("updateProduct: reuses existing attribute value row when present")
+    void updateProduct_reusesExistingAttributeValue() {
+        Map<String, Object> attrs = new HashMap<>();
+        attrs.put("color", "blue");
+
+        UpdateProductRequest req = UpdateProductRequest.builder()
+                .name("x").description("d").price(BigDecimal.TEN).status("ACTIVE")
+                .attributes(attrs).build();
+
+        AttributeDefinition colorAttr = AttributeDefinition.builder()
+                .code("color").name("Color").dataType(AttributeDefinition.DataType.STRING).build();
+        colorAttr.setId(1L);
+        ProductAttributeValue existing = ProductAttributeValue.builder()
+                .product(product).attribute(colorAttr).build();
+        existing.setValue("red");
+
+        when(productRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(product));
+        when(attributeDefinitionRepository.findByCodeAndProductTypeId("color", 1L))
+                .thenReturn(Optional.of(colorAttr));
+        when(productAttributeValueRepository.findByProductIdAndAttributeId(1L, 1L))
+                .thenReturn(Optional.of(existing));
+        when(productAttributeValueRepository.save(any(ProductAttributeValue.class)))
+                .thenReturn(existing);
+        when(productRepository.save(any(Product.class))).thenReturn(product);
+
+        productService.updateProduct(1L, req);
+
+        verify(productAttributeValueRepository).save(argThat(av -> "blue".equals(av.getValueString())));
+    }
+
+    @Test
+    @DisplayName("updateProduct: unknown attribute code is skipped, not saved")
+    void updateProduct_unknownAttributeSkipped() {
+        Map<String, Object> attrs = new HashMap<>();
+        attrs.put("ghost", "x");
+
+        UpdateProductRequest req = UpdateProductRequest.builder()
+                .name("x").description("d").price(BigDecimal.TEN).status("ACTIVE")
+                .attributes(attrs).build();
+
+        when(productRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(product));
+        when(attributeDefinitionRepository.findByCodeAndProductTypeId("ghost", 1L))
+                .thenReturn(Optional.empty());
+        when(productRepository.save(any(Product.class))).thenReturn(product);
+
+        productService.updateProduct(1L, req);
+
+        verify(productAttributeValueRepository, never()).save(any());
+    }
+
+    // ── lookupByBarcode: variant + ISBN paths ────────────────────────────────
+
+    @Test
+    @DisplayName("lookupByBarcode: variant hit with existing parent → SHOP_VARIANT")
+    void lookupByBarcode_variantHit() {
+        com.tappy.pos.model.dto.product.ProductVariantDTO variant =
+                com.tappy.pos.model.dto.product.ProductVariantDTO.builder()
+                        .id(50L).productId(1L).build();
+        when(productVariantService.findActiveByBarcode("VAR-1")).thenReturn(Optional.of(variant));
+        when(productRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(product));
+
+        BarcodeLookupResult result = productService.lookupByBarcode("VAR-1");
+
+        assertThat(result.getSource()).isEqualTo(BarcodeLookupResult.Source.SHOP_VARIANT);
+        assertThat(result.getVariant()).isNotNull();
+        assertThat(result.getProduct()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("lookupByBarcode: variant hit but parent missing → falls through to shop lookup")
+    void lookupByBarcode_variantHit_parentMissing_fallsThrough() {
+        com.tappy.pos.model.dto.product.ProductVariantDTO variant =
+                com.tappy.pos.model.dto.product.ProductVariantDTO.builder()
+                        .id(50L).productId(77L).build();
+        when(productVariantService.findActiveByBarcode("VAR-2")).thenReturn(Optional.of(variant));
+        when(productRepository.findByIdAndDeletedFalse(77L)).thenReturn(Optional.empty());
+        when(productRepository.findByBarcodeAndDeletedFalse("VAR-2")).thenReturn(Optional.of(product));
+
+        BarcodeLookupResult result = productService.lookupByBarcode("VAR-2");
+
+        assertThat(result.getSource()).isEqualTo(BarcodeLookupResult.Source.SHOP);
+    }
+
+    @Test
+    @DisplayName("lookupByBarcode: ISBN-13 routes to Google Books and returns CATALOG")
+    void lookupByBarcode_isbn13_googleBooks() {
+        String isbn = "9786041113299"; // 978 EAN-13 ISBN
+        when(productVariantService.findActiveByBarcode(isbn)).thenReturn(Optional.empty());
+        when(productRepository.findByBarcodeAndDeletedFalse(isbn)).thenReturn(Optional.empty());
+        when(productCatalogRepository.findByBarcode(isbn)).thenReturn(Optional.empty());
+        when(googleBooksClient.isEnabled()).thenReturn(true);
+        GoogleBooksClient.BookInfo book = new GoogleBooksClient.BookInfo();
+        book.title = "Dế Mèn Phiêu Lưu Ký";
+        book.publisher = "NXB Kim Đồng";
+        book.author = "Tô Hoài";
+        book.category = "Văn học";
+        book.imageUrl = "https://img/book.jpg";
+        when(googleBooksClient.fetchByIsbn(isbn)).thenReturn(Optional.of(book));
+
+        BarcodeLookupResult result = productService.lookupByBarcode(isbn);
+
+        assertThat(result.getSource()).isEqualTo(BarcodeLookupResult.Source.CATALOG);
+        assertThat(result.getCatalog().getName()).isEqualTo("Dế Mèn Phiêu Lưu Ký");
+        assertThat(result.getCatalog().getUnit()).isEqualTo("Cuốn");
+        verify(productCatalogService).saveFromBookAsync(book);
+    }
+
+    @Test
+    @DisplayName("lookupByBarcode: ISBN-13 enabled but book not found → falls through to NONE")
+    void lookupByBarcode_isbn13_notFound_fallsThrough() {
+        String isbn = "9786041113299";
+        when(productVariantService.findActiveByBarcode(isbn)).thenReturn(Optional.empty());
+        when(productRepository.findByBarcodeAndDeletedFalse(isbn)).thenReturn(Optional.empty());
+        when(productCatalogRepository.findByBarcode(isbn)).thenReturn(Optional.empty());
+        when(googleBooksClient.isEnabled()).thenReturn(true);
+        when(googleBooksClient.fetchByIsbn(isbn)).thenReturn(Optional.empty());
+        when(openFoodFactsClient.isEnabled()).thenReturn(false);
+
+        BarcodeLookupResult result = productService.lookupByBarcode(isbn);
+
+        assertThat(result.getSource()).isEqualTo(BarcodeLookupResult.Source.NONE);
+    }
+
+    // ── generateSku: single-word + empty-name abbrev branches ────────────────
+
+    @Test
+    @DisplayName("generateSku: single short word name is used as-is")
+    void generateSku_singleShortWord() {
+        when(productRepository.findSkusByPrefix(startsWith("FOOD-"))).thenReturn(List.of());
+
+        String sku = productService.generateSku("Tea", "FOOD");
+
+        assertThat(sku).startsWith("FOOD-TEA-");
+    }
+
+    @Test
+    @DisplayName("generateSku: empty/symbol-only name falls back to PROD abbrev")
+    void generateSku_emptyName_prodFallback() {
+        when(productRepository.findSkusByPrefix(startsWith("FOOD-"))).thenReturn(List.of());
+
+        String sku = productService.generateSku("!!!", "FOOD");
+
+        assertThat(sku).startsWith("FOOD-PROD-");
+    }
+
+    @Test
+    @DisplayName("generateSku: ignores non-numeric existing suffix when computing next seq")
+    void generateSku_ignoresNonNumericSuffix() {
+        when(productRepository.findSkusByPrefix("FOOD-APPLE-"))
+                .thenReturn(List.of("FOOD-APPLE-XYZ", "FOOD-APPLE-005"));
+
+        String sku = productService.generateSku("Apple", "FOOD");
+
+        assertThat(sku).isEqualTo("FOOD-APPLE-006");
     }
 }
 

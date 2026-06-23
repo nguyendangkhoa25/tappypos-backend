@@ -1,10 +1,18 @@
 package com.tappy.pos.service.product;
 
+import com.tappy.pos.multitenant.TenantContext;
+
+import com.tappy.pos.service.audit.ActivityLogService;
+
+import com.tappy.pos.config.AuthContext;
+
 import com.tappy.pos.exception.DuplicateResourceException;
 import com.tappy.pos.exception.ResourceNotFoundException;
+import com.tappy.pos.model.dto.product.BulkVariantUpdateRequest;
 import com.tappy.pos.model.dto.product.GenerateVariantsRequest;
 import com.tappy.pos.model.dto.product.ProductVariantDTO;
 import com.tappy.pos.model.dto.product.SaveProductVariantRequest;
+import com.tappy.pos.model.entity.inventory.Inventory;
 import com.tappy.pos.model.entity.product.Product;
 import com.tappy.pos.model.entity.product.ProductVariant;
 import com.tappy.pos.model.entity.product.VariantType;
@@ -41,6 +49,15 @@ class ProductVariantServiceImplTest {
     @Mock private VariantTypeRepository    variantTypeRepository;
     @Mock private InventoryRepository      inventoryRepository;
     @Mock private MessageService           messageService;
+
+    @Mock
+    private AuthContext authContext;
+
+    @Mock
+    private ActivityLogService activityLogService;
+
+    @Mock
+    private TenantContext tenantContext;
 
     @InjectMocks
     private ProductVariantServiceImpl variantService;
@@ -269,6 +286,138 @@ class ProductVariantServiceImplTest {
 
         assertThatThrownBy(() -> variantService.deleteVariant(1L, 99L))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── bulkUpdate (matrix editor) ───────────────────────────────────────────────
+
+    @Test
+    @DisplayName("bulkUpdate: sets price override and absolute stock on an existing variant")
+    void bulkUpdate_setsPriceAndStock() {
+        ProductVariant existing = ProductVariant.builder()
+                .sku("FOOD-APPLE-001-RED")
+                .variantOptions(Map.of("Color", "Red"))
+                .status(ProductVariant.VariantStatus.ACTIVE)
+                .build();
+        existing.setId(10L);
+        ProductVariant savedSpy = spy(existing);
+        doReturn(product).when(savedSpy).getProduct();
+
+        Inventory inv = Inventory.builder().product(product).variant(existing).quantityInStock(3L).build();
+
+        when(productRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(product));
+        when(productVariantRepository.findByIdAndProductIdAndDeletedAtIsNull(10L, 1L))
+                .thenReturn(Optional.of(existing));
+        when(productVariantRepository.save(any(ProductVariant.class))).thenReturn(savedSpy);
+        when(inventoryRepository.findByProductIdAndVariantIdForUpdate(1L, 10L)).thenReturn(Optional.of(inv));
+
+        BulkVariantUpdateRequest req = BulkVariantUpdateRequest.builder()
+                .variants(List.of(BulkVariantUpdateRequest.Cell.builder()
+                        .variantId(10L)
+                        .priceOverride(BigDecimal.valueOf(15_000))
+                        .quantityInStock(25L)
+                        .build()))
+                .build();
+
+        List<ProductVariantDTO> result = variantService.bulkUpdate(1L, req);
+
+        assertThat(result).hasSize(1);
+        assertThat(existing.getPriceOverride()).isEqualByComparingTo(BigDecimal.valueOf(15_000));
+        assertThat(inv.getQuantityInStock()).isEqualTo(25L);
+        verify(inventoryRepository).save(inv);
+    }
+
+    @Test
+    @DisplayName("bulkUpdate: null quantityInStock leaves stock untouched")
+    void bulkUpdate_nullStock_skipsInventory() {
+        ProductVariant existing = ProductVariant.builder()
+                .sku("FOOD-APPLE-001-RED")
+                .variantOptions(Map.of("Color", "Red"))
+                .status(ProductVariant.VariantStatus.ACTIVE)
+                .build();
+        existing.setId(10L);
+        ProductVariant savedSpy = spy(existing);
+        doReturn(product).when(savedSpy).getProduct();
+
+        when(productRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(product));
+        when(productVariantRepository.findByIdAndProductIdAndDeletedAtIsNull(10L, 1L))
+                .thenReturn(Optional.of(existing));
+        when(productVariantRepository.save(any(ProductVariant.class))).thenReturn(savedSpy);
+
+        BulkVariantUpdateRequest req = BulkVariantUpdateRequest.builder()
+                .variants(List.of(BulkVariantUpdateRequest.Cell.builder()
+                        .variantId(10L)
+                        .priceOverride(BigDecimal.valueOf(9_000))
+                        .quantityInStock(null)
+                        .build()))
+                .build();
+
+        variantService.bulkUpdate(1L, req);
+
+        verify(inventoryRepository, never()).findByProductIdAndVariantIdForUpdate(anyLong(), anyLong());
+        verify(inventoryRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("bulkUpdate: variant not found → ResourceNotFoundException")
+    void bulkUpdate_variantNotFound_throws() {
+        when(productRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(product));
+        when(productVariantRepository.findByIdAndProductIdAndDeletedAtIsNull(99L, 1L))
+                .thenReturn(Optional.empty());
+        when(messageService.getMessage(anyString(), (Object[]) any())).thenReturn("Not found");
+
+        BulkVariantUpdateRequest req = BulkVariantUpdateRequest.builder()
+                .variants(List.of(BulkVariantUpdateRequest.Cell.builder().variantId(99L).build()))
+                .build();
+
+        assertThatThrownBy(() -> variantService.bulkUpdate(1L, req))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── findActiveByBarcode (POS scan-to-add) ────────────────────────────────────
+
+    @Test
+    @DisplayName("findActiveByBarcode: blank barcode → empty (no repository hit)")
+    void findActiveByBarcode_blank_empty() {
+        assertThat(variantService.findActiveByBarcode("  ")).isEmpty();
+        verify(productVariantRepository, never()).findFirstByBarcodeAndDeletedAtIsNull(anyString());
+    }
+
+    @Test
+    @DisplayName("findActiveByBarcode: active variant match → DTO")
+    void findActiveByBarcode_match() {
+        ProductVariant hit = ProductVariant.builder()
+                .sku("SHIRT-RED-L").barcode("8930001")
+                .variantOptions(Map.of("Color", "Red", "Size", "L"))
+                .status(ProductVariant.VariantStatus.ACTIVE)
+                .build();
+        hit.setId(42L);
+        ProductVariant spy = spy(hit);
+        doReturn(product).when(spy).getProduct();
+
+        when(productVariantRepository.findFirstByBarcodeAndDeletedAtIsNull("8930001"))
+                .thenReturn(Optional.of(spy));
+
+        var result = variantService.findActiveByBarcode("8930001");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().getSku()).isEqualTo("SHIRT-RED-L");
+        assertThat(result.get().getProductId()).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("findActiveByBarcode: inactive variant → empty")
+    void findActiveByBarcode_inactive_empty() {
+        ProductVariant hit = ProductVariant.builder()
+                .sku("SHIRT-RED-L").barcode("8930001")
+                .variantOptions(Map.of())
+                .status(ProductVariant.VariantStatus.INACTIVE)
+                .build();
+        hit.setId(42L);
+
+        when(productVariantRepository.findFirstByBarcodeAndDeletedAtIsNull("8930001"))
+                .thenReturn(Optional.of(hit));
+
+        assertThat(variantService.findActiveByBarcode("8930001")).isEmpty();
     }
 
     // ── generateVariants ───────────────────────────────────────────────────────

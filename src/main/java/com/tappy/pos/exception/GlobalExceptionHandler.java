@@ -5,6 +5,7 @@ import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.auth.SessionInfo;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -27,6 +28,10 @@ import java.util.NoSuchElementException;
 public class GlobalExceptionHandler {
 
     private final MessageService messageService;
+
+    /** Support hotline shown in the "not on Zalo" recovery message. Override in prod via SUPPORT_HOTLINE. */
+    @Value("${support.hotline:0901234567}")
+    private String supportHotline;
 
     /**
      * Handle ResourceNotFoundException - 404 Not Found
@@ -122,6 +127,19 @@ public class GlobalExceptionHandler {
         String message = ex.getMessage() != null ? ex.getMessage() : messageService.getMessage("error.duplicate.resource");
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiResponse.error("DUPLICATE_RESOURCE", message));
+    }
+
+    /**
+     * Handle optimistic-lock conflicts (e.g. two staff checking the same room out / in at once).
+     * The @Version mismatch means another transaction already updated the row — 409 Conflict.
+     */
+    @ExceptionHandler(org.springframework.dao.OptimisticLockingFailureException.class)
+    public ResponseEntity<ApiResponse<Void>> handleOptimisticLock(
+            org.springframework.dao.OptimisticLockingFailureException ex,
+            WebRequest request) {
+        log.warn("Optimistic lock conflict: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error("CONCURRENT_UPDATE", messageService.getMessage("error.concurrent.update")));
     }
 
     /**
@@ -256,6 +274,31 @@ public class GlobalExceptionHandler {
         log.error("Data integrity violation: {}", ex.getMostSpecificCause().getMessage());
         String msg = messageService.getMessage("error.data.integrity.violation");
         return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error("CONFLICT", msg));
+    }
+
+    /**
+     * Handle ZaloUserNotReachableException - 422 Unprocessable Entity.
+     * The phone isn't on Zalo / hasn't followed the OA, so the OTP can't be delivered.
+     * Surface a friendly recovery message with the support hotline.
+     */
+    @ExceptionHandler(ZaloUserNotReachableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleZaloUserNotReachable(ZaloUserNotReachableException ex) {
+        log.warn("Zalo user not reachable: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(ApiResponse.error("USER_NOT_ON_ZALO",
+                        messageService.getMessage("error.otp.not.on.zalo", supportHotline)));
+    }
+
+    /**
+     * Handle ZaloSendException - 502 Bad Gateway.
+     * A transient/technical failure sending the OTP — the user can simply retry.
+     */
+    @ExceptionHandler(ZaloSendException.class)
+    public ResponseEntity<ApiResponse<Void>> handleZaloSendFailed(ZaloSendException ex) {
+        log.error("Zalo ZNS send failed: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(ApiResponse.error("OTP_SEND_FAILED",
+                        messageService.getMessage("error.otp.send.failed")));
     }
 
     /**

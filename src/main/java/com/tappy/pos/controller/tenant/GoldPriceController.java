@@ -38,10 +38,10 @@ public class GoldPriceController {
 
     @GetMapping("/history")
     @RequiresFeature("GOLD_PRICE")
-    public ResponseEntity<ApiResponse<List<GoldPriceDTO>>> getHistory(
+    public ResponseEntity<ApiResponse<List<com.tappy.pos.model.dto.tenant.GoldPriceHistoryDTO>>> getHistory(
             @RequestParam(defaultValue = "30") int days) {
         log.info("Endpoint: GET /gold-prices/history days={}", days);
-        return ResponseEntity.ok(ApiResponse.success(goldPriceService.getAllPrices(), "OK"));
+        return ResponseEntity.ok(ApiResponse.success(goldPriceService.getPriceHistory(days), "OK"));
     }
 
     @PostMapping

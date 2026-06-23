@@ -11,6 +11,7 @@ import com.tappy.pos.repository.auth.UserRepository;
 import com.tappy.pos.repository.tenant.AgentRepository;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.service.notification.NotificationService;
 
 import lombok.RequiredArgsConstructor;
@@ -84,11 +85,10 @@ public class AgentService {
                 .map(u -> u.getFullName()).orElse(actorUsername);
         activityLogService.logAsync("master", actorUsername, actorFullName,
                 ActivityAction.AGENT_CREATED, "AGENT", String.valueOf(saved.getId()),
-                "Tạo đại lý: " + saved.getName(), null);
-        String title = messageService.getMessage("notification.master.vendor.created.title");
-        String msg = messageService.getMessage("notification.master.vendor.created.message",
-                saved.getName(), actorUsername);
-        notificationService.pushToRolesAsync(Notification.NotificationType.SYSTEM, title, msg,
+                "activity.agent.created", null, saved.getName());
+        notificationService.pushToRolesAsync(Notification.NotificationType.SYSTEM,
+                LocalizedText.of("notification.master.vendor.created.title"),
+                LocalizedText.of("notification.master.vendor.created.message", saved.getName(), actorUsername),
                 "VENDOR", saved.getId(), List.of("MASTER_TENANT"), null);
 
         return toDTO(saved);
@@ -107,7 +107,7 @@ public class AgentService {
         String actorUsername = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync("master", actorUsername, null,
                 ActivityAction.AGENT_UPDATED, "AGENT", String.valueOf(updated.getId()),
-                "Cập nhật đại lý: " + updated.getName(), null);
+                "activity.agent.updated", null, updated.getName());
 
         return toDTO(updated);
     }

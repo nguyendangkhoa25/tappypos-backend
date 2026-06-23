@@ -71,7 +71,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 }
 
                 List<String> features = jwtTokenProvider.getFeaturesFromToken(jwt);
-                featureContext.set(features, Boolean.TRUE.equals(isMasterUser));
+                Integer featuresVersion = jwtTokenProvider.getFeaturesVersionFromToken(jwt);
+                featureContext.set(features, Boolean.TRUE.equals(isMasterUser), featuresVersion);
 
                 log.debug("JWT token valid for user: {}", username);
                 authContext.setCurrentUsername(username);

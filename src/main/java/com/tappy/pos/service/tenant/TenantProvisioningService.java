@@ -65,15 +65,18 @@ public class TenantProvisioningService {
         m.put(ShopType.JEWELRY,            "ORDERS,REVENUE,PAWN,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.PAWN_SHOP,          "PAWN,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.CONVENIENCE_STORE,  "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
+        m.put(ShopType.BUILDING_MATERIALS, "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.PHARMACY,           "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS");
         m.put(ShopType.ELECTRONICS,        "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.FOOD_BEVERAGE,      "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS");
+        m.put(ShopType.BAKERY,             "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.FASHION,            "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.BARBER_SHOP,        "ORDERS,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.NAIL_SHOP,          "ORDERS,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.SPA_SHOP,           "ORDERS,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.COFFEE_SHOP,        "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.RESTAURANT,         "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
+        m.put(ShopType.VEHICLE_SHOP,       "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.OTHER,              "ORDERS,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");
         SHOP_TYPE_WIDGET_DEFAULTS = Collections.unmodifiableMap(m);
     }
@@ -84,15 +87,18 @@ public class TenantProvisioningService {
         m.put(ShopType.JEWELRY,            "home,pawn,pos,customers,orders,dashboard,users");
         m.put(ShopType.PAWN_SHOP,          "home,pawn,pos,customers,orders,dashboard,users");
         m.put(ShopType.CONVENIENCE_STORE,  "home,pos,orders,customers,dashboard,users");
+        m.put(ShopType.BUILDING_MATERIALS, "home,pos,orders,customers,dashboard,users");
         m.put(ShopType.PHARMACY,           "home,pos,orders,customers,dashboard,users");
         m.put(ShopType.ELECTRONICS,        "home,pos,orders,customers,dashboard,users");
         m.put(ShopType.FOOD_BEVERAGE,      "home,orders,pos,customers,dashboard,users");
+        m.put(ShopType.BAKERY,             "home,pos,orders,customers,dashboard,users");
         m.put(ShopType.FASHION,            "home,pos,orders,customers,dashboard,users");
         m.put(ShopType.BARBER_SHOP,        "home,orders,customers,dashboard,users");
         m.put(ShopType.NAIL_SHOP,          "home,orders,customers,dashboard,users");
         m.put(ShopType.SPA_SHOP,           "home,orders,customers,dashboard,users");
         m.put(ShopType.COFFEE_SHOP,        "home,orders,pos,customers,dashboard,users");
         m.put(ShopType.RESTAURANT,         "home,orders,pos,customers,dashboard,users");
+        m.put(ShopType.VEHICLE_SHOP,       "home,pos,orders,customers,dashboard,users");
         m.put(ShopType.OTHER,              "home,pos,orders,customers,dashboard,users");
         SHOP_TYPE_NAV_DEFAULTS = Collections.unmodifiableMap(m);
     }
@@ -104,54 +110,47 @@ public class TenantProvisioningService {
     static {
         Map<String, List<String>> m = new LinkedHashMap<>();
         m.put(RoleEnum.SHOP_OWNER.getCode(), Arrays.asList(
-            "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "PROMOTION",
-            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "CUSTOMER", "LOYALTY",
+            "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "PROMOTION", "RECIPE",
+            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "CUSTOMER", "LOYALTY", "CUSTOMER_DEBT",
             "INVOICE", "ACCOUNTING", "REVENUE", "EXPENSE",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "STOCK_TAKE", "POS",
             "TABLE_SERVICE", "ACTIVITY_LOG", "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
-            "COMMISSION", "COMMISSION_VIEW_ALL", "GOOGLE_DRIVE", "NOTIFICATION", "FEEDBACK", "APPOINTMENT", "BOOKING"
-        ));
-        m.put(RoleEnum.MANAGER.getCode(), Arrays.asList(
-            "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "PROMOTION",
-            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "CUSTOMER", "LOYALTY",
-            "INVOICE", "ACCOUNTING", "REVENUE", "EXPENSE",
-            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "STOCK_TAKE", "POS",
-            "TABLE_SERVICE", "ACTIVITY_LOG", "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
-            "COMMISSION", "COMMISSION_VIEW_ALL", "NOTIFICATION", "FEEDBACK", "BOOKING"
+            "COMMISSION", "COMMISSION_VIEW_ALL", "GOOGLE_DRIVE", "NOTIFICATION", "FEEDBACK", "APPOINTMENT", "BOOKING", "ROOM",
+            "REPAIR", "REPAIR_VIEW_ALL", "BUYBACK",
+            "TRADE_IN", "TRADE_IN_VIEW_ALL", "INSTALLMENT", "INSTALLMENT_VIEW_ALL",
+            "CONSIGNMENT", "CONSIGNMENT_VIEW_ALL"
         ));
         m.put(RoleEnum.CASHIER.getCode(), Arrays.asList(
+            // CASHIER absorbs the former RECEPTIONIST (front desk: APPOINTMENT, ROOM, PRODUCT) and
+            // PAWN_OFFICER (PAWN, GOLD_PRICE, GOLD_PRICE_CHART) roles. Profile intersection trims
+            // per shop type, so a hotel cashier gets ROOM, a pawn/jewelry cashier gets PAWN, and a
+            // retail cashier gets neither. PAWN_VIEW_ALL intentionally absent: a cashier sees only
+            // their own pawn contracts (same scope the PAWN_OFFICER had).
             "DASHBOARD", "MY_WORK", "ORDER", "POS", "TABLE_SERVICE",
             "CUSTOMER", "LOYALTY", "PROMOTION", "COMMISSION",
-            "NOTIFICATION", "FEEDBACK", "BOOKING"
+            "NOTIFICATION", "FEEDBACK", "BOOKING",
+            "TRADE_IN", "INSTALLMENT", "CUSTOMER_DEBT", "CONSIGNMENT",
+            "APPOINTMENT", "ROOM", "PRODUCT",
+            "PAWN", "GOLD_PRICE", "GOLD_PRICE_CHART"
         ));
         m.put(RoleEnum.ACCOUNTANT.getCode(), Arrays.asList(
-            "DASHBOARD", "MY_WORK", "REVENUE", "EXPENSE", "SALARY", "INVOICE", "ACCOUNTING", "CUSTOMER",
-            "NOTIFICATION", "FEEDBACK"
+            "DASHBOARD", "MY_WORK", "REVENUE", "EXPENSE", "SALARY", "INVOICE", "ACCOUNTING", "CUSTOMER", "CUSTOMER_DEBT",
+            "NOTIFICATION", "FEEDBACK", "INSTALLMENT", "INSTALLMENT_VIEW_ALL"
         ));
         m.put(RoleEnum.WAREHOUSE_STAFF.getCode(), Arrays.asList(
-            "DASHBOARD", "MY_WORK", "INVENTORY", "STOCK_TAKE", "PRODUCT", "VENDOR",
-            "NOTIFICATION", "FEEDBACK"
-        ));
-        m.put(RoleEnum.PAWN_OFFICER.getCode(), Arrays.asList(
-            // PAWN_VIEW_ALL intentionally absent: PAWN_OFFICER sees only their own contracts.
-            "DASHBOARD", "MY_WORK", "PAWN", "GOLD_PRICE", "GOLD_PRICE_CHART",
-            "CUSTOMER", "LOYALTY", "ORDER", "POS", "PRODUCT",
-            "NOTIFICATION", "FEEDBACK"
+            "DASHBOARD", "MY_WORK", "INVENTORY", "STOCK_TAKE", "PRODUCT", "VENDOR", "RECIPE",
+            "NOTIFICATION", "FEEDBACK", "CONSIGNMENT"
         ));
         m.put(RoleEnum.SERVICE_STAFF.getCode(), Arrays.asList(
+            // PRODUCT is required: POS (a required feature here) loads the product grid via
+            // GET /products (@RequiresFeature("PRODUCT")), so without it the POS screen 403s.
             "DASHBOARD", "MY_WORK", "ORDER", "POS", "TABLE_SERVICE",
-            "CUSTOMER", "COMMISSION", "NOTIFICATION", "FEEDBACK", "BOOKING"
+            "CUSTOMER", "PRODUCT", "COMMISSION", "NOTIFICATION", "FEEDBACK", "BOOKING"
         ));
         m.put(RoleEnum.TECHNICIAN.getCode(), Arrays.asList(
+            // REPAIR_VIEW_ALL intentionally absent: a technician sees only their own repair tickets.
             "DASHBOARD", "MY_WORK", "ORDER", "PRODUCT", "CUSTOMER", "INVENTORY", "POS",
-            "APPOINTMENT", "COMMISSION", "NOTIFICATION", "FEEDBACK"
-        ));
-        m.put(RoleEnum.RECEPTIONIST.getCode(), Arrays.asList(
-            "DASHBOARD", "MY_WORK", "ORDER", "CUSTOMER", "POS", "TABLE_SERVICE",
-            "APPOINTMENT", "COMMISSION", "NOTIFICATION", "FEEDBACK", "BOOKING"
-        ));
-        m.put(RoleEnum.CLEANER.getCode(), Arrays.asList(
-            "DASHBOARD", "MY_WORK", "NOTIFICATION"
+            "APPOINTMENT", "COMMISSION", "NOTIFICATION", "FEEDBACK", "REPAIR"
         ));
         // UTILITIES (client-side calculators/tools hub) is available to every role.
         // Which shop types actually expose it is decided by FEATURE_PROFILES below.
@@ -169,13 +168,29 @@ public class TenantProvisioningService {
     private static final Map<ShopType, List<String>> SHOP_TYPE_ROLE_WHITELIST;
     static {
         Map<ShopType, List<String>> m = new EnumMap<>(ShopType.class);
+        // Pawn / jewelry: the CASHIER now covers the former PAWN_OFFICER (it inherited the pawn
+        // features). ACCOUNTANT is available to every shop type.
         List<String> pawnRoles = Arrays.asList(
-                RoleEnum.SHOP_OWNER.getCode(), RoleEnum.PAWN_OFFICER.getCode());
+                RoleEnum.SHOP_OWNER.getCode(), RoleEnum.CASHIER.getCode(),
+                RoleEnum.ACCOUNTANT.getCode());
         List<String> jewelryRoles = Arrays.asList(
-                RoleEnum.SHOP_OWNER.getCode(), RoleEnum.MANAGER.getCode(),
-                RoleEnum.CASHIER.getCode(), RoleEnum.PAWN_OFFICER.getCode());
+                RoleEnum.SHOP_OWNER.getCode(), RoleEnum.CASHIER.getCode(),
+                RoleEnum.ACCOUNTANT.getCode());
         m.put(ShopType.PAWN_SHOP, pawnRoles);
         m.put(ShopType.JEWELRY,   jewelryRoles);
+        // Lodging: the CASHIER now covers the former RECEPTIONIST front desk (it inherited ROOM).
+        List<String> lodgingRoles = Arrays.asList(
+                RoleEnum.SHOP_OWNER.getCode(), RoleEnum.CASHIER.getCode(),
+                RoleEnum.ACCOUNTANT.getCode());
+        m.put(ShopType.HOTEL,     lodgingRoles);
+        m.put(ShopType.MOTEL,     lodgingRoles);
+        m.put(ShopType.HOMESTAY,  lodgingRoles);
+        // Vehicle shop: sales floor (CASHIER) + workshop (TECHNICIAN) + warehouse + back office.
+        List<String> vehicleRoles = Arrays.asList(
+                RoleEnum.SHOP_OWNER.getCode(), RoleEnum.CASHIER.getCode(),
+                RoleEnum.TECHNICIAN.getCode(), RoleEnum.WAREHOUSE_STAFF.getCode(),
+                RoleEnum.ACCOUNTANT.getCode());
+        m.put(ShopType.VEHICLE_SHOP, vehicleRoles);
         SHOP_TYPE_ROLE_WHITELIST = Collections.unmodifiableMap(m);
     }
 
@@ -199,8 +214,8 @@ public class TenantProvisioningService {
 
         m.put("JEWELRY", Arrays.asList(
             "DASHBOARD", "MY_WORK",
-            "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
-            "ORDER", "ORDER_VIEW_ALL", "POS", "PRODUCT", "INVENTORY", "VENDOR", "PROMOTION",
+            "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART", "BUYBACK",
+            "ORDER", "ORDER_VIEW_ALL", "POS", "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION",
             "CUSTOMER", "LOYALTY", "APPOINTMENT",
             "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
@@ -211,12 +226,56 @@ public class TenantProvisioningService {
         m.put("RETAIL", Arrays.asList(
             "DASHBOARD", "MY_WORK",
             "ORDER", "ORDER_VIEW_ALL", "POS",
-            "PRODUCT", "INVENTORY", "VENDOR", "PROMOTION",
-            "CUSTOMER", "LOYALTY", "APPOINTMENT",
+            "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION",
+            "CUSTOMER", "LOYALTY", "CUSTOMER_DEBT", "APPOINTMENT",
             "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
             "NOTIFICATION", "FEEDBACK"
+        ));
+
+        // Book store (nhà sách): shared retail back office PLUS ký gửi / consignment
+        // (CONSIGNMENT) — a publisher/NXB places stock and the shop settles by sales.
+        // CONSIGNMENT is deliberately NOT in the shared RETAIL profile — only nhà sách get it.
+        m.put("BOOK_STORE", Arrays.asList(
+            "DASHBOARD", "MY_WORK",
+            "ORDER", "ORDER_VIEW_ALL", "POS",
+            "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION",
+            "CONSIGNMENT", "CONSIGNMENT_VIEW_ALL",
+            "CUSTOMER", "LOYALTY", "CUSTOMER_DEBT", "APPOINTMENT",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
+            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
+            "NOTIFICATION", "FEEDBACK"
+        ));
+
+        // Electronics (điện tử / điện máy): shared retail back office PLUS the device
+        // repair/service-ticket module (REPAIR + REPAIR_VIEW_ALL). REPAIR is deliberately
+        // NOT added to the shared RETAIL profile — convenience/pharmacy/fashion don't repair.
+        m.put("ELECTRONICS", Arrays.asList(
+            "DASHBOARD", "MY_WORK",
+            "ORDER", "ORDER_VIEW_ALL", "POS",
+            "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION",
+            "CUSTOMER", "LOYALTY", "APPOINTMENT",
+            "REPAIR", "REPAIR_VIEW_ALL",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
+            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
+            "NOTIFICATION", "FEEDBACK"
+        ));
+
+        // Bakery (tiệm bánh): retail back office + STOCK_TAKE (ingredient stock) + GOOGLE_DRIVE
+        // (photos of custom cake designs). Matches the frontend PROFILE_RETAIL set (which already
+        // carries STOCK_TAKE) plus GOOGLE_DRIVE. APPOINTMENT covers cake pre-orders by pickup date.
+        m.put("BAKERY", Arrays.asList(
+            "DASHBOARD", "MY_WORK",
+            "ORDER", "ORDER_VIEW_ALL", "POS",
+            "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION", "RECIPE",
+            "CUSTOMER", "LOYALTY", "APPOINTMENT",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
+            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
+            "NOTIFICATION", "FEEDBACK", "GOOGLE_DRIVE"
         ));
 
         m.put("SERVICE", Arrays.asList(
@@ -245,10 +304,54 @@ public class TenantProvisioningService {
         m.put("FNB", Arrays.asList(
             "DASHBOARD", "MY_WORK",
             "ORDER", "ORDER_VIEW_ALL", "POS", "TABLE_SERVICE", "BOOKING",
-            "PRODUCT", "INVENTORY", "VENDOR", "PROMOTION",
+            "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION",
             "CUSTOMER", "LOYALTY", "APPOINTMENT",
             "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
+            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
+            "NOTIFICATION", "FEEDBACK"
+        ));
+
+        // Rental (sân thể thao / quán bida): a time-rental vertical — bill court/table time
+        // via the BOOKING engine, sell drinks + rent equipment (needs INVENTORY), and keep
+        // APPOINTMENT for coaching/HLV scheduling. Leaner than FNB: no TABLE_SERVICE, no
+        // kitchen/combos/recipe. Shared by BILLIARDS_HALL + SPORT_COURT.
+        m.put("RENTAL", Arrays.asList(
+            "DASHBOARD", "MY_WORK",
+            "ORDER", "ORDER_VIEW_ALL", "POS", "BOOKING",
+            "PRODUCT", "INVENTORY", "PROMOTION",
+            "CUSTOMER", "LOYALTY", "APPOINTMENT",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
+            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
+            "NOTIFICATION", "FEEDBACK"
+        ));
+
+        // Vehicle shop (cửa hàng xe — xe máy / xe đạp điện / xe đạp, mới & cũ): the shared retail
+        // back office PLUS the repair/service module (REPAIR), thu-cũ-đổi-mới (TRADE_IN), and
+        // trả-góp (INSTALLMENT). CUSTOMER_DEBT underpins INSTALLMENT. = PROFILE_RETAIL + those.
+        m.put("VEHICLE", Arrays.asList(
+            "DASHBOARD", "MY_WORK",
+            "ORDER", "ORDER_VIEW_ALL", "POS",
+            "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION",
+            "CUSTOMER", "LOYALTY", "CUSTOMER_DEBT", "APPOINTMENT",
+            "REPAIR", "REPAIR_VIEW_ALL",
+            "TRADE_IN", "TRADE_IN_VIEW_ALL",
+            "INSTALLMENT", "INSTALLMENT_VIEW_ALL",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
+            "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
+            "NOTIFICATION", "FEEDBACK", "UTILITIES"
+        ));
+
+        // Lodging (hotel / motel / homestay): ROOM board + folio sales + the usual back office.
+        m.put("LODGING", Arrays.asList(
+            "DASHBOARD", "MY_WORK", "ROOM",
+            "ORDER", "ORDER_VIEW_ALL", "POS",
+            "PRODUCT", "INVENTORY", "VENDOR", "PROMOTION",
+            "CUSTOMER", "LOYALTY",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
             "NOTIFICATION", "FEEDBACK"
         ));
@@ -270,10 +373,11 @@ public class TenantProvisioningService {
         m.put(ShopType.PAWN_SHOP,          "PAWN");
         m.put(ShopType.JEWELRY,            "JEWELRY");
         m.put(ShopType.CONVENIENCE_STORE,  "RETAIL");
+        m.put(ShopType.BUILDING_MATERIALS, "RETAIL");
         m.put(ShopType.PHARMACY,           "RETAIL");
-        m.put(ShopType.ELECTRONICS,        "RETAIL");
+        m.put(ShopType.ELECTRONICS,        "ELECTRONICS");
         m.put(ShopType.FASHION,            "RETAIL");
-        m.put(ShopType.BOOK_STORE,         "RETAIL");
+        m.put(ShopType.BOOK_STORE,         "BOOK_STORE");
         m.put(ShopType.BARBER_SHOP,        "SERVICE");
         m.put(ShopType.BARBER_SHOP_MEN,    "SERVICE");
         m.put(ShopType.HAIR_SALON,         "SERVICE");
@@ -284,14 +388,19 @@ public class TenantProvisioningService {
         m.put(ShopType.SPA_SHOP,           "BEAUTY");
         m.put(ShopType.BEAUTY_CLINIC,      "BEAUTY");
         m.put(ShopType.FOOD_BEVERAGE,      "FNB");
+        m.put(ShopType.BAKERY,             "BAKERY");
         m.put(ShopType.COFFEE_SHOP,        "FNB");
         m.put(ShopType.RESTAURANT,         "FNB");
         m.put(ShopType.PUB,                "FNB");
         m.put(ShopType.PUB_SEAFOOD,        "FNB");
         m.put(ShopType.PUB_GOAT,           "FNB");
         m.put(ShopType.PUB_BEEF,           "FNB");
-        m.put(ShopType.BILLIARDS_HALL,     "FNB");      // POS + drinks/food orders; booking model TBD
-        m.put(ShopType.TENNIS_COURT,       "SERVICE");  // service-style; booking model TBD
+        m.put(ShopType.BILLIARDS_HALL,     "RENTAL");   // time-rental: BOOKING engine + drinks/equipment
+        m.put(ShopType.SPORT_COURT,        "RENTAL");   // time-rental: BOOKING engine + drinks/equipment
+        m.put(ShopType.HOTEL,              "LODGING");
+        m.put(ShopType.MOTEL,              "LODGING");
+        m.put(ShopType.HOMESTAY,           "LODGING");
+        m.put(ShopType.VEHICLE_SHOP,       "VEHICLE");
         // ShopType.OTHER → no entry → all features (safe default)
         SHOP_TYPE_FEATURE_PROFILE = Collections.unmodifiableMap(m);
     }

@@ -54,6 +54,20 @@ public class CustomerService {
     private final R2StorageService r2StorageService;
     private final R2CleanupService r2CleanupService;
 
+    /**
+     * Validate and normalize the customer tier. Null/blank defaults to RETAIL; otherwise it must be
+     * one of the recognized tiers (case-insensitive) — POS price resolution branches on it, so an
+     * unrecognized value would silently never get wholesale pricing.
+     */
+    private String normalizeCustomerType(String raw) {
+        if (raw == null || raw.isBlank()) return "RETAIL";
+        String normalized = raw.trim().toUpperCase();
+        if (!normalized.equals("RETAIL") && !normalized.equals("WHOLESALE")) {
+            throw new BadRequestException(messageService.getMessage("error.customer.invalid.type"));
+        }
+        return normalized;
+    }
+
     public CustomerDTO createCustomer(CreateCustomerRequest request) {
         log.info("Request: Create new customer - name: {}, phone: {}, email: {}",
                 request.getName(), request.getPhone(), request.getEmail());
@@ -62,7 +76,9 @@ public class CustomerService {
                 .name(request.getName())
                 .phone(request.getPhone())
                 .email(request.getEmail())
+                .customerType(normalizeCustomerType(request.getCustomerType()))
                 .notes(request.getNotes())
+                .idNumber(request.getIdNumber())
                 .zaloId(request.getZaloId())
                 .facebookId(request.getFacebookId())
                 .preferredServices(request.getPreferredServices())
@@ -84,7 +100,7 @@ public class CustomerService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.CUSTOMER_CREATED, "CUSTOMER", String.valueOf(saved.getId()),
-                "Thêm khách hàng: " + saved.getName(), null);
+                "activity.customer.created", null, saved.getName());
 
         return mapToDTO(saved);
     }
@@ -168,6 +184,12 @@ public class CustomerService {
             log.debug("Updating notes - id: {}", id);
             customer.setNotes(request.getNotes());
         }
+        if (request.getCustomerType() != null) {
+            customer.setCustomerType(normalizeCustomerType(request.getCustomerType()));
+        }
+        if (request.getIdNumber() != null) {
+            customer.setIdNumber(request.getIdNumber());
+        }
         if (request.getZaloId() != null) {
             log.debug("Updating zaloId - id: {}", id);
             customer.setZaloId(request.getZaloId());
@@ -223,7 +245,7 @@ public class CustomerService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.CUSTOMER_UPDATED, "CUSTOMER", String.valueOf(updated.getId()),
-                "Cập nhật khách hàng: " + updated.getName(), null);
+                "activity.customer.updated", null, updated.getName());
 
         return mapToDTO(updated);
     }
@@ -242,6 +264,11 @@ public class CustomerService {
         customer.softDelete();
         customerRepository.save(customer);
         log.info("Customer deleted successfully (soft delete) - id: {}, name: {}", customer.getId(), customer.getName());
+
+        String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.CUSTOMER_DELETED, "CUSTOMER", String.valueOf(customer.getId()),
+                "activity.customer.deleted", null, customer.getName());
     }
 
     public List<CustomerDTO> getRecentCustomers(int limit) {
@@ -301,7 +328,9 @@ public class CustomerService {
                 .name(customer.getName())
                 .phone(customer.getPhone())
                 .email(customer.getEmail())
+                .customerType(customer.getCustomerType())
                 .notes(customer.getNotes())
+                .idNumber(customer.getIdNumber())
                 .zaloId(customer.getZaloId())
                 .facebookId(customer.getFacebookId())
                 .preferredServices(customer.getPreferredServices())

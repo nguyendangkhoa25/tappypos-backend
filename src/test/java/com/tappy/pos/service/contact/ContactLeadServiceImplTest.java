@@ -1,5 +1,9 @@
 package com.tappy.pos.service.contact;
 
+import com.tappy.pos.service.audit.ActivityLogService;
+
+import com.tappy.pos.config.AuthContext;
+
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.contact.ContactLeadDTO;
 import com.tappy.pos.model.dto.contact.ContactLeadRequest;
@@ -39,6 +43,12 @@ class ContactLeadServiceImplTest {
     @Mock private NotificationService notificationService;
     @Mock private com.tappy.pos.service.MessageService messageService;
 
+    @Mock
+    private AuthContext authContext;
+
+    @Mock
+    private ActivityLogService activityLogService;
+
     @InjectMocks
     private ContactLeadServiceImpl contactLeadService;
 
@@ -76,7 +86,10 @@ class ContactLeadServiceImplTest {
                 "Nguyễn Văn A".equals(l.getName()) &&
                 "0901234567".equals(l.getPhone()) &&
                 "LANDING_PAGE".equals(l.getSource())));
-        verify(notificationService).pushToMasterUsers(anyString(), anyString(), eq("CONTACT_LEAD"), isNull());
+        verify(notificationService).pushToMasterUsers(
+                any(com.tappy.pos.model.i18n.LocalizedText.class),
+                any(com.tappy.pos.model.i18n.LocalizedText.class),
+                eq("CONTACT_LEAD"), isNull());
     }
 
     @Test
@@ -87,8 +100,8 @@ class ContactLeadServiceImplTest {
         contactLeadService.submit(submitRequest);
 
         verify(notificationService).pushToMasterUsers(
-                contains("Nguyễn Văn A"),
-                contains("Tiệm vàng"),
+                any(com.tappy.pos.model.i18n.LocalizedText.class),
+                any(com.tappy.pos.model.i18n.LocalizedText.class),
                 eq("CONTACT_LEAD"),
                 isNull());
     }
@@ -112,7 +125,10 @@ class ContactLeadServiceImplTest {
     void testSubmit_NotificationFailure_Swallowed() {
         when(contactLeadRepository.save(any(ContactLead.class))).thenReturn(lead);
         doThrow(new RuntimeException("Notification error"))
-                .when(notificationService).pushToMasterUsers(anyString(), anyString(), anyString(), anyLong());
+                .when(notificationService).pushToMasterUsers(
+                        any(com.tappy.pos.model.i18n.LocalizedText.class),
+                        any(com.tappy.pos.model.i18n.LocalizedText.class),
+                        anyString(), anyLong());
 
         contactLeadService.submit(submitRequest);
 

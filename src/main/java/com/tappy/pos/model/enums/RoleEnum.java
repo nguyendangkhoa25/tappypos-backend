@@ -11,15 +11,11 @@ public enum RoleEnum {
     MASTER_TENANT("MASTER_TENANT", "Master Tenant - Full access to tenant management"),
     AGENT("AGENT", "Agent - Manages assigned shops on behalf of an agent"),
     SHOP_OWNER("SHOP_OWNER", "Shop Owner - Full access to all features"),
-    MANAGER("MANAGER", "Manager - Can manage shop, employees, and reports"),
-    CASHIER("CASHIER", "Cashier - Handles POS sales and customer transactions"),
+    CASHIER("CASHIER", "Cashier - Handles POS sales, customer transactions, front desk and pawn"),
     ACCOUNTANT("ACCOUNTANT", "Accountant - Manages revenue, salary, and invoices"),
     WAREHOUSE_STAFF("WAREHOUSE_STAFF", "Warehouse Staff - Manages inventory and stock"),
-    PAWN_OFFICER("PAWN_OFFICER", "Pawn Officer - Handles pawn contracts and buyback orders"),
     SERVICE_STAFF("SERVICE_STAFF", "Service Staff - Takes orders and serves customers (restaurant, café, barber)"),
-    TECHNICIAN("TECHNICIAN", "Technician - Skilled worker for repairs and product handling"),
-    RECEPTIONIST("RECEPTIONIST", "Receptionist - Manages appointments and customer check-ins"),
-    CLEANER("CLEANER", "Cleaner - Minimal access, views assigned tasks only");
+    TECHNICIAN("TECHNICIAN", "Technician - Skilled worker for repairs and product handling");
 
     private final String code;
     private final String description;

@@ -27,11 +27,24 @@ public class OrderDTO {
     private BigDecimal discountAmount;
     private BigDecimal tipAmount;
     private BigDecimal taxAmount;
+    private BigDecimal serviceChargeRate;
+    private BigDecimal serviceChargeAmount;
+    private String orderChannel;
+    // Delivery details (DELIVERY channel only)
+    private String deliveryPlatform;
+    private String deliveryRecipient;
+    private String deliveryPhone;
+    private String deliveryAddress;
+    private BigDecimal deliveryFee;
+    private String deliveryNote;
+    private String deliveryStatus;
     private String paymentMethod;
     private BigDecimal amountPaid;
     private BigDecimal changeAmount;
 
     private String notes;
+    private String prescriberName;
+    private String prescriptionNote;
     private String createdBy;
     private LocalDateTime completedAt;
     private String completedBy;
@@ -52,6 +65,9 @@ public class OrderDTO {
     private BigDecimal loyaltyDiscount;
 
     private String tableLabel;
+    private Long tableId;
+    /** For a split child check: the source order it was split from (null otherwise). */
+    private Long parentOrderId;
     private String source;
     private String orderType;
 
@@ -62,6 +78,17 @@ public class OrderDTO {
     private BigDecimal goldDiffAmount;
     /** Pickup time for F&B takeaway orders (null for dine-in). */
     private LocalDateTime pickupTime;
+
+    // ── Pre-order / deposit (đặt hàng + tiền cọc) ──────────────────────────────
+    /** True when this is a pre-order created with a deposit and a future pickup time. */
+    private boolean preorder;
+    /** Quotation (báo giá) — not yet a real sale; no stock deducted until converted. */
+    private boolean quote;
+    private String quoteNumber;
+    /** Deposit taken at creation (tiền cọc). */
+    private BigDecimal depositAmount;
+    /** Derived balance still owed at pickup: totalAmount - amountPaid (còn lại). */
+    private BigDecimal balanceDue;
 
     private List<OrderItemDTO> items;
 

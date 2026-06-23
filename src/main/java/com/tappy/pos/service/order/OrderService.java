@@ -7,6 +7,7 @@ import com.tappy.pos.model.dto.order.MyWorkStatsDTO;
 import com.tappy.pos.model.dto.order.OrderDTO;
 import com.tappy.pos.model.dto.order.OrderItemDTO;
 import com.tappy.pos.model.dto.order.PayAndCompleteRequest;
+import com.tappy.pos.model.dto.order.SettlePreOrderRequest;
 import com.tappy.pos.model.dto.order.UpdateOrderMetaRequest;
 import com.tappy.pos.model.dto.order.VoidOrderRequest;
 import com.tappy.pos.model.dto.order.WorkItemDTO;
@@ -28,13 +29,32 @@ public interface OrderService {
 
     OrderDTO getOrderById(Long id);
 
+    /** All quotations (báo giá) — orders flagged is_quote, newest first. */
+    List<OrderDTO> getQuotes();
+
+    /** Convert a quotation into a real order: deduct stock and mark it completed. */
+    OrderDTO convertQuote(Long id);
+
     OrderDTO startOrder(Long id);
 
     OrderDTO completeOrder(Long id);
 
     OrderDTO cancelOrder(Long id, CancelOrderRequest request);
 
+    // ── Pre-order / deposit (đặt hàng + tiền cọc) — Phase 2 ─────────────────────
+    /** Pickup queue: pre-orders (optionally by status / pickup window), sorted by pickup time. */
+    Page<OrderDTO> getPreOrders(String status, LocalDate from, LocalDate to, Pageable pageable);
+
+    /** Collect the remaining balance on a PENDING pre-order at pickup, deduct stock, complete it. */
+    OrderDTO settlePreOrder(Long id, SettlePreOrderRequest request);
+
+    /** Dashboard summary: deposits held + upcoming pickup counts (đơn đặt). */
+    com.tappy.pos.model.dto.order.PreOrderSummaryDTO getPreOrderSummary();
+
     OrderDTO voidOrder(Long id, VoidOrderRequest request);
+
+    /** Size/color swap on a completed order line: return the item's variant, issue another of the same product. */
+    OrderDTO exchangeOrderItem(Long orderId, Long itemId, com.tappy.pos.model.dto.order.ExchangeOrderItemRequest request);
 
     String generateReceipt(Long id);
 
@@ -83,6 +103,13 @@ public interface OrderService {
     OrderDTO updateOrderMeta(Long orderId, UpdateOrderMetaRequest request);
 
     OrderDTO payAndCompleteOrder(Long orderId, PayAndCompleteRequest request);
+
+    // ── Split / merge bill (FnB table tabs) ─────────────────────────────────────
+    /** Split a running tab into child checks; returns every settle-able check in the group. */
+    List<OrderDTO> splitBill(Long orderId, com.tappy.pos.model.dto.order.SplitBillRequest request);
+
+    /** Fold the source order's items into the target order, void the source, release its table. */
+    OrderDTO mergeBill(Long targetOrderId, com.tappy.pos.model.dto.order.MergeBillRequest request);
 
     // ── Item-level work queue (MY_WORK feature) ────────────────────────────────
     Page<WorkItemDTO> getMyWorkItems(Pageable pageable);
@@ -144,4 +171,7 @@ public interface OrderService {
 
     /** Owner rejects a SUBMITTED order → CANCELLED with an optional reason. */
     OrderDTO rejectOrder(Long orderId, String reason);
+
+    /** Advance a delivery order's status (PENDING → DELIVERING → DELIVERED / CANCELLED). */
+    OrderDTO updateDeliveryStatus(Long orderId, com.tappy.pos.model.entity.order.Order.DeliveryStatus status);
 }

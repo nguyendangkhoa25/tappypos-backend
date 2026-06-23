@@ -4,17 +4,23 @@ import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.booking.BookingDTO;
 import com.tappy.pos.model.dto.booking.BookingResourceDTO;
+import com.tappy.pos.model.dto.booking.BookingResourceRateDTO;
 import com.tappy.pos.model.dto.booking.BookingResourceRequest;
 import com.tappy.pos.model.dto.booking.CreateBookingRequest;
 import com.tappy.pos.model.entity.booking.Booking;
 import com.tappy.pos.model.entity.booking.BookingResource;
+import com.tappy.pos.model.entity.booking.BookingResourceRate;
 import com.tappy.pos.model.entity.order.Order;
 import com.tappy.pos.model.entity.order.OrderItem;
 import com.tappy.pos.multitenant.TenantContext;
+import com.tappy.pos.config.AuthContext;
+import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.repository.booking.BookingRepository;
+import com.tappy.pos.repository.booking.BookingResourceRateRepository;
 import com.tappy.pos.repository.booking.BookingResourceRepository;
 import com.tappy.pos.repository.order.OrderRepository;
 import com.tappy.pos.service.MessageService;
+import com.tappy.pos.service.audit.ActivityLogService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -26,13 +32,16 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
@@ -47,11 +56,16 @@ public class BookingServiceImpl implements BookingService {
     private static final int SECONDS_PER_DAY = 24 * 60 * 60;
     private static final int DEFAULT_SLOT_SECONDS = 60 * 60;   // open-ended reservation defaults to 1h
 
+    private static final int MAX_RECURRENCE_OCCURRENCES = 52;   // cap weekly materialization at ~1 year
+
     private final BookingRepository bookingRepository;
     private final BookingResourceRepository resourceRepository;
+    private final BookingResourceRateRepository rateRepository;
     private final OrderRepository orderRepository;
     private final TenantContext tenantContext;
     private final MessageService messageService;
+    private final ActivityLogService activityLogService;
+    private final AuthContext authContext;
 
     // ── Resources ────────────────────────────────────────────────────────────
 
@@ -60,8 +74,11 @@ public class BookingServiceImpl implements BookingService {
         String tenantId = tenantContext.getCurrentTenantId();
         Map<Long, Booking> activeByResource = bookingRepository.findInProgress(tenantId).stream()
                 .collect(Collectors.toMap(Booking::getResourceId, b -> b, (a, b) -> a));
+        Map<Long, List<BookingResourceRate>> ratesByResource = rateRepository.findAllActive(tenantId).stream()
+                .collect(Collectors.groupingBy(BookingResourceRate::getResourceId));
         return resourceRepository.findAllActive(tenantId).stream()
-                .map(r -> mapResource(r, activeByResource.get(r.getId())))
+                .map(r -> mapResource(r, activeByResource.get(r.getId()),
+                        ratesByResource.getOrDefault(r.getId(), List.of())))
                 .collect(Collectors.toList());
     }
 
@@ -74,12 +91,18 @@ public class BookingServiceImpl implements BookingService {
                 .name(request.getName().trim())
                 .resourceType(orDefault(request.getResourceType(), "TABLE"))
                 .hourlyRate(request.getHourlyRate() != null ? request.getHourlyRate() : BigDecimal.ZERO)
+                .minimumCharge(request.getMinimumCharge() != null ? request.getMinimumCharge() : BigDecimal.ZERO)
                 .status(orDefault(request.getStatus(), "ACTIVE"))
                 .note(request.getNote())
                 .sortOrder(request.getSortOrder() != null ? request.getSortOrder() : 0)
                 .createdBy(currentUsername())
                 .build();
-        return mapResource(resourceRepository.save(resource), null);
+        BookingResource saved = resourceRepository.save(resource);
+        List<BookingResourceRate> rates = replaceRates(saved, request.getRates());
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.BOOKING_RESOURCE_CREATED, "BOOKING_RESOURCE", String.valueOf(saved.getId()),
+                "activity.booking.resource.created", null);
+        return mapResource(saved, null, rates);
     }
 
     @Override
@@ -89,11 +112,42 @@ public class BookingServiceImpl implements BookingService {
         if (request.getName() != null) resource.setName(request.getName().trim());
         if (request.getResourceType() != null) resource.setResourceType(request.getResourceType());
         if (request.getHourlyRate() != null) resource.setHourlyRate(request.getHourlyRate());
+        if (request.getMinimumCharge() != null) resource.setMinimumCharge(request.getMinimumCharge());
         if (request.getStatus() != null) resource.setStatus(request.getStatus());
         if (request.getNote() != null) resource.setNote(request.getNote());
         if (request.getSortOrder() != null) resource.setSortOrder(request.getSortOrder());
         BookingResource saved = resourceRepository.save(resource);
-        return mapResource(saved, bookingRepository.findActiveByResource(saved.getTenantId(), saved.getId()).orElse(null));
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.BOOKING_RESOURCE_UPDATED, "BOOKING_RESOURCE", String.valueOf(saved.getId()),
+                "activity.booking.resource.updated", null);
+        // null = leave windows unchanged; non-null = full replace.
+        List<BookingResourceRate> rates = (request.getRates() != null)
+                ? replaceRates(saved, request.getRates())
+                : rateRepository.findByResource(saved.getTenantId(), saved.getId());
+        return mapResource(saved, bookingRepository.findActiveByResource(saved.getTenantId(), saved.getId()).orElse(null), rates);
+    }
+
+    /** Replace all rate windows of a resource with the given list; returns the persisted windows. */
+    private List<BookingResourceRate> replaceRates(BookingResource resource, List<BookingResourceRateDTO> rateDtos) {
+        rateRepository.softDeleteByResource(resource.getTenantId(), resource.getId());
+        if (rateDtos == null || rateDtos.isEmpty()) return List.of();
+        List<BookingResourceRate> saved = new ArrayList<>();
+        int order = 0;
+        for (BookingResourceRateDTO dto : rateDtos) {
+            if (dto.getStartTime() == null || dto.getEndTime() == null || dto.getRate() == null) continue;
+            BookingResourceRate rate = BookingResourceRate.builder()
+                    .tenantId(resource.getTenantId())
+                    .resourceId(resource.getId())
+                    .dayKind(orDefault(dto.getDayKind(), "ALL"))
+                    .startTime(dto.getStartTime())
+                    .endTime(dto.getEndTime())
+                    .rate(dto.getRate())
+                    .sortOrder(dto.getSortOrder() != null ? dto.getSortOrder() : order++)
+                    .createdBy(currentUsername())
+                    .build();
+            saved.add(rateRepository.save(rate));
+        }
+        return saved;
     }
 
     @Override
@@ -105,6 +159,9 @@ public class BookingServiceImpl implements BookingService {
         });
         resource.softDelete();
         resourceRepository.save(resource);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.BOOKING_RESOURCE_DELETED, "BOOKING_RESOURCE", String.valueOf(id),
+                "activity.booking.resource.deleted", null);
     }
 
     // ── Bookings ─────────────────────────────────────────────────────────────
@@ -129,7 +186,66 @@ public class BookingServiceImpl implements BookingService {
 
         boolean walkIn = !"RESERVATION".equalsIgnoreCase(request.getBookingType());
 
-        Booking.BookingBuilder<?, ?> builder = Booking.builder()
+        BigDecimal deposit = request.getDepositAmount() != null ? request.getDepositAmount() : BigDecimal.ZERO;
+        boolean depositPaid = Boolean.TRUE.equals(request.getDepositPaid());
+
+        if (walkIn) {
+            // Only one running session per resource.
+            bookingRepository.findActiveByResource(tenantId, resource.getId()).ifPresent(b -> {
+                throw new BadRequestException(messageService.getMessage("error.booking.resource.busy"));
+            });
+            Booking booking = baseBuilder(tenantId, resource, request, deposit, depositPaid)
+                    .bookingType("WALK_IN").status("IN_PROGRESS").startedAt(LocalDateTime.now())
+                    .build();
+            // The pre-check can't prevent a race between two concurrent creates — the DB unique
+            // index is the real guard; translate its violation into the friendly "busy" message.
+            Booking saved = persistDetectingConflicts(booking);
+            log.info("Booking created: {} resource={} type=WALK_IN", saved.getBookingNumber(), resource.getName());
+            activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                    ActivityAction.BOOKING_CREATED, "BOOKING", String.valueOf(saved.getId()),
+                    "activity.booking.created", null);
+            return mapBooking(saved);
+        }
+
+        // RESERVATION (possibly recurring weekly — "sân cố định").
+        if (request.getScheduledDate() == null || request.getScheduledStartTime() == null) {
+            throw new BadRequestException(messageService.getMessage("error.booking.reservation.requires.slot"));
+        }
+
+        boolean recurring = Boolean.TRUE.equals(request.getRecurrenceWeekly());
+        int occurrences = recurring
+                ? Math.min(Math.max(request.getRecurrenceCount() != null ? request.getRecurrenceCount() : 1, 1), MAX_RECURRENCE_OCCURRENCES)
+                : 1;
+        String recurrenceGroupId = (recurring && occurrences > 1) ? UUID.randomUUID().toString() : null;
+
+        Booking first = null;
+        for (int i = 0; i < occurrences; i++) {
+            LocalDate slotDate = request.getScheduledDate().plusWeeks(i);
+            // Overlap is checked per materialized slot; a conflict on any week aborts the whole series.
+            assertNoReservationOverlap(tenantId, resource.getId(), slotDate,
+                    request.getScheduledStartTime(), request.getScheduledEndTime(), -1L);
+            Booking booking = baseBuilder(tenantId, resource, request, deposit, depositPaid)
+                    .bookingType("RESERVATION").status("RESERVED")
+                    .scheduledDate(slotDate)
+                    .scheduledStartTime(request.getScheduledStartTime())
+                    .scheduledEndTime(request.getScheduledEndTime())
+                    .recurrenceGroupId(recurrenceGroupId)
+                    .build();
+            Booking saved = persistDetectingConflicts(booking);
+            if (first == null) first = saved;
+        }
+        log.info("Reservation created: {} resource={} occurrences={}", first.getBookingNumber(), resource.getName(), occurrences);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.BOOKING_CREATED, "BOOKING", String.valueOf(first.getId()),
+                "activity.booking.created", null);
+        return mapBooking(first);
+    }
+
+    /** Shared builder for a new booking — common identity, customer, rate and deposit fields. */
+    private Booking.BookingBuilder<?, ?> baseBuilder(String tenantId, BookingResource resource,
+                                                     CreateBookingRequest request,
+                                                     BigDecimal deposit, boolean depositPaid) {
+        return Booking.builder()
                 .tenantId(tenantId)
                 .bookingNumber(generateNumber(tenantId))
                 .resourceId(resource.getId())
@@ -138,32 +254,10 @@ public class BookingServiceImpl implements BookingService {
                 .customerName(request.getCustomerName())
                 .customerPhone(request.getCustomerPhone())
                 .hourlyRate(resource.getHourlyRate())
+                .depositAmount(deposit)
+                .depositPaid(depositPaid)
                 .note(request.getNote())
                 .createdBy(currentUsername());
-
-        if (walkIn) {
-            // Only one running session per resource.
-            bookingRepository.findActiveByResource(tenantId, resource.getId()).ifPresent(b -> {
-                throw new BadRequestException(messageService.getMessage("error.booking.resource.busy"));
-            });
-            builder.bookingType("WALK_IN").status("IN_PROGRESS").startedAt(LocalDateTime.now());
-        } else {
-            if (request.getScheduledDate() == null || request.getScheduledStartTime() == null) {
-                throw new BadRequestException(messageService.getMessage("error.booking.reservation.requires.slot"));
-            }
-            assertNoReservationOverlap(tenantId, resource.getId(), request, -1L);
-            builder.bookingType("RESERVATION").status("RESERVED")
-                    .scheduledDate(request.getScheduledDate())
-                    .scheduledStartTime(request.getScheduledStartTime())
-                    .scheduledEndTime(request.getScheduledEndTime());
-        }
-
-        // The findActiveByResource / overlap pre-checks above can't prevent a race between
-        // two concurrent creates — the DB unique indexes are the real guard. Translate their
-        // violations into the same friendly messages instead of a generic 409/500.
-        Booking saved = persistDetectingConflicts(builder.build());
-        log.info("Booking created: {} resource={} type={}", saved.getBookingNumber(), resource.getName(), saved.getBookingType());
-        return mapBooking(saved);
     }
 
     @Override
@@ -192,12 +286,26 @@ public class BookingServiceImpl implements BookingService {
         }
         LocalDateTime endedAt = LocalDateTime.now();
         long minutes = Math.max(1, ChronoUnit.MINUTES.between(booking.getStartedAt(), endedAt));
-        BigDecimal amount = booking.getHourlyRate()
+
+        // Pick the rate by the session's start window (giá giờ vàng), falling back to the flat rate.
+        BookingResource resource = resourceRepository
+                .findByIdAndTenantIdAndDeletedFalse(booking.getResourceId(), booking.getTenantId())
+                .orElse(null);
+        BigDecimal effectiveRate = resolveHourlyRate(booking, resource);
+        BigDecimal amount = effectiveRate
                 .multiply(BigDecimal.valueOf(minutes))
                 .divide(MINUTES_PER_HOUR, 0, RoundingMode.HALF_UP);
 
+        // Floor at the resource's minimum charge (giờ tối thiểu).
+        BigDecimal minimum = resource != null && resource.getMinimumCharge() != null
+                ? resource.getMinimumCharge() : BigDecimal.ZERO;
+        if (amount.compareTo(minimum) < 0) {
+            amount = minimum;
+        }
+
         booking.setEndedAt(endedAt);
         booking.setDurationMinutes((int) minutes);
+        booking.setHourlyRate(effectiveRate);
         booking.setTimeAmount(amount);
         booking.setStatus("COMPLETED");
 
@@ -206,6 +314,9 @@ public class BookingServiceImpl implements BookingService {
 
         Booking saved = bookingRepository.save(booking);
         log.info("Booking checked out: {} minutes={} amount={} order={}", saved.getBookingNumber(), minutes, amount, orderId);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.BOOKING_CHECKOUT, "BOOKING", String.valueOf(saved.getId()),
+                "activity.booking.checkout", null);
         return mapBooking(saved);
     }
 
@@ -217,7 +328,11 @@ public class BookingServiceImpl implements BookingService {
             throw new BadRequestException(messageService.getMessage("error.booking.invalid.status", booking.getStatus()));
         }
         booking.setStatus("CANCELLED");
-        return mapBooking(bookingRepository.save(booking));
+        Booking saved = bookingRepository.save(booking);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.BOOKING_CANCELLED, "BOOKING", String.valueOf(saved.getId()),
+                "activity.booking.cancelled", null);
+        return mapBooking(saved);
     }
 
     @Override
@@ -237,6 +352,9 @@ public class BookingServiceImpl implements BookingService {
         Booking booking = findOrThrow(id);
         booking.softDelete();
         bookingRepository.save(booking);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.BOOKING_DELETED, "BOOKING", String.valueOf(id),
+                "activity.booking.deleted", null);
     }
 
     // ── Order creation on checkout ───────────────────────────────────────────
@@ -248,12 +366,20 @@ public class BookingServiceImpl implements BookingService {
      */
     private Long createTimeChargeOrder(Booking booking, BigDecimal amount) {
         String tenantId = booking.getTenantId();
+        // Đặt cọc đã thu được trừ vào hoá đơn (deposit netted against the time charge).
+        BigDecimal depositApplied = BigDecimal.ZERO;
+        if (booking.isDepositPaid() && booking.getDepositAmount() != null
+                && booking.getDepositAmount().compareTo(BigDecimal.ZERO) > 0) {
+            depositApplied = booking.getDepositAmount().min(amount);
+        }
+        BigDecimal payable = amount.subtract(depositApplied);
+
         Order order = new Order();
         order.setTenantId(tenantId);
         order.setOrderNumber(generateOrderNumber());
         order.setStatus(Order.OrderStatus.PENDING);
-        order.setTotalAmount(amount);
-        order.setDiscountAmount(BigDecimal.ZERO);
+        order.setTotalAmount(payable);
+        order.setDiscountAmount(depositApplied);
         order.setTaxPercentage(BigDecimal.ZERO);
         order.setTaxAmount(BigDecimal.ZERO);
         order.setSource("BOOKING");
@@ -282,16 +408,49 @@ public class BookingServiceImpl implements BookingService {
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    private void assertNoReservationOverlap(String tenantId, Long resourceId, CreateBookingRequest req, long excludeId) {
-        int[] slot = slotSeconds(req.getScheduledStartTime(), req.getScheduledEndTime());
+    private void assertNoReservationOverlap(String tenantId, Long resourceId, LocalDate date,
+                                            LocalTime startTime, LocalTime endTime, long excludeId) {
+        int[] slot = slotSeconds(startTime, endTime);
         for (Booking existing : bookingRepository.findReservationsByResourceAndDate(
-                tenantId, resourceId, req.getScheduledDate(), excludeId)) {
+                tenantId, resourceId, date, excludeId)) {
             int[] ex = slotSeconds(existing.getScheduledStartTime(), existing.getScheduledEndTime());
             boolean overlaps = slot[0] < ex[1] && ex[0] < slot[1];   // half-open [start, end) intervals
             if (overlaps) {
                 throw new BadRequestException(messageService.getMessage("error.booking.reservation.overlap"));
             }
         }
+    }
+
+    /**
+     * The hourly rate to bill: the rate of the rate window (giá giờ vàng) whose [start, end)
+     * contains the session's start time-of-day and whose dayKind matches the day, else the
+     * resource's flat hourlyRate (which was copied onto the booking at create time).
+     */
+    private BigDecimal resolveHourlyRate(Booking booking, BookingResource resource) {
+        BigDecimal flat = booking.getHourlyRate() != null ? booking.getHourlyRate() : BigDecimal.ZERO;
+        if (resource == null || booking.getStartedAt() == null) return flat;
+        List<BookingResourceRate> windows = rateRepository.findByResource(booking.getTenantId(), resource.getId());
+        if (windows.isEmpty()) return flat;
+
+        LocalTime tod = booking.getStartedAt().toLocalTime();
+        DayOfWeek dow = booking.getStartedAt().getDayOfWeek();
+        boolean weekend = dow == DayOfWeek.SATURDAY || dow == DayOfWeek.SUNDAY;
+        int sec = tod.toSecondOfDay();
+        for (BookingResourceRate w : windows) {
+            if (!dayKindMatches(w.getDayKind(), weekend)) continue;
+            int[] win = slotSeconds(w.getStartTime(), w.getEndTime());
+            if (sec >= win[0] && sec < win[1]) {
+                return w.getRate();
+            }
+        }
+        return flat;
+    }
+
+    private static boolean dayKindMatches(String dayKind, boolean weekend) {
+        if (dayKind == null || "ALL".equalsIgnoreCase(dayKind)) return true;
+        if ("WEEKEND".equalsIgnoreCase(dayKind)) return weekend;
+        if ("WEEKDAY".equalsIgnoreCase(dayKind)) return !weekend;
+        return true;
     }
 
     /**
@@ -364,16 +523,29 @@ public class BookingServiceImpl implements BookingService {
         return (value != null && !value.isBlank()) ? value : fallback;
     }
 
-    private BookingResourceDTO mapResource(BookingResource r, Booking active) {
+    private BookingResourceDTO mapResource(BookingResource r, Booking active, List<BookingResourceRate> rates) {
         return BookingResourceDTO.builder()
                 .id(r.getId())
                 .name(r.getName())
                 .resourceType(r.getResourceType())
                 .hourlyRate(r.getHourlyRate())
+                .minimumCharge(r.getMinimumCharge())
                 .status(r.getStatus())
                 .note(r.getNote())
                 .sortOrder(r.getSortOrder())
+                .rates(rates == null ? List.of() : rates.stream().map(this::mapRate).collect(Collectors.toList()))
                 .activeBooking(active != null ? mapBooking(active) : null)
+                .build();
+    }
+
+    private BookingResourceRateDTO mapRate(BookingResourceRate r) {
+        return BookingResourceRateDTO.builder()
+                .id(r.getId())
+                .dayKind(r.getDayKind())
+                .startTime(r.getStartTime())
+                .endTime(r.getEndTime())
+                .rate(r.getRate())
+                .sortOrder(r.getSortOrder())
                 .build();
     }
 
@@ -399,6 +571,9 @@ public class BookingServiceImpl implements BookingService {
                 .durationMinutes(b.getDurationMinutes())
                 .hourlyRate(b.getHourlyRate())
                 .timeAmount(b.getTimeAmount())
+                .depositAmount(b.getDepositAmount())
+                .depositPaid(b.isDepositPaid())
+                .recurrenceGroupId(b.getRecurrenceGroupId())
                 .status(b.getStatus())
                 .note(b.getNote())
                 .linkedOrderId(b.getLinkedOrderId())

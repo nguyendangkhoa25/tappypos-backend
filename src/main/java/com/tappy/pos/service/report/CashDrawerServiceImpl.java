@@ -1,6 +1,9 @@
 package com.tappy.pos.service.report;
 
+import com.tappy.pos.config.AuthContext;
 import com.tappy.pos.config.FeatureContext;
+import com.tappy.pos.model.enums.ActivityAction;
+import com.tappy.pos.service.audit.ActivityLogService;
 import com.tappy.pos.model.dto.report.CashDrawerDTO;
 import com.tappy.pos.model.dto.report.CloseDrawerRequest;
 import com.tappy.pos.model.entity.finance.CashDrawerClose;
@@ -32,6 +35,8 @@ public class CashDrawerServiceImpl implements CashDrawerService {
     private final CashDrawerCloseRepository cashDrawerCloseRepository;
     private final FeatureContext featureContext;
     private final TenantContext tenantContext;
+    private final ActivityLogService activityLogService;
+    private final AuthContext authContext;
 
     @Override
     @Transactional(readOnly = true)
@@ -66,6 +71,10 @@ public class CashDrawerServiceImpl implements CashDrawerService {
         entity.setClosedBy(currentUsername());
         entity.setClosedAt(LocalDateTime.now());
         cashDrawerCloseRepository.save(entity);
+
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.CASH_DRAWER_CLOSED, "CASH_DRAWER", String.valueOf(entity.getId()),
+                "activity.cash.drawer.closed", null, date);
 
         applyClose(dto, entity);
         return dto;

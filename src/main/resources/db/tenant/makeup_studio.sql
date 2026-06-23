@@ -67,7 +67,7 @@ INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_def
   "showCashDetails": false,
   "paperWidth": "80mm",
   "autoClose": true
-}', TRUE, 'TRACKED')
+}', TRUE)
 ON CONFLICT (template_type, name, tenant_id) DO NOTHING;
 
 -- ── 9. Attribute groups & definitions ────────────────────────

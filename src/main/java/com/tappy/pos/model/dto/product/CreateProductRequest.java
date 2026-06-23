@@ -54,6 +54,22 @@ public class CreateProductRequest {
     @Size(max = 20, message = "Unit must not exceed 20 characters")
     private String unit;
 
+    /** Optional alternate sell unit (bán sỉ), e.g. "bao". */
+    @Size(max = 20, message = "Alt unit must not exceed 20 characters")
+    private String altUnit;
+
+    /** Base units per alternate unit (e.g. 50 → 1 bao = 50 kg). */
+    private BigDecimal altUnitFactor;
+
+    /** Price per alternate unit; null → price × factor. */
+    private BigDecimal altUnitPrice;
+
+    /** Wholesale price (per base unit) for WHOLESALE-type customers; null = no tier. */
+    private BigDecimal wholesalePrice;
+
+    /** FINISHED (default) | INGREDIENT | BOTH — marks a raw material for two-stage inventory. */
+    private String productKind;
+
     private Long vendorId;
 
     @Size(max = 100, message = "Shelf location must not exceed 100 characters")

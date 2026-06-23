@@ -25,8 +25,14 @@ public class ZaloMessageTemplateService {
     /** Template type constant for appointment reminders. */
     public static final String APPOINTMENT_REMINDER = "APPOINTMENT_REMINDER";
 
+    /** Template type constant for pawn-contract due-date reminders sent to the borrower. */
+    public static final String PAWN_DUE_REMINDER = "PAWN_DUE_REMINDER";
+
     @Value("${zalo.zns.appointment-reminder-template-id:}")
     private String globalAppointmentReminderTemplateId;
+
+    @Value("${zalo.zns.pawn-due-reminder-template-id:}")
+    private String globalPawnDueReminderTemplateId;
 
     private final ZaloMessageTemplateRepository repo;
     private final TenantContext tenantContext;
@@ -55,6 +61,9 @@ public class ZaloMessageTemplateService {
                 .orElseGet(() -> {
                     if (APPOINTMENT_REMINDER.equals(type) && !globalAppointmentReminderTemplateId.isBlank()) {
                         return globalAppointmentReminderTemplateId;
+                    }
+                    if (PAWN_DUE_REMINDER.equals(type) && !globalPawnDueReminderTemplateId.isBlank()) {
+                        return globalPawnDueReminderTemplateId;
                     }
                     return null;
                 });

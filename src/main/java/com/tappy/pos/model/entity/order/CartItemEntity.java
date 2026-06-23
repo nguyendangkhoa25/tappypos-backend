@@ -65,6 +65,14 @@ public class CartItemEntity {
     @Column(name = "quantity", nullable = false)
     private Integer quantity = 1;
 
+    /** Chosen sell unit (e.g. "bao"); null = product base unit. */
+    @Column(name = "sell_unit", length = 20)
+    private String sellUnit;
+
+    /** Base units per sell unit (e.g. 50 → 1 bao = 50 kg); null/1 = normal single-unit line. */
+    @Column(name = "unit_factor", precision = 15, scale = 3)
+    private BigDecimal unitFactor;
+
     @Builder.Default
     @Column(name = "unit_price", nullable = false, precision = 19, scale = 2)
     private BigDecimal unitPrice = BigDecimal.ZERO;
@@ -113,6 +121,11 @@ public class CartItemEntity {
     @Column(name = "variants", columnDefinition = "jsonb")
     private String variants;
 
+    /** Chosen modifier options as JSON: [{groupName, optionName, priceDelta}]. Delta already folded into unitPrice. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "modifiers", columnDefinition = "jsonb")
+    private String modifiers;
+
     @Column(name = "variant_id")
     private Long variantId;
 
@@ -141,6 +154,12 @@ public class CartItemEntity {
 
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
+
+    /** True when this line is a prescription-required drug (from the product's
+     *  `prescription_required` EAV attribute). Drives the POS dispensing warning. */
+    @Builder.Default
+    @Column(name = "prescription_required", nullable = false, columnDefinition = "BOOLEAN DEFAULT FALSE")
+    private Boolean prescriptionRequired = false;
 
     /** Combo this item belongs to, null for standalone items. */
     @Column(name = "combo_id")
@@ -220,6 +239,13 @@ public class CartItemEntity {
         this.discountValue = BigDecimal.ZERO;
         this.discountReason = null;
         recalculateLineTotal();
+    }
+
+    /** Quantity expressed in the product's BASE unit for stock deduction: round(quantity × unitFactor). */
+    public long baseQuantity() {
+        int qty = quantity != null ? quantity : 0;
+        if (unitFactor == null || unitFactor.signum() <= 0) return qty;
+        return unitFactor.multiply(BigDecimal.valueOf(qty)).setScale(0, java.math.RoundingMode.HALF_UP).longValueExact();
     }
 
 }

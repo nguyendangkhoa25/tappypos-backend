@@ -32,6 +32,11 @@ public class BookingResource extends TenantAwareEntity {
     @Column(name = "hourly_rate", nullable = false, precision = 15, scale = 2)
     private BigDecimal hourlyRate = BigDecimal.ZERO;
 
+    /** Giờ tối thiểu — the session total is floored at this amount (0 = no minimum). */
+    @Builder.Default
+    @Column(name = "minimum_charge", nullable = false, precision = 15, scale = 2)
+    private BigDecimal minimumCharge = BigDecimal.ZERO;
+
     /** ACTIVE | INACTIVE | MAINTENANCE */
     @Builder.Default
     @Column(name = "status", nullable = false, length = 20)

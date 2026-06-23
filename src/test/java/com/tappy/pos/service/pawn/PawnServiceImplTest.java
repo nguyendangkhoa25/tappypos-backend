@@ -2,8 +2,11 @@ package com.tappy.pos.service.pawn;
 
 import com.tappy.pos.config.AuthContext;
 import com.tappy.pos.config.FeatureContext;
+import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.exception.PawnStatusNotAllowException;
 import com.tappy.pos.exception.ResourceNotFoundException;
+import com.tappy.pos.service.storage.R2CleanupService;
+import com.tappy.pos.service.storage.R2StorageService;
 import com.tappy.pos.model.dto.pawn.*;
 import com.tappy.pos.model.entity.customer.Customer;
 import com.tappy.pos.model.entity.pawn.PawnAuditEntity;
@@ -11,6 +14,7 @@ import com.tappy.pos.model.entity.pawn.PawnElectronicsEntity;
 import com.tappy.pos.model.entity.pawn.PawnEntity;
 import com.tappy.pos.model.entity.pawn.PawnQuery;
 import com.tappy.pos.model.entity.pawn.ReqMoneyEntity;
+import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.model.enums.PawnStatus;
 import com.tappy.pos.model.mapper.PawnMapper;
 import com.tappy.pos.multitenant.TenantContext;
@@ -44,6 +48,7 @@ import org.springframework.data.jpa.domain.Specification;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -77,6 +82,8 @@ class PawnServiceImplTest {
     @Mock private PawnWatchRepository watchRepository;
     @Mock private PawnRealEstateRepository realEstateRepository;
     @Mock private PawnGeneralRepository generalRepository;
+    @Mock private R2StorageService r2StorageService;
+    @Mock private R2CleanupService r2CleanupService;
 
     @InjectMocks
     private PawnServiceImpl pawnService;
@@ -192,7 +199,7 @@ class PawnServiceImplTest {
 
         verify(pawnRepository).deleteAllByIdInBatch(List.of(1L));
         verify(activityLogService).logAsync(eq("test-shop"), eq("staff01"), isNull(),
-                any(), eq("PAWN"), eq("1"), anyString(), isNull());
+                any(), eq("PAWN"), eq("1"), anyString(), isNull(), any());
     }
 
     @Test
@@ -203,7 +210,7 @@ class PawnServiceImplTest {
         pawnService.deletePawnByPawnIds(List.of(99L));
 
         verify(pawnRepository).deleteAllByIdInBatch(List.of(99L));
-        verify(activityLogService, never()).logAsync(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(activityLogService, never()).logAsync(any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     // ── cancelPawnByPawnId ────────────────────────────────────────────────────
@@ -228,7 +235,7 @@ class PawnServiceImplTest {
         assertThat(pawnEntity.getCanceledReason()).isEqualTo("Không cần nữa");
         verify(pawnRepository, atLeastOnce()).save(pawnEntity);
         verify(activityLogService).logAsync(eq("test-shop"), eq("staff01"), isNull(),
-                any(), eq("PAWN"), anyString(), anyString(), isNull());
+                any(), eq("PAWN"), anyString(), anyString(), isNull(), any());
     }
 
     @Test
@@ -483,7 +490,7 @@ class PawnServiceImplTest {
         assertThat(result.getRequestId()).isEqualTo(10L);
         verify(reqMoneyRepository).save(any(ReqMoneyEntity.class));
         verify(activityLogService).logAsync(eq("test-shop"), eq("staff01"), isNull(),
-                any(), eq("PAWN"), eq("1"), anyString(), isNull());
+                any(), eq("PAWN"), eq("1"), anyString(), isNull(), any());
     }
 
     @Test
@@ -563,7 +570,7 @@ class PawnServiceImplTest {
 
         assertThat(result).isNotNull();
         verify(pawnRepository).save(any(PawnEntity.class));
-        verify(activityLogService).logAsync(anyString(), anyString(), isNull(), any(), eq("PAWN"), eq("2"), anyString(), isNull());
+        verify(activityLogService).logAsync(anyString(), anyString(), isNull(), any(), eq("PAWN"), eq("2"), anyString(), isNull(), any());
     }
 
     @Test
@@ -636,6 +643,69 @@ class PawnServiceImplTest {
         PawnSearchResponse result = pawnService.getPawns(PageRequest.of(0, 10), SearchPawnRequest.builder().build());
 
         assertThat(result.getContent()).isEmpty();
+    }
+
+    // ── getCustomerPawnKpi ──────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getCustomerPawnKpi: returns five customer rankings mapped to widget fields")
+    void getCustomerPawnKpi_returnsFiveRankings() {
+        when(shopInfoService.getExcludeVisibleItemFlag()).thenReturn(false);
+        Object[] row = new Object[]{ 7L, "Nguyễn Văn A", 3L, 5_000_000L, 250_000L };
+        when(pawnRepository.findTopCustomersByPawnAmount(any(), any(), eq(false), any()))
+                .thenReturn(java.util.Collections.singletonList(row));
+        when(pawnRepository.findTopCustomersByPawnCount(any(), any(), eq(false), any()))
+                .thenReturn(java.util.Collections.singletonList(row));
+        when(pawnRepository.findTopCustomersByCompletedAmount(any(), any(), eq(false), any()))
+                .thenReturn(java.util.Collections.singletonList(row));
+        when(pawnRepository.findTopCustomersByCompletedCount(any(), any(), eq(false), any()))
+                .thenReturn(java.util.Collections.singletonList(row));
+        when(pawnRepository.findTopCustomersByInterestAmount(any(), any(), eq(false), any()))
+                .thenReturn(java.util.Collections.singletonList(row));
+
+        com.tappy.pos.model.dto.pawn.DateFilterRequest filter =
+                com.tappy.pos.model.dto.pawn.DateFilterRequest.builder()
+                        .fromDate(System.currentTimeMillis() - 86_400_000L)
+                        .toDate(System.currentTimeMillis())
+                        .build();
+
+        java.util.Map<String, Object> result = pawnService.getCustomerPawnKpi(filter);
+
+        assertThat(result).containsOnlyKeys("topPawnedAmount", "topPawnedCount",
+                "topCompletedPawnAmount", "topCompletedPawnCount", "topInterestAmount");
+        @SuppressWarnings("unchecked")
+        List<java.util.Map<String, Object>> pawnedAmount =
+                (List<java.util.Map<String, Object>>) result.get("topPawnedAmount");
+        assertThat(pawnedAmount).hasSize(1);
+        assertThat(pawnedAmount.get(0))
+                .containsEntry("customerId", 7L)
+                .containsEntry("name", "Nguyễn Văn A")
+                .containsEntry("pawnCount", 3)
+                .containsEntry("pawnAmount", 5_000_000L)
+                .containsEntry("interestAmount", 250_000L);
+    }
+
+    @Test
+    @DisplayName("getCustomerPawnKpi: maps a null customer name to walk-in label")
+    void getCustomerPawnKpi_nullName() {
+        when(shopInfoService.getExcludeVisibleItemFlag()).thenReturn(true);
+        Object[] row = new Object[]{ null, null, 0L, 0L, 0L };
+        when(pawnRepository.findTopCustomersByPawnAmount(any(), any(), eq(true), any()))
+                .thenReturn(java.util.Collections.singletonList(row));
+        when(pawnRepository.findTopCustomersByPawnCount(any(), any(), eq(true), any())).thenReturn(List.of());
+        when(pawnRepository.findTopCustomersByCompletedAmount(any(), any(), eq(true), any())).thenReturn(List.of());
+        when(pawnRepository.findTopCustomersByCompletedCount(any(), any(), eq(true), any())).thenReturn(List.of());
+        when(pawnRepository.findTopCustomersByInterestAmount(any(), any(), eq(true), any())).thenReturn(List.of());
+
+        com.tappy.pos.model.dto.pawn.DateFilterRequest filter =
+                com.tappy.pos.model.dto.pawn.DateFilterRequest.builder().fromDate(0L).toDate(1L).build();
+
+        java.util.Map<String, Object> result = pawnService.getCustomerPawnKpi(filter);
+
+        @SuppressWarnings("unchecked")
+        List<java.util.Map<String, Object>> rows =
+                (List<java.util.Map<String, Object>>) result.get("topPawnedAmount");
+        assertThat(rows.get(0)).containsEntry("name", "Khách vãng lai");
     }
 
     // ── updatePawn ────────────────────────────────────────────────────────────
@@ -1365,5 +1435,844 @@ class PawnServiceImplTest {
         assertThat(result).isNotNull();
         verify(electronicsRepository).findByPawnId(6L);
         verify(pawnMapper).fromElectronicsEntity(electronicsEntity);
+    }
+
+    // ── signContract / removeSignature (digital pawn contract, §4d) ─────────────
+
+    /** A minimal valid PNG header (8-byte signature) base64-encoded as a data URL. */
+    private static String pngDataUrl() {
+        byte[] png = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+        return "data:image/png;base64," + Base64.getEncoder().encodeToString(png);
+    }
+
+    private void stubGetPawnDetails() {
+        when(pawnMapper.fromPawnEntity(pawnEntity)).thenReturn(pawnResponse);
+        when(customerRepository.findById(anyLong())).thenReturn(Optional.empty());
+        when(auditRepository.findByPawnIdOrderByActionIdAsc(1L)).thenReturn(List.of());
+    }
+
+    @Test
+    @DisplayName("signContract stores the signature, stamps signedAt, logs PAWN_SIGNED, cleans up the old image")
+    void testSignContract_Success() {
+        pawnEntity.setCustomerSignatureUrl("https://img/old.png");
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+        when(r2StorageService.keyFromUrl("https://img/old.png")).thenReturn("old-key");
+        when(r2StorageService.upload(anyString(), any(byte[].class), eq("image/png")))
+                .thenReturn("https://img/new.png");
+        stubGetPawnDetails();
+
+        SignPawnRequest req = new SignPawnRequest();
+        req.setSignature(pngDataUrl());
+
+        PawnResponse result = pawnService.signContract(1L, req);
+
+        assertThat(result).isNotNull();
+        assertThat(pawnEntity.getCustomerSignatureUrl()).isEqualTo("https://img/new.png");
+        assertThat(pawnEntity.getSignedAt()).isNotNull();
+        verify(r2StorageService).upload(anyString(), any(byte[].class), eq("image/png"));
+        verify(pawnRepository).save(pawnEntity);
+        verify(r2CleanupService).deleteAsync("old-key");
+        verify(activityLogService).logAsync(eq("test-shop"), eq("staff01"), isNull(),
+                eq(ActivityAction.PAWN_SIGNED), eq("PAWN"), eq("1"), any(), isNull(), any());
+    }
+
+    @Test
+    @DisplayName("signContract rejects a non-PAWNED contract")
+    void testSignContract_StatusNotAllowed() {
+        pawnEntity.setPawnStatus(PawnStatus.REDEEMED);
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+
+        SignPawnRequest req = new SignPawnRequest();
+        req.setSignature(pngDataUrl());
+
+        assertThatThrownBy(() -> pawnService.signContract(1L, req))
+                .isInstanceOf(PawnStatusNotAllowException.class);
+        verify(r2StorageService, never()).upload(anyString(), any(byte[].class), anyString());
+    }
+
+    @Test
+    @DisplayName("signContract throws 404 when a non-owner lacks PAWN_VIEW_ALL")
+    void testSignContract_OwnershipDenied() {
+        pawnEntity.setCreatedBy("someone-else");
+        when(featureContext.hasFeature("PAWN_VIEW_ALL")).thenReturn(false);
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+
+        SignPawnRequest req = new SignPawnRequest();
+        req.setSignature(pngDataUrl());
+
+        assertThatThrownBy(() -> pawnService.signContract(1L, req))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verify(r2StorageService, never()).upload(anyString(), any(byte[].class), anyString());
+    }
+
+    @Test
+    @DisplayName("signContract rejects a payload that is not a PNG")
+    void testSignContract_InvalidPng() {
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+
+        SignPawnRequest req = new SignPawnRequest();
+        req.setSignature("data:image/png;base64," + Base64.getEncoder().encodeToString("not-a-png".getBytes()));
+
+        assertThatThrownBy(() -> pawnService.signContract(1L, req))
+                .isInstanceOf(BadRequestException.class);
+        verify(r2StorageService, never()).upload(anyString(), any(byte[].class), anyString());
+    }
+
+    @Test
+    @DisplayName("removeSignature clears the columns and cleans up the stored image")
+    void testRemoveSignature_Success() {
+        pawnEntity.setCustomerSignatureUrl("https://img/old.png");
+        pawnEntity.setSignedAt(LocalDateTime.now());
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+        when(r2StorageService.keyFromUrl("https://img/old.png")).thenReturn("old-key");
+        stubGetPawnDetails();
+
+        PawnResponse result = pawnService.removeSignature(1L);
+
+        assertThat(result).isNotNull();
+        assertThat(pawnEntity.getCustomerSignatureUrl()).isNull();
+        assertThat(pawnEntity.getSignedAt()).isNull();
+        verify(pawnRepository).save(pawnEntity);
+        verify(r2CleanupService).deleteAsync("old-key");
+    }
+
+    // ── getPawnDetails: PAWN_VIEW_ALL ownership guard ──────────────────────────
+
+    @Test
+    @DisplayName("getPawnDetails: throws 404 when caller lacks PAWN_VIEW_ALL and is not the creator")
+    void testGetPawnDetails_OwnershipDenied() {
+        pawnEntity.setCreatedBy("someone-else");
+        when(featureContext.hasFeature("PAWN_VIEW_ALL")).thenReturn(false);
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+
+        assertThatThrownBy(() -> pawnService.getPawnDetails(1L))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("getPawnDetails: allows the creator through even without PAWN_VIEW_ALL")
+    void testGetPawnDetails_OwnerAllowed() {
+        pawnEntity.setCreatedBy("staff01");
+        when(featureContext.hasFeature("PAWN_VIEW_ALL")).thenReturn(false);
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+        when(pawnMapper.fromPawnEntity(pawnEntity)).thenReturn(pawnResponse);
+        when(customerRepository.findById(10L)).thenReturn(Optional.empty());
+        when(auditRepository.findByPawnIdOrderByActionIdAsc(1L)).thenReturn(List.of());
+
+        PawnResponse result = pawnService.getPawnDetails(1L);
+
+        assertThat(result).isNotNull();
+    }
+
+    // ── getPawns: PAWN_VIEW_ALL scoping + item-detail enrichment ──────────────
+
+    @Test
+    @DisplayName("getPawns: scopes list to createdBy when PAWN_VIEW_ALL is absent and enriches details")
+    @SuppressWarnings("unchecked")
+    void testGetPawns_ScopedToCreatedBy_WithEnrichment() {
+        when(featureContext.hasFeature("PAWN_VIEW_ALL")).thenReturn(false);
+        when(shopInfoService.getExcludeVisibleItemFlag()).thenReturn(false);
+
+        PawnQuery query = new PawnQuery();
+        PawnResponse enriched = new PawnResponse();
+        enriched.setPawnId(6L);
+        enriched.setPawnCategory("ELECTRONICS");
+
+        PawnElectronicsEntity electronicsEntity = PawnElectronicsEntity.builder().pawnId(6L).brand("Apple").build();
+
+        when(queryRepository.findAll(any(Specification.class), any(PageRequest.class)))
+                .thenReturn(new PageImpl<>(List.of(query)));
+        when(pawnMapper.fromPawnQuery(query)).thenReturn(enriched);
+        when(electronicsRepository.findByPawnIdIn(List.of(6L))).thenReturn(List.of(electronicsEntity));
+        when(pawnMapper.fromElectronicsEntity(electronicsEntity)).thenReturn(new PawnElectronicsDetail());
+        when(queryRepository.getSummary(any(Specification.class))).thenReturn(null);
+
+        PawnSearchResponse result = pawnService.getPawns(PageRequest.of(0, 10), SearchPawnRequest.builder().build());
+
+        assertThat(result.getContent()).hasSize(1);
+        verify(electronicsRepository).findByPawnIdIn(List.of(6L));
+    }
+
+    // ── lookupByCode ──────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("lookupByCode: resolves a numeric code via findById")
+    void testLookupByCode_NumericFound() {
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+        when(pawnMapper.fromPawnEntity(pawnEntity)).thenReturn(pawnResponse);
+        when(customerRepository.findById(10L)).thenReturn(Optional.empty());
+        when(auditRepository.findByPawnIdOrderByActionIdAsc(1L)).thenReturn(List.of());
+
+        PawnResponse result = pawnService.lookupByCode("1");
+
+        assertThat(result).isNotNull();
+        verify(pawnRepository, atLeastOnce()).findById(1L);
+        verify(pawnRepository, never()).findByLegacyId(anyString());
+    }
+
+    @Test
+    @DisplayName("lookupByCode: falls back to legacyId lookup when numeric id is not found")
+    void testLookupByCode_NumericMissing_FallsBackToLegacy() {
+        // First findById (numeric parse) misses; legacy lookup hits; getPawnDetails re-fetches by id.
+        when(pawnRepository.findById(1L)).thenReturn(Optional.empty()).thenReturn(Optional.of(pawnEntity));
+        when(pawnRepository.findByLegacyId("1")).thenReturn(Optional.of(pawnEntity));
+        when(pawnMapper.fromPawnEntity(pawnEntity)).thenReturn(pawnResponse);
+        when(customerRepository.findById(10L)).thenReturn(Optional.empty());
+        when(auditRepository.findByPawnIdOrderByActionIdAsc(1L)).thenReturn(List.of());
+
+        PawnResponse result = pawnService.lookupByCode("1");
+
+        assertThat(result).isNotNull();
+        verify(pawnRepository).findByLegacyId("1");
+    }
+
+    @Test
+    @DisplayName("lookupByCode: non-numeric code goes straight to legacyId lookup")
+    void testLookupByCode_NonNumeric_UsesLegacy() {
+        when(pawnRepository.findByLegacyId("LEGACY-123")).thenReturn(Optional.of(pawnEntity));
+        // getPawnDetails re-fetches the resolved entity by its pawnId
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+        when(pawnMapper.fromPawnEntity(pawnEntity)).thenReturn(pawnResponse);
+        when(customerRepository.findById(10L)).thenReturn(Optional.empty());
+        when(auditRepository.findByPawnIdOrderByActionIdAsc(1L)).thenReturn(List.of());
+
+        PawnResponse result = pawnService.lookupByCode("LEGACY-123");
+
+        assertThat(result).isNotNull();
+        verify(pawnRepository).findByLegacyId("LEGACY-123");
+    }
+
+    @Test
+    @DisplayName("lookupByCode: throws when neither numeric nor legacy match exists")
+    void testLookupByCode_NotFound() {
+        when(pawnRepository.findByLegacyId("nope")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> pawnService.lookupByCode("nope"))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── updatePawn: REDEEMED requestType + heldDays branch ─────────────────────
+
+    @Test
+    @DisplayName("updatePawn: REDEEMED requestType triggers PAWN_REDEEMED activity action and applies heldDays")
+    void testUpdatePawn_RedeemedRequestType() {
+        PawnRequest req = new PawnRequest();
+        req.setItemName("Vòng vàng");
+        req.setPawnDate(LocalDateTime.now());
+        req.setPawnDueDate(LocalDateTime.now().plusDays(30));
+        req.setPawnAmount(new BigDecimal("4000000"));
+        req.setInterestRate(new BigDecimal("3"));
+        req.setPawnStatus(PawnStatus.REDEEMED);
+        req.setRequestType("REDEEMED");
+        req.setHeldDays(12L);
+
+        PawnEntity savedEntity = PawnEntity.builder()
+                .pawnId(1L).customerId(10L).itemName("Vòng vàng")
+                .pawnStatus(PawnStatus.REDEEMED).pawnAmount(new BigDecimal("4000000"))
+                .interestRate(new BigDecimal("3")).build();
+
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity)).thenReturn(Optional.of(savedEntity));
+        when(pawnRepository.save(any(PawnEntity.class))).thenReturn(savedEntity);
+        when(pawnMapper.fromPawnEntity(savedEntity)).thenReturn(pawnResponse);
+        when(customerRepository.findById(10L)).thenReturn(Optional.empty());
+        when(auditRepository.findByPawnIdOrderByActionIdAsc(1L)).thenReturn(List.of());
+
+        pawnService.updatePawn(1L, req);
+
+        assertThat(pawnEntity.getHeldDays()).isEqualTo(12);
+        verify(activityLogService).logAsync(eq("test-shop"), eq("staff01"), isNull(),
+                eq(ActivityAction.PAWN_REDEEMED), eq("PAWN"), eq("1"), eq("activity.pawn.redeemed"), isNull(), any());
+    }
+
+    // ── decodeSignaturePng: size cap + blank ──────────────────────────────────
+
+    @Test
+    @DisplayName("signContract: rejects a signature larger than the size cap")
+    void testSignContract_SignatureTooLarge() {
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+
+        byte[] huge = new byte[300 * 1024];
+        huge[0] = (byte) 0x89; huge[1] = 'P'; huge[2] = 'N'; huge[3] = 'G';
+        SignPawnRequest req = new SignPawnRequest();
+        req.setSignature(Base64.getEncoder().encodeToString(huge));
+
+        assertThatThrownBy(() -> pawnService.signContract(1L, req))
+                .isInstanceOf(BadRequestException.class);
+        verify(r2StorageService, never()).upload(anyString(), any(byte[].class), anyString());
+    }
+
+    @Test
+    @DisplayName("signContract: a blank uploaded URL nulls out the signature column")
+    void testSignContract_BlankUploadUrl() {
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+        when(r2StorageService.keyFromUrl(any())).thenReturn(null);
+        when(r2StorageService.upload(anyString(), any(byte[].class), eq("image/png"))).thenReturn("");
+        stubGetPawnDetails();
+
+        SignPawnRequest req = new SignPawnRequest();
+        req.setSignature(pngDataUrl());
+
+        pawnService.signContract(1L, req);
+
+        assertThat(pawnEntity.getCustomerSignatureUrl()).isNull();
+    }
+
+    // ── removeSignature: ownership guard ──────────────────────────────────────
+
+    @Test
+    @DisplayName("removeSignature: throws 404 when caller lacks PAWN_VIEW_ALL and is not the creator")
+    void testRemoveSignature_OwnershipDenied() {
+        pawnEntity.setCreatedBy("someone-else");
+        when(featureContext.hasFeature("PAWN_VIEW_ALL")).thenReturn(false);
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+
+        assertThatThrownBy(() -> pawnService.removeSignature(1L))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verify(pawnRepository, never()).save(any());
+    }
+
+    // ── forfeitPawnByPawnId: remaining validation branches ────────────────────
+
+    @Test
+    @DisplayName("forfeitPawnByPawnId: throws when totalAmount is null")
+    void testForfeitPawnByPawnId_ThrowsWhenTotalAmountNull() {
+        ForfeitRequest request = new ForfeitRequest();
+        request.setInterestAmount(new BigDecimal("450000"));
+        request.setTotalAmount(null);
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+
+        assertThatThrownBy(() -> pawnService.forfeitPawnByPawnId(1L, request))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("forfeitPawnByPawnId: throws when forfeitedDate is missing")
+    void testForfeitPawnByPawnId_ThrowsWhenForfeitDateNull() {
+        ForfeitRequest request = new ForfeitRequest();
+        request.setInterestAmount(new BigDecimal("450000"));
+        request.setTotalAmount(new BigDecimal("4950000"));
+        request.setForfeitedDate(null);
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+
+        assertThatThrownBy(() -> pawnService.forfeitPawnByPawnId(1L, request))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("forfeitPawnByPawnId: throws when forfeitedAmount is missing")
+    void testForfeitPawnByPawnId_ThrowsWhenForfeitAmountNull() {
+        ForfeitRequest request = new ForfeitRequest();
+        request.setInterestAmount(new BigDecimal("450000"));
+        request.setTotalAmount(new BigDecimal("4950000"));
+        request.setForfeitedDate(LocalDateTime.now());
+        request.setForfeitedAmount(null);
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+
+        assertThatThrownBy(() -> pawnService.forfeitPawnByPawnId(1L, request))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("forfeitPawnByPawnId: throws ResourceNotFoundException when pawn not found")
+    void testForfeitPawnByPawnId_NotFound() {
+        when(pawnRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> pawnService.forfeitPawnByPawnId(99L, new ForfeitRequest()))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── calculatePawnRedeem: FORFEITED status blocked + customer mapping ───────
+
+    @Test
+    @DisplayName("calculatePawnRedeem: throws when pawn is FORFEITED")
+    void testCalculatePawnRedeem_ForfeitedStatus() {
+        pawnEntity.setPawnStatus(PawnStatus.FORFEITED);
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+
+        assertThatThrownBy(() -> pawnService.calculatePawnRedeem(1L, null))
+                .isInstanceOf(PawnStatusNotAllowException.class);
+    }
+
+    @Test
+    @DisplayName("calculatePawnRedeem: throws ResourceNotFoundException when pawn not found")
+    void testCalculatePawnRedeem_NotFound() {
+        when(pawnRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> pawnService.calculatePawnRedeem(99L, null))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("calculatePawnRedeem: maps customer details onto the response when customer is present")
+    void testCalculatePawnRedeem_WithCustomer() {
+        pawnEntity.setInterestCalcMode("DAILY_30");
+        pawnResponse.setPawnDate(LocalDateTime.now().minusDays(10));
+        pawnResponse.setPawnAmount(new BigDecimal("5000000"));
+        pawnResponse.setInterestRate(new BigDecimal("3"));
+        pawnEntity.getReqMoneys().clear();
+
+        Customer customer = Customer.builder().name("Trần Thị B").phone("0987654321").build();
+        customer.setId(10L);
+
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(pawnEntity));
+        when(pawnMapper.fromPawnEntity(pawnEntity)).thenReturn(pawnResponse);
+        when(customerRepository.findById(10L)).thenReturn(Optional.of(customer));
+        when(auditRepository.findByPawnIdOrderByActionIdAsc(1L)).thenReturn(List.of());
+
+        PawnResponse result = pawnService.calculatePawnRedeem(1L, null);
+
+        assertThat(result.getCustomerName()).isEqualTo("Trần Thị B");
+        assertThat(result.getPhone()).isEqualTo("0987654321");
+    }
+
+    // ── extendPawn: category-specific detail copy branches ────────────────────
+
+    private PawnEntity newExtendOriginal(String category) {
+        return PawnEntity.builder()
+                .pawnId(1L).customerId(10L).itemName("Item")
+                .pawnStatus(PawnStatus.PAWNED).pawnAmount(new BigDecimal("5000000"))
+                .interestRate(new BigDecimal("3")).interestCalcMode("DAILY_30")
+                .pawnCategory(category).reqMoneys(new HashSet<>()).build();
+    }
+
+    private PawnRequest newExtendRequest(String category) {
+        PawnRequest req = new PawnRequest();
+        req.setItemName("Item");
+        req.setPawnDate(LocalDateTime.now());
+        req.setPawnDueDate(LocalDateTime.now().plusDays(30));
+        req.setExtendDate(LocalDateTime.now());
+        req.setExtendDueDate(LocalDateTime.now().plusDays(30));
+        req.setPawnAmount(new BigDecimal("5000000"));
+        req.setInterestRate(new BigDecimal("3"));
+        req.setPawnStatus(PawnStatus.PAWNED);
+        // appendUpdateInfo overwrites the original's category from the request before the
+        // category-copy block runs — so the request must carry the same category.
+        req.setPawnCategory(category);
+        return req;
+    }
+
+    private void stubExtendCommon(PawnEntity original) {
+        // The new contract carries no category so the final getPawnDetails enrich step is a no-op,
+        // keeping the category-copy stubs (findByPawnId(1L)) the only invocation of those repos.
+        PawnEntity extendedPawn = PawnEntity.builder()
+                .pawnId(2L).customerId(10L).itemName("Item")
+                .pawnStatus(PawnStatus.PAWNED).pawnAmount(new BigDecimal("5000000"))
+                .interestRate(new BigDecimal("3")).reqMoneys(new HashSet<>())
+                .build();
+        when(pawnRepository.findById(1L)).thenReturn(Optional.of(original));
+        when(pawnRepository.findById(2L)).thenReturn(Optional.of(extendedPawn));
+        when(pawnRepository.save(any(PawnEntity.class))).thenReturn(original).thenReturn(extendedPawn);
+        when(pawnMapper.fromPawnEntity(extendedPawn)).thenReturn(pawnResponse);
+        when(customerRepository.findById(10L)).thenReturn(Optional.empty());
+        when(auditRepository.findByPawnIdOrderByActionIdAsc(2L)).thenReturn(List.of());
+    }
+
+    @Test
+    @DisplayName("extendPawn: copies JEWELRY detail to the new contract")
+    void testExtendPawn_CopiesJewelryDetail() {
+        PawnEntity original = newExtendOriginal("JEWELRY");
+        stubExtendCommon(original);
+
+        com.tappy.pos.model.entity.pawn.PawnJewelryEntity jewelry =
+                mock(com.tappy.pos.model.entity.pawn.PawnJewelryEntity.class);
+        PawnJewelryDetail detail = new PawnJewelryDetail();
+        com.tappy.pos.model.entity.pawn.PawnJewelryEntity copied =
+                mock(com.tappy.pos.model.entity.pawn.PawnJewelryEntity.class);
+        when(jewelryRepository.findByPawnId(1L)).thenReturn(Optional.of(jewelry));
+        when(pawnMapper.fromJewelryEntity(jewelry)).thenReturn(detail);
+        when(pawnMapper.toJewelryEntity(eq("test-shop"), eq(2L), eq(detail))).thenReturn(copied);
+
+        pawnService.extendPawn(1L, newExtendRequest("JEWELRY"));
+
+        verify(jewelryRepository).save(copied);
+    }
+
+    @Test
+    @DisplayName("extendPawn: copies VEHICLE detail to the new contract")
+    void testExtendPawn_CopiesVehicleDetail() {
+        PawnEntity original = newExtendOriginal("MOTORBIKE");
+        stubExtendCommon(original);
+
+        com.tappy.pos.model.entity.pawn.PawnVehicleEntity vehicle =
+                mock(com.tappy.pos.model.entity.pawn.PawnVehicleEntity.class);
+        PawnVehicleDetail detail = new PawnVehicleDetail();
+        com.tappy.pos.model.entity.pawn.PawnVehicleEntity copied =
+                mock(com.tappy.pos.model.entity.pawn.PawnVehicleEntity.class);
+        when(vehicleRepository.findByPawnId(1L)).thenReturn(Optional.of(vehicle));
+        when(pawnMapper.fromVehicleEntity(vehicle)).thenReturn(detail);
+        when(pawnMapper.toVehicleEntity(eq("test-shop"), eq(2L), eq(detail))).thenReturn(copied);
+
+        pawnService.extendPawn(1L, newExtendRequest("MOTORBIKE"));
+
+        verify(vehicleRepository).save(copied);
+    }
+
+    @Test
+    @DisplayName("extendPawn: copies ELECTRONICS detail to the new contract")
+    void testExtendPawn_CopiesElectronicsDetail() {
+        PawnEntity original = newExtendOriginal("ELECTRONICS");
+        stubExtendCommon(original);
+
+        PawnElectronicsEntity electronics = mock(PawnElectronicsEntity.class);
+        PawnElectronicsDetail detail = new PawnElectronicsDetail();
+        PawnElectronicsEntity copied = mock(PawnElectronicsEntity.class);
+        when(electronicsRepository.findByPawnId(1L)).thenReturn(Optional.of(electronics));
+        when(pawnMapper.fromElectronicsEntity(electronics)).thenReturn(detail);
+        when(pawnMapper.toElectronicsEntity(eq("test-shop"), eq(2L), eq(detail))).thenReturn(copied);
+
+        pawnService.extendPawn(1L, newExtendRequest("ELECTRONICS"));
+
+        verify(electronicsRepository).save(copied);
+    }
+
+    @Test
+    @DisplayName("extendPawn: copies WATCH detail to the new contract")
+    void testExtendPawn_CopiesWatchDetail() {
+        PawnEntity original = newExtendOriginal("WATCH");
+        stubExtendCommon(original);
+
+        com.tappy.pos.model.entity.pawn.PawnWatchEntity watch =
+                mock(com.tappy.pos.model.entity.pawn.PawnWatchEntity.class);
+        PawnWatchDetail detail = new PawnWatchDetail();
+        com.tappy.pos.model.entity.pawn.PawnWatchEntity copied =
+                mock(com.tappy.pos.model.entity.pawn.PawnWatchEntity.class);
+        when(watchRepository.findByPawnId(1L)).thenReturn(Optional.of(watch));
+        when(pawnMapper.fromWatchEntity(watch)).thenReturn(detail);
+        when(pawnMapper.toWatchEntity(eq("test-shop"), eq(2L), eq(detail))).thenReturn(copied);
+
+        pawnService.extendPawn(1L, newExtendRequest("WATCH"));
+
+        verify(watchRepository).save(copied);
+    }
+
+    @Test
+    @DisplayName("extendPawn: copies REAL_ESTATE detail to the new contract")
+    void testExtendPawn_CopiesRealEstateDetail() {
+        PawnEntity original = newExtendOriginal("REAL_ESTATE");
+        stubExtendCommon(original);
+
+        com.tappy.pos.model.entity.pawn.PawnRealEstateEntity realEstate =
+                mock(com.tappy.pos.model.entity.pawn.PawnRealEstateEntity.class);
+        PawnRealEstateDetail detail = new PawnRealEstateDetail();
+        com.tappy.pos.model.entity.pawn.PawnRealEstateEntity copied =
+                mock(com.tappy.pos.model.entity.pawn.PawnRealEstateEntity.class);
+        when(realEstateRepository.findByPawnId(1L)).thenReturn(Optional.of(realEstate));
+        when(pawnMapper.fromRealEstateEntity(realEstate)).thenReturn(detail);
+        when(pawnMapper.toRealEstateEntity(eq("test-shop"), eq(2L), eq(detail))).thenReturn(copied);
+
+        pawnService.extendPawn(1L, newExtendRequest("REAL_ESTATE"));
+
+        verify(realEstateRepository).save(copied);
+    }
+
+    @Test
+    @DisplayName("extendPawn: copies GENERAL detail to the new contract")
+    void testExtendPawn_CopiesGeneralDetail() {
+        PawnEntity original = newExtendOriginal("GENERAL");
+        stubExtendCommon(original);
+
+        com.tappy.pos.model.entity.pawn.PawnGeneralEntity general =
+                mock(com.tappy.pos.model.entity.pawn.PawnGeneralEntity.class);
+        PawnGeneralDetail detail = new PawnGeneralDetail();
+        com.tappy.pos.model.entity.pawn.PawnGeneralEntity copied =
+                mock(com.tappy.pos.model.entity.pawn.PawnGeneralEntity.class);
+        when(generalRepository.findByPawnId(1L)).thenReturn(Optional.of(general));
+        when(pawnMapper.fromGeneralEntity(general)).thenReturn(detail);
+        when(pawnMapper.toGeneralEntity(eq("test-shop"), eq(2L), eq(detail))).thenReturn(copied);
+
+        pawnService.extendPawn(1L, newExtendRequest("GENERAL"));
+
+        verify(generalRepository).save(copied);
+    }
+
+    // ── saveItemDetail / enrichWithItemDetail: remaining categories ───────────
+
+    @Test
+    @DisplayName("createPawn: saves VEHICLE detail when pawnCategory is MOTORBIKE")
+    @SuppressWarnings("unchecked")
+    void testCreatePawn_WithVehicleDetail() {
+        PawnVehicleDetail detail = new PawnVehicleDetail();
+        PawnRequest req = new PawnRequest();
+        req.setCustomerId(10L);
+        req.setItemName("Honda SH");
+        req.setPawnDate(LocalDateTime.now());
+        req.setPawnDueDate(LocalDateTime.now().plusDays(30));
+        req.setPawnAmount(new BigDecimal("30000000"));
+        req.setInterestRate(new BigDecimal("3"));
+        req.setPawnCategory("MOTORBIKE");
+        req.setVehicleDetail(detail);
+
+        PawnEntity savedEntity = PawnEntity.builder().pawnId(7L).customerId(10L).itemName("Honda SH")
+                .pawnStatus(PawnStatus.PAWNED).pawnAmount(new BigDecimal("30000000"))
+                .interestRate(new BigDecimal("3")).pawnCategory("MOTORBIKE").build();
+
+        when(pawnMapper.fromPawnRequest(req)).thenReturn(PawnEntity.builder().build());
+        when(pawnRepository.save(any(PawnEntity.class))).thenReturn(savedEntity);
+        when(pawnMapper.toVehicleEntity(anyString(), eq(7L), eq(detail)))
+                .thenReturn(mock(com.tappy.pos.model.entity.pawn.PawnVehicleEntity.class));
+        when(pawnRepository.findById(7L)).thenReturn(Optional.of(savedEntity));
+        when(pawnMapper.fromPawnEntity(savedEntity)).thenReturn(pawnResponse);
+        when(customerRepository.findById(10L)).thenReturn(Optional.empty());
+        when(auditRepository.findByPawnIdOrderByActionIdAsc(7L)).thenReturn(List.of());
+        when(vehicleRepository.findByPawnId(7L)).thenReturn(Optional.empty());
+
+        pawnService.createPawn(req);
+
+        verify(vehicleRepository).deleteByPawnId(7L);
+        verify(vehicleRepository).save(any());
+    }
+
+    @Test
+    @DisplayName("createPawn: saves JEWELRY detail when pawnCategory is JEWELRY")
+    @SuppressWarnings("unchecked")
+    void testCreatePawn_WithJewelryDetail() {
+        PawnJewelryDetail detail = new PawnJewelryDetail();
+        PawnRequest req = new PawnRequest();
+        req.setCustomerId(10L);
+        req.setItemName("Nhẫn kim cương");
+        req.setPawnDate(LocalDateTime.now());
+        req.setPawnDueDate(LocalDateTime.now().plusDays(30));
+        req.setPawnAmount(new BigDecimal("20000000"));
+        req.setInterestRate(new BigDecimal("3"));
+        req.setPawnCategory("JEWELRY");
+        req.setJewelryDetail(detail);
+
+        PawnEntity savedEntity = PawnEntity.builder().pawnId(8L).customerId(10L).itemName("Nhẫn kim cương")
+                .pawnStatus(PawnStatus.PAWNED).pawnAmount(new BigDecimal("20000000"))
+                .interestRate(new BigDecimal("3")).pawnCategory("JEWELRY").build();
+
+        when(pawnMapper.fromPawnRequest(req)).thenReturn(PawnEntity.builder().build());
+        when(pawnRepository.save(any(PawnEntity.class))).thenReturn(savedEntity);
+        when(pawnMapper.toJewelryEntity(anyString(), eq(8L), eq(detail)))
+                .thenReturn(mock(com.tappy.pos.model.entity.pawn.PawnJewelryEntity.class));
+        when(pawnRepository.findById(8L)).thenReturn(Optional.of(savedEntity));
+        when(pawnMapper.fromPawnEntity(savedEntity)).thenReturn(pawnResponse);
+        when(customerRepository.findById(10L)).thenReturn(Optional.empty());
+        when(auditRepository.findByPawnIdOrderByActionIdAsc(8L)).thenReturn(List.of());
+        when(jewelryRepository.findByPawnId(8L)).thenReturn(Optional.empty());
+
+        pawnService.createPawn(req);
+
+        verify(jewelryRepository).deleteByPawnId(8L);
+        verify(jewelryRepository).save(any());
+    }
+
+    @Test
+    @DisplayName("createPawn: REAL_ESTATE and GENERAL detail null skips the save but still deletes")
+    @SuppressWarnings("unchecked")
+    void testCreatePawn_RealEstateCategory_NullDetailSkipsSave() {
+        PawnRequest req = new PawnRequest();
+        req.setCustomerId(10L);
+        req.setItemName("Sổ đỏ");
+        req.setPawnDate(LocalDateTime.now());
+        req.setPawnDueDate(LocalDateTime.now().plusDays(30));
+        req.setPawnAmount(new BigDecimal("500000000"));
+        req.setInterestRate(new BigDecimal("3"));
+        req.setPawnCategory("REAL_ESTATE");
+        req.setRealEstateDetail(null);
+
+        PawnEntity savedEntity = PawnEntity.builder().pawnId(9L).customerId(10L).itemName("Sổ đỏ")
+                .pawnStatus(PawnStatus.PAWNED).pawnAmount(new BigDecimal("500000000"))
+                .interestRate(new BigDecimal("3")).pawnCategory("REAL_ESTATE").build();
+
+        when(pawnMapper.fromPawnRequest(req)).thenReturn(PawnEntity.builder().build());
+        when(pawnRepository.save(any(PawnEntity.class))).thenReturn(savedEntity);
+        when(pawnRepository.findById(9L)).thenReturn(Optional.of(savedEntity));
+        when(pawnMapper.fromPawnEntity(savedEntity)).thenReturn(pawnResponse);
+        when(customerRepository.findById(10L)).thenReturn(Optional.empty());
+        when(auditRepository.findByPawnIdOrderByActionIdAsc(9L)).thenReturn(List.of());
+        when(realEstateRepository.findByPawnId(9L)).thenReturn(Optional.empty());
+
+        pawnService.createPawn(req);
+
+        verify(realEstateRepository).deleteByPawnId(9L);
+        verify(realEstateRepository, never()).save(any());
+    }
+
+    // ── getPawnKPIs already covered for month; add zero-result path ────────────
+
+    // ── getPawnCustomerInsights ───────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getPawnCustomerInsights: derives returning customers as total minus new")
+    void testGetPawnCustomerInsights_Success() {
+        when(shopInfoService.getExcludeVisibleItemFlag()).thenReturn(false);
+        when(pawnRepository.countDistinctPawnCustomers(any(), any(), eq(false))).thenReturn(10L);
+        when(pawnRepository.countNewPawnCustomers(any(), any(), eq(false))).thenReturn(4L);
+        when(pawnRepository.countWalkInPawns(any(), any(), eq(false))).thenReturn(2L);
+
+        PawnCustomerInsights insights = pawnService.getPawnCustomerInsights(
+                java.time.LocalDate.now().minusDays(30), java.time.LocalDate.now());
+
+        assertThat(insights.getTotalCustomers()).isEqualTo(10L);
+        assertThat(insights.getNewCustomers()).isEqualTo(4L);
+        assertThat(insights.getReturningCustomers()).isEqualTo(6L);
+        assertThat(insights.getWalkInCount()).isEqualTo(2L);
+    }
+
+    @Test
+    @DisplayName("getPawnCustomerInsights: clamps returning customers to zero when new exceeds total")
+    void testGetPawnCustomerInsights_NewExceedsTotal() {
+        when(shopInfoService.getExcludeVisibleItemFlag()).thenReturn(true);
+        when(pawnRepository.countDistinctPawnCustomers(any(), any(), eq(true))).thenReturn(3L);
+        when(pawnRepository.countNewPawnCustomers(any(), any(), eq(true))).thenReturn(5L);
+        when(pawnRepository.countWalkInPawns(any(), any(), eq(true))).thenReturn(0L);
+
+        PawnCustomerInsights insights = pawnService.getPawnCustomerInsights(
+                java.time.LocalDate.now().minusDays(7), java.time.LocalDate.now());
+
+        assertThat(insights.getReturningCustomers()).isEqualTo(0L);
+    }
+
+    // ── getTopPawnCustomers ───────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getTopPawnCustomers: maps rows to widget fields and walk-in label for null name")
+    void testGetTopPawnCustomers_Success() {
+        when(shopInfoService.getExcludeVisibleItemFlag()).thenReturn(false);
+        Object[] namedRow = new Object[]{ 7L, "Nguyễn Văn A", 3L, 5_000_000L, 250_000L };
+        Object[] nullNameRow = new Object[]{ null, null, null, null, null };
+        when(pawnRepository.findTopCustomersByPawnAmount(any(), any(), eq(false), any()))
+                .thenReturn(List.of(namedRow, nullNameRow));
+
+        List<java.util.Map<String, Object>> result = pawnService.getTopPawnCustomers(
+                5, java.time.LocalDate.now().minusDays(30), java.time.LocalDate.now());
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0)).containsEntry("customerId", 7L)
+                .containsEntry("name", "Nguyễn Văn A")
+                .containsEntry("totalCount", 3)
+                .containsEntry("totalAmount", 5_000_000L)
+                .containsEntry("interestAmount", 250_000L);
+        assertThat(result.get(1)).containsEntry("name", "Khách vãng lai")
+                .containsEntry("totalCount", 0)
+                .containsEntry("totalAmount", 0L);
+    }
+
+    // ── getCustomerPawnSummary ────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getCustomerPawnSummary: aggregates all + active rows for the customer")
+    void testGetCustomerPawnSummary_Success() {
+        when(shopInfoService.getExcludeVisibleItemFlag()).thenReturn(false);
+        Object[] allRow = new Object[]{ 8L, 40_000_000L, 1_500_000L };
+        Object[] activeRow = new Object[]{ 3L };
+        when(pawnRepository.sumByPawnStatusInAndCustomerIdEquals(eq(10L), anyList(), eq(false)))
+                .thenReturn(Collections.singletonList(allRow))
+                .thenReturn(Collections.singletonList(activeRow));
+
+        java.util.Map<String, Object> result = pawnService.getCustomerPawnSummary(10L);
+
+        assertThat(result).containsEntry("totalCount", 8L)
+                .containsEntry("totalPrincipal", 40_000_000L)
+                .containsEntry("totalInterest", 1_500_000L)
+                .containsEntry("activeCount", 3L);
+    }
+
+    @Test
+    @DisplayName("getCustomerPawnSummary: returns zeros when no rows exist")
+    void testGetCustomerPawnSummary_EmptyRows() {
+        when(shopInfoService.getExcludeVisibleItemFlag()).thenReturn(false);
+        when(pawnRepository.sumByPawnStatusInAndCustomerIdEquals(eq(99L), anyList(), eq(false)))
+                .thenReturn(List.of())
+                .thenReturn(List.of());
+
+        java.util.Map<String, Object> result = pawnService.getCustomerPawnSummary(99L);
+
+        assertThat(result).containsEntry("totalCount", 0L)
+                .containsEntry("activeCount", 0L)
+                .containsEntry("totalPrincipal", 0L)
+                .containsEntry("totalInterest", 0L);
+    }
+
+    // ── getPawnCharts: day / week / year granularity branches ─────────────────
+
+    private List<Object[]> dayRow() {
+        return Collections.singletonList(new Object[]{ new BigDecimal("1000000"), 2L, 2026, 5, 12 });
+    }
+
+    private void stubDayChartRepos() {
+        when(shopInfoService.getExcludeVisibleItemFlag()).thenReturn(false);
+        when(pawnRepository.getAmountByDayPawnDate(any(), any(), eq(false))).thenReturn(dayRow());
+        when(pawnRepository.getAmountByDayRedeemDate(anyList(), any(), any(), eq(false))).thenReturn(dayRow());
+        when(pawnRepository.getAmountByDayForfeitedDate(anyList(), any(), any(), eq(false))).thenReturn(dayRow());
+        when(pawnRepository.getRedeemedInterestByDay(eq(PawnStatus.REDEEMED), any(), any(), eq(false))).thenReturn(dayRow());
+        when(pawnRepository.getForfeitedInterestByDay(eq(PawnStatus.FORFEITED), any(), any(), eq(false))).thenReturn(dayRow());
+        when(pawnRepository.getExtendedInterestByDay(any(), any(), eq(false))).thenReturn(dayRow());
+    }
+
+    @Test
+    @DisplayName("getPawnCharts: day granularity returns day-level bars")
+    void testGetPawnCharts_DayGranularity() {
+        long now = System.currentTimeMillis();
+        DateFilterRequest filter = DateFilterRequest.builder()
+                .fromDate(now - 86400000L).toDate(now).granularity("day").build();
+        stubDayChartRepos();
+
+        PawnBarsResponse result = pawnService.getPawnCharts(filter);
+
+        assertThat(result.getPawnedBars()).hasSize(1);
+        assertThat(result.getPawnedBars().get(0).getDay()).isEqualTo(12);
+    }
+
+    @Test
+    @DisplayName("getPawnCharts: week granularity aggregates day-level bars into week buckets")
+    void testGetPawnCharts_WeekGranularity() {
+        long now = System.currentTimeMillis();
+        DateFilterRequest filter = DateFilterRequest.builder()
+                .fromDate(now - 86400000L).toDate(now).granularity("week").build();
+        stubDayChartRepos();
+
+        PawnBarsResponse result = pawnService.getPawnCharts(filter);
+
+        assertThat(result.getPawnedBars()).hasSize(1);
+        // week label is the Monday of the ISO week, formatted YYYY-MM-DD
+        assertThat(result.getPawnedBars().get(0).getLabel()).matches("\\d{4}-\\d{2}-\\d{2}");
+    }
+
+    @Test
+    @DisplayName("getPawnCharts: year granularity aggregates month-level bars into year buckets")
+    void testGetPawnCharts_YearGranularity() {
+        long now = System.currentTimeMillis();
+        DateFilterRequest filter = DateFilterRequest.builder()
+                .fromDate(now - 86400000L).toDate(now).granularity("year").build();
+
+        when(shopInfoService.getExcludeVisibleItemFlag()).thenReturn(false);
+        List<Object[]> monthRow = Collections.singletonList(new Object[]{ new BigDecimal("2000000"), 4L, 2026, 5 });
+        when(pawnRepository.getAmountAndTotalCountByMonthPawnDateAndStatus(any(), any(), eq(false))).thenReturn(monthRow);
+        when(pawnRepository.getAmountAndTotalCountByMonthRedeemDateAndStatus(anyList(), any(), any(), eq(false))).thenReturn(monthRow);
+        when(pawnRepository.getAmountAndTotalCountByMonthForfeitedDateDateAndStatus(anyList(), any(), any(), eq(false))).thenReturn(monthRow);
+        when(pawnRepository.getRedeemedInterestAmount(eq(PawnStatus.REDEEMED), any(), any(), eq(false))).thenReturn(monthRow);
+        when(pawnRepository.getForfeitedInterestAmount(eq(PawnStatus.FORFEITED), any(), any(), eq(false))).thenReturn(monthRow);
+        when(pawnRepository.getExtendedInterestByMonth(any(), any(), eq(false))).thenReturn(monthRow);
+
+        PawnBarsResponse result = pawnService.getPawnCharts(filter);
+
+        assertThat(result.getPawnedBars()).hasSize(1);
+        assertThat(result.getPawnedBars().get(0).getLabel()).isEqualTo("2026");
+    }
+
+    @Test
+    @DisplayName("getPawnCharts: throws when only toDate is zero")
+    void testGetPawnCharts_ToDateZero() {
+        DateFilterRequest filter = DateFilterRequest.builder().fromDate(123L).toDate(0L).build();
+
+        assertThatThrownBy(() -> pawnService.getPawnCharts(filter))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    // ── mergeInterestBarsData: label fallback to year-month ───────────────────
+
+    @Test
+    @DisplayName("mergeInterestBarsData: falls back to year-month key when label is null")
+    void testMergeInterestBarsData_NullLabelFallsBackToYearMonth() {
+        BarsData a = BarsData.builder().year(2026).month(5).amount(100000).count(1).weight(0.0).build();
+        BarsData b = BarsData.builder().year(2026).month(5).amount(50000).count(1).weight(0.0).build();
+
+        List<BarsData> result = PawnServiceImpl.mergeInterestBarsData(List.of(a), List.of(b));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getAmount()).isEqualTo(150000);
+        assertThat(result.get(0).getCount()).isEqualTo(2);
     }
 }

@@ -19,11 +19,33 @@ public class Notification extends UnifiedTenantEntity {
     @Column(name = "user_id", nullable = false, length = 50)
     private String userId;
 
-    @Column(nullable = false, length = 200)
+    /**
+     * Literal title — set only for user-authored notifications (admin "create") and legacy rows.
+     * System notifications leave this null and use {@link #titleKey} + {@link #titleArgs} so the
+     * text renders in the reader's locale. See V037__notification_i18n.sql.
+     */
+    @Column(length = 200)
     private String title;
 
+    /** Literal message — same rule as {@link #title}; system notifications use messageKey/messageArgs. */
     @Column(columnDefinition = "TEXT")
     private String message;
+
+    /** i18n key for the title, e.g. {@code notification.order.new.title}. Rendered at read time. */
+    @Column(name = "title_key", length = 150)
+    private String titleKey;
+
+    /** JSON array of stringified title arguments. */
+    @Column(name = "title_args", columnDefinition = "text")
+    private String titleArgs;
+
+    /** i18n key for the message, e.g. {@code notification.order.new.message}. Rendered at read time. */
+    @Column(name = "message_key", length = 150)
+    private String messageKey;
+
+    /** JSON array of stringified message arguments. */
+    @Column(name = "message_args", columnDefinition = "text")
+    private String messageArgs;
 
     @Column(nullable = false, length = 30)
     @Enumerated(EnumType.STRING)

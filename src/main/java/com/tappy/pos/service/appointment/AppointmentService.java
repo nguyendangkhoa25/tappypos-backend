@@ -5,6 +5,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Map;
 
 public interface AppointmentService {
@@ -22,4 +23,12 @@ public interface AppointmentService {
     AppointmentWeekSummaryDTO getWeekSummary(LocalDate from, LocalDate to);
     /** Analytics: summary + trend + service/employee rankings. */
     Map<String, Object> getAnalytics(LocalDate from, LocalDate to, String granularity, int limit);
+
+    /**
+     * Creates a lightweight appointment linked to a pre-order so the existing ZNS reminder job
+     * fires before pickup (Phase 2). No services; reminderSent=false; status PENDING.
+     * Caller must guard on the APPOINTMENT feature; this is fire-and-forget for the order flow.
+     */
+    void createPickupReminder(Long orderId, Long customerId, String customerName,
+                              String customerPhone, LocalDateTime pickupTime);
 }

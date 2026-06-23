@@ -1,0 +1,800 @@
+package com.tappy.pos.service.room;
+
+import com.tappy.pos.exception.BadRequestException;
+import com.tappy.pos.exception.ResourceNotFoundException;
+import com.tappy.pos.model.dto.room.*;
+import com.tappy.pos.model.entity.order.Order;
+import com.tappy.pos.model.entity.order.OrderItem;
+import com.tappy.pos.model.entity.product.Product;
+import com.tappy.pos.model.entity.room.RoomEntity;
+import com.tappy.pos.model.entity.room.RoomRequestEntity;
+import com.tappy.pos.model.entity.room.RoomStayEntity;
+import com.tappy.pos.model.entity.room.RoomStayItemEntity;
+import com.tappy.pos.model.enums.ActivityAction;
+import com.tappy.pos.model.enums.ShopConfigKey;
+import com.tappy.pos.multitenant.TenantContext;
+import com.tappy.pos.repository.order.OrderRepository;
+import com.tappy.pos.repository.product.ProductRepository;
+import com.tappy.pos.repository.room.RoomRepository;
+import com.tappy.pos.repository.room.RoomRequestRepository;
+import com.tappy.pos.repository.room.RoomStayItemRepository;
+import com.tappy.pos.repository.room.RoomStayRepository;
+import com.tappy.pos.service.MessageService;
+import com.tappy.pos.util.MessageArgs;
+import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.service.tenant.ShopConfigService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class RoomServiceImpl implements RoomService {
+
+    private static final DateTimeFormatter ORDER_DATE_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
+    private static final Set<String> BILLING_MODES = Set.of("NIGHTLY", "HOURLY", "OVERNIGHT");
+    private static final Set<String> ROOM_STATUSES = Set.of("AVAILABLE", "OCCUPIED", "RESERVED", "DIRTY", "OOO");
+    private static final Set<String> ROOM_REQUEST_STATUSES = Set.of("NEW", "IN_PROGRESS", "DONE", "CANCELLED");
+
+    private final RoomRepository roomRepository;
+    private final RoomStayRepository stayRepository;
+    private final RoomStayItemRepository itemRepository;
+    private final RoomRequestRepository requestRepository;
+    private final OrderRepository orderRepository;
+    private final ProductRepository productRepository;
+    private final TenantContext tenantContext;
+    private final MessageService messageService;
+    private final ActivityLogService activityLogService;
+    private final ShopConfigService shopConfigService;
+    private final com.tappy.pos.repository.employee.EmployeeRepository employeeRepository;
+
+    // ── Rooms / board ──────────────────────────────────────────────────────────
+
+    @Override
+    public List<RoomDTO> getBoard() {
+        // One query each for in-house stays and due reservations, then map by roomId in memory
+        // (avoids an N+1 per-room lookup on this frequently-polled screen).
+        Map<Long, RoomStayEntity> inHouseByRoom = stayRepository
+                .findByStatusAndDeletedFalseOrderByCreatedAtDesc("IN_HOUSE", Pageable.unpaged())
+                .stream()
+                .collect(Collectors.toMap(RoomStayEntity::getRoomId, s -> s, (a, b) -> a));
+
+        // Reservations arriving today or overdue (not yet checked in) — surfaced so the front desk
+        // checks the booked guest in (rather than creating a walk-in). Earliest per room wins.
+        LocalDateTime endOfToday = LocalDate.now().atTime(23, 59, 59);
+        Map<Long, RoomStayEntity> dueResByRoom = stayRepository
+                .findByStatusAndReservedCheckinLessThanEqualAndDeletedFalseOrderByReservedCheckinAsc("RESERVED", endOfToday)
+                .stream()
+                .collect(Collectors.toMap(RoomStayEntity::getRoomId, s -> s, (a, b) -> a));
+
+        return roomRepository.findByDeletedFalseOrderBySortOrderAscRoomNumberAsc().stream()
+                .map(room -> {
+                    RoomStayEntity active = "OCCUPIED".equals(room.getStatus()) ? inHouseByRoom.get(room.getId()) : null;
+                    RoomStayEntity reserved = active == null ? dueResByRoom.get(room.getId()) : null;
+                    return mapRoom(room,
+                            active != null ? mapStay(active, false) : null,
+                            reserved != null ? mapStay(reserved, false) : null);
+                })
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public RoomDTO createRoom(CreateRoomRequest request) {
+        if (roomRepository.existsByRoomNumberAndDeletedFalse(request.getRoomNumber().trim())) {
+            throw new BadRequestException(messageService.getMessage("error.room.number.exists", request.getRoomNumber()));
+        }
+        RoomEntity room = RoomEntity.builder()
+                .tenantId(tenantContext.getCurrentTenantId())
+                .roomNumber(request.getRoomNumber().trim())
+                .roomType(request.getRoomType())
+                .floor(request.getFloor())
+                .nightlyRate(orZero(request.getNightlyRate()))
+                .hourlyRate(request.getHourlyRate())
+                .overnightRate(request.getOvernightRate())
+                .maxOccupancy(request.getMaxOccupancy() != null ? request.getMaxOccupancy() : 2)
+                .status("AVAILABLE")
+                .note(request.getNote())
+                .sortOrder(request.getSortOrder() != null ? request.getSortOrder() : 0)
+                .build();
+        return mapRoom(roomRepository.save(room), null);
+    }
+
+    @Override
+    @Transactional
+    public RoomDTO updateRoom(Long id, CreateRoomRequest request) {
+        RoomEntity room = findRoomOrThrow(id);
+        if (request.getRoomNumber() != null) room.setRoomNumber(request.getRoomNumber().trim());
+        if (request.getRoomType() != null) room.setRoomType(request.getRoomType());
+        if (request.getFloor() != null) room.setFloor(request.getFloor());
+        if (request.getNightlyRate() != null) room.setNightlyRate(request.getNightlyRate());
+        if (request.getHourlyRate() != null) room.setHourlyRate(request.getHourlyRate());
+        if (request.getOvernightRate() != null) room.setOvernightRate(request.getOvernightRate());
+        if (request.getMaxOccupancy() != null) room.setMaxOccupancy(request.getMaxOccupancy());
+        if (request.getNote() != null) room.setNote(request.getNote());
+        if (request.getSortOrder() != null) room.setSortOrder(request.getSortOrder());
+        return mapRoom(roomRepository.save(room), null);
+    }
+
+    @Override
+    @Transactional
+    public void deleteRoom(Long id) {
+        RoomEntity room = findRoomOrThrow(id);
+        if ("OCCUPIED".equals(room.getStatus())) {
+            throw new BadRequestException(messageService.getMessage("error.room.occupied"));
+        }
+        room.softDelete();
+        roomRepository.save(room);
+    }
+
+    @Override
+    @Transactional
+    public RoomDTO setRoomStatus(Long id, String status) {
+        RoomEntity room = findRoomOrThrow(id);
+        String next = status != null ? status.toUpperCase() : "";
+        if (!ROOM_STATUSES.contains(next)) {
+            throw new BadRequestException(messageService.getMessage("error.room.status.invalid", status));
+        }
+        // Housekeeping only flips a free room between AVAILABLE / DIRTY / OOO / RESERVED.
+        // Occupancy (OCCUPIED) is owned by the stay lifecycle, never by a manual status set.
+        if ("OCCUPIED".equals(room.getStatus()) || "OCCUPIED".equals(next)) {
+            throw new BadRequestException(messageService.getMessage("error.room.status.occupied.locked"));
+        }
+        room.setStatus(next);
+        // Housekeeping timestamps: marking clean (→ AVAILABLE) records the finish; entering
+        // DIRTY starts a fresh cleaning cycle by clearing the prior assignment/timings.
+        if ("AVAILABLE".equals(next)) {
+            room.setCleanedAt(java.time.LocalDateTime.now());
+        } else if ("DIRTY".equals(next)) {
+            room.setAssignedCleanerId(null);
+            room.setAssignedCleanerName(null);
+            room.setCleaningStartedAt(null);
+            room.setCleanedAt(null);
+        }
+        return mapRoom(roomRepository.save(room), null);
+    }
+
+    @Override
+    public RoomDTO assignCleaner(Long id, Long employeeId) {
+        RoomEntity room = findRoomOrThrow(id);
+        if (employeeId == null) {
+            room.setAssignedCleanerId(null);
+            room.setAssignedCleanerName(null);
+            room.setCleaningStartedAt(null);
+        } else {
+            var emp = employeeRepository.findById(employeeId)
+                    .orElseThrow(() -> new BadRequestException(messageService.getMessage("error.room.cleaner.invalid")));
+            room.setAssignedCleanerId(emp.getId());
+            room.setAssignedCleanerName(emp.getFullName());
+            room.setCleaningStartedAt(java.time.LocalDateTime.now());
+            room.setCleanedAt(null);
+        }
+        return mapRoom(roomRepository.save(room), null);
+    }
+
+    // ── QR + reception inbox ─────────────────────────────────────────────────────
+
+    @Override
+    @Transactional
+    public RoomQrDTO ensureQrToken(Long roomId) {
+        RoomEntity room = findRoomOrThrow(roomId);
+        if (room.getQrToken() == null || room.getQrToken().isBlank()) {
+            room.setQrToken(java.util.UUID.randomUUID().toString());
+            room = roomRepository.save(room);
+        }
+        return RoomQrDTO.builder()
+                .roomId(room.getId())
+                .roomNumber(room.getRoomNumber())
+                .qrToken(room.getQrToken())
+                .guestPath("/qr-room/" + tenantContext.getCurrentTenantId() + "/" + room.getQrToken())
+                .build();
+    }
+
+    @Override
+    public Page<RoomRequestDTO> listRequests(String status, Pageable pageable) {
+        Page<RoomRequestEntity> page = (status != null && !status.isBlank())
+                ? requestRepository.findByStatusAndDeletedFalseOrderByCreatedAtDesc(status, pageable)
+                : requestRepository.findByDeletedFalseOrderByCreatedAtDesc(pageable);
+        return page.map(this::mapRequest);
+    }
+
+    @Override
+    public long countNewRequests() {
+        return requestRepository.countByStatusAndDeletedFalse("NEW");
+    }
+
+    @Override
+    @Transactional
+    public RoomRequestDTO updateRequestStatus(Long requestId, String status) {
+        RoomRequestEntity req = requestRepository.findByIdAndDeletedFalse(requestId)
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.room.request.not.found", requestId)));
+        String next = status != null ? status.toUpperCase() : "";
+        if (!ROOM_REQUEST_STATUSES.contains(next)) {
+            throw new BadRequestException(messageService.getMessage("error.room.request.status.invalid", status));
+        }
+        req.setStatus(next);
+        if ("DONE".equals(next) || "IN_PROGRESS".equals(next)) {
+            req.setHandledBy(currentUsername());
+            if ("DONE".equals(next)) req.setHandledAt(LocalDateTime.now());
+        }
+        return mapRequest(requestRepository.save(req));
+    }
+
+    // ── Reservations ─────────────────────────────────────────────────────────────
+
+    @Override
+    @Transactional
+    public RoomStayDTO createReservation(CreateReservationRequest request) {
+        String tenantId = tenantContext.getCurrentTenantId();
+        RoomEntity room = findRoomOrThrow(request.getRoomId());
+        String billingMode = normalizeBillingMode(request.getBillingMode());
+        BigDecimal rate = request.getRate() != null ? request.getRate() : rateForMode(room, billingMode);
+
+        // Guardrail: reject a reservation overlapping an existing reservation OR the room's current
+        // occupancy. Half-open intervals [start, end); a missing end defaults to start + 1 day.
+        // RESERVED stays start at reservedCheckin; IN_HOUSE stays start at checkinAt.
+        LocalDateTime newStart = request.getReservedCheckin();
+        LocalDateTime newEnd = request.getExpectedCheckout() != null ? request.getExpectedCheckout() : newStart.plusDays(1);
+        for (RoomStayEntity existing : stayRepository.findByRoomIdAndStatusInAndDeletedFalse(
+                room.getId(), List.of("RESERVED", "IN_HOUSE"))) {
+            LocalDateTime exStart = "IN_HOUSE".equals(existing.getStatus())
+                    ? existing.getCheckinAt() : existing.getReservedCheckin();
+            if (exStart == null) continue;
+            LocalDateTime exEnd = existing.getExpectedCheckout() != null ? existing.getExpectedCheckout() : exStart.plusDays(1);
+            if (newStart.isBefore(exEnd) && exStart.isBefore(newEnd)) {
+                throw new BadRequestException(messageService.getMessage("error.room.reservation.overlap", room.getRoomNumber()));
+            }
+        }
+
+        RoomStayEntity stay = RoomStayEntity.builder()
+                .tenantId(tenantId)
+                .stayNumber(generateStayNumber())
+                .roomId(room.getId())
+                .roomNumber(room.getRoomNumber())
+                .guestName(request.getGuestName())
+                .guestPhone(request.getGuestPhone())
+                .guestIdNumber(request.getGuestIdNumber())
+                .customerId(request.getCustomerId())
+                .adults(request.getAdults() != null ? request.getAdults() : 1)
+                .billingMode(billingMode)
+                .rate(rate)
+                .reservedCheckin(request.getReservedCheckin())
+                .expectedCheckout(request.getExpectedCheckout())
+                .deposit(orZero(request.getDeposit()))
+                .status("RESERVED")
+                .note(request.getNote())
+                .createdBy(currentUsername())
+                .build();
+        RoomStayEntity saved = stayRepository.save(stay);
+        log.info("Reservation created: stay={} room={} arrival={}", saved.getStayNumber(), room.getRoomNumber(), request.getReservedCheckin());
+        activityLogService.logAsync(tenantId, currentUsername(), null, ActivityAction.ROOM_RESERVED,
+                "ROOM_STAY", String.valueOf(saved.getId()),
+                "activity.room.reserved", null, room.getRoomNumber());
+        return mapStay(saved, false);
+    }
+
+    @Override
+    public List<RoomStayDTO> listReservations(LocalDate from, LocalDate to) {
+        LocalDateTime fromDt = (from != null ? from : LocalDate.now()).atStartOfDay();
+        List<RoomStayEntity> stays = (to != null)
+                ? stayRepository.findByStatusAndReservedCheckinBetweenAndDeletedFalseOrderByReservedCheckinAsc("RESERVED", fromDt, to.atTime(23, 59, 59))
+                : stayRepository.findByStatusAndReservedCheckinGreaterThanEqualAndDeletedFalseOrderByReservedCheckinAsc("RESERVED", fromDt);
+        return stays.stream().map(s -> mapStay(s, false)).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public RoomStayDTO checkInReservation(Long stayId) {
+        RoomStayEntity stay = findStayOrThrow(stayId);
+        assertReserved(stay);
+        RoomEntity room = findRoomOrThrow(stay.getRoomId());
+        if ("OCCUPIED".equals(room.getStatus())) {
+            throw new BadRequestException(messageService.getMessage("error.room.not.available", room.getRoomNumber()));
+        }
+        stay.setStatus("IN_HOUSE");
+        stay.setCheckinAt(LocalDateTime.now());
+        RoomStayEntity saved = stayRepository.save(stay);
+
+        room.setStatus("OCCUPIED");
+        roomRepository.save(room);
+
+        activityLogService.logAsync(stay.getTenantId(), currentUsername(), null, ActivityAction.ROOM_CHECKIN,
+                "ROOM_STAY", String.valueOf(saved.getId()),
+                "activity.room.checkin", null, room.getRoomNumber());
+        log.info("Reservation checked in: stay={} room={}", saved.getStayNumber(), room.getRoomNumber());
+        return mapStay(saved, true);
+    }
+
+    @Override
+    @Transactional
+    public RoomStayDTO cancelReservation(Long stayId) {
+        RoomStayEntity stay = findStayOrThrow(stayId);
+        assertReserved(stay);
+        stay.setStatus("CANCELLED");
+        stay.setCheckoutAt(LocalDateTime.now());
+        RoomStayEntity saved = stayRepository.save(stay);
+        activityLogService.logAsync(saved.getTenantId(), currentUsername(), null, ActivityAction.ROOM_RESERVATION_CANCELLED,
+                "ROOM_STAY", String.valueOf(saved.getId()),
+                "activity.room.reservation.cancelled", null, saved.getRoomNumber());
+        return mapStay(saved, false);
+    }
+
+    @Override
+    @Transactional
+    public RoomStayDTO markNoShow(Long stayId) {
+        RoomStayEntity stay = findStayOrThrow(stayId);
+        assertReserved(stay);
+        stay.setStatus("NO_SHOW");
+        stay.setCheckoutAt(LocalDateTime.now());
+        RoomStayEntity saved = stayRepository.save(stay);
+        activityLogService.logAsync(saved.getTenantId(), currentUsername(), null, ActivityAction.ROOM_RESERVATION_NO_SHOW,
+                "ROOM_STAY", String.valueOf(saved.getId()),
+                "activity.room.reservation.no_show", null, saved.getRoomNumber());
+        return mapStay(saved, false);
+    }
+
+    private void assertReserved(RoomStayEntity stay) {
+        if (!"RESERVED".equals(stay.getStatus())) {
+            throw new BadRequestException(messageService.getMessage("error.room.reservation.not.reserved", stay.getStatus()));
+        }
+    }
+
+    // ── Stays ──────────────────────────────────────────────────────────────────
+
+    @Override
+    @Transactional
+    public RoomStayDTO checkIn(CheckInRequest request) {
+        String tenantId = tenantContext.getCurrentTenantId();
+        RoomEntity room = findRoomOrThrow(request.getRoomId());
+        if (!"AVAILABLE".equals(room.getStatus()) && !"RESERVED".equals(room.getStatus())) {
+            throw new BadRequestException(messageService.getMessage("error.room.not.available", room.getRoomNumber()));
+        }
+
+        String billingMode = normalizeBillingMode(request.getBillingMode());
+        BigDecimal rate = request.getRate() != null ? request.getRate() : rateForMode(room, billingMode);
+
+        RoomStayEntity stay = RoomStayEntity.builder()
+                .tenantId(tenantId)
+                .stayNumber(generateStayNumber())
+                .roomId(room.getId())
+                .roomNumber(room.getRoomNumber())
+                .guestName(request.getGuestName())
+                .guestPhone(request.getGuestPhone())
+                .guestIdNumber(request.getGuestIdNumber())
+                .customerId(request.getCustomerId())
+                .adults(request.getAdults() != null ? request.getAdults() : 1)
+                .billingMode(billingMode)
+                .rate(rate)
+                .checkinAt(LocalDateTime.now())
+                .expectedCheckout(request.getExpectedCheckout())
+                .deposit(orZero(request.getDeposit()))
+                .status("IN_HOUSE")
+                .note(request.getNote())
+                .createdBy(currentUsername())
+                .build();
+        RoomStayEntity saved = stayRepository.save(stay);
+
+        room.setStatus("OCCUPIED");
+        roomRepository.save(room);
+
+        activityLogService.logAsync(tenantId, currentUsername(), null, ActivityAction.ROOM_CHECKIN,
+                "ROOM_STAY", String.valueOf(saved.getId()),
+                "activity.room.checkin", null, room.getRoomNumber());
+        log.info("Room check-in: stay={} room={} mode={}", saved.getStayNumber(), room.getRoomNumber(), billingMode);
+        return mapStay(saved, true);
+    }
+
+    @Override
+    public RoomStayDTO getStay(Long stayId) {
+        return mapStay(findStayOrThrow(stayId), true);
+    }
+
+    @Override
+    public Page<RoomStayDTO> listStays(String status, Pageable pageable) {
+        Page<RoomStayEntity> page = (status != null && !status.isBlank())
+                ? stayRepository.findByStatusAndDeletedFalseOrderByCreatedAtDesc(status, pageable)
+                : stayRepository.findByDeletedFalseOrderByCreatedAtDesc(pageable);
+        return page.map(s -> mapStay(s, false));
+    }
+
+    // ── Folio ──────────────────────────────────────────────────────────────────
+
+    @Override
+    @Transactional
+    public RoomStayItemDTO addFolioItem(Long stayId, AddFolioItemRequest request) {
+        RoomStayEntity stay = findStayOrThrow(stayId);
+        assertInHouse(stay);
+
+        String name;
+        BigDecimal unitPrice;
+        Long productId = request.getProductId();
+        if (productId != null) {
+            Product product = productRepository.findByIdAndDeletedFalse(productId)
+                    .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.product.not.found", productId)));
+            name = product.getName();
+            unitPrice = request.getUnitPrice() != null ? request.getUnitPrice() : orZero(product.getPrice());
+        } else {
+            if (request.getProductName() == null || request.getProductName().isBlank()) {
+                throw new BadRequestException(messageService.getMessage("error.room.folio.item.required"));
+            }
+            name = request.getProductName().trim();
+            unitPrice = orZero(request.getUnitPrice());
+        }
+
+        RoomStayItemEntity item = RoomStayItemEntity.builder()
+                .tenantId(stay.getTenantId())
+                .stayId(stay.getId())
+                .productId(productId)
+                .productName(name)
+                .quantity(request.getQuantity() != null && request.getQuantity() > 0 ? request.getQuantity() : 1)
+                .unitPrice(unitPrice)
+                .source("QR".equalsIgnoreCase(request.getSource()) ? "QR" : "STAFF")
+                .note(request.getNote())
+                .createdBy(currentUsername())
+                .build();
+        return mapItem(itemRepository.save(item));
+    }
+
+    @Override
+    @Transactional
+    public void removeFolioItem(Long stayId, Long itemId) {
+        RoomStayEntity stay = findStayOrThrow(stayId);
+        assertInHouse(stay);
+        RoomStayItemEntity item = itemRepository.findByIdAndDeletedFalse(itemId)
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.room.folio.item.not.found", itemId)));
+        if (!item.getStayId().equals(stay.getId())) {
+            throw new ResourceNotFoundException(messageService.getMessage("error.room.folio.item.not.found", itemId));
+        }
+        item.softDelete();
+        itemRepository.save(item);
+    }
+
+    // ── Checkout / cancel ────────────────────────────────────────────────────────
+
+    @Override
+    @Transactional
+    public RoomStayDTO checkout(Long stayId, CheckoutRequest request) {
+        RoomStayEntity stay = findStayOrThrow(stayId);
+        assertInHouse(stay);
+
+        LocalDateTime checkoutAt = LocalDateTime.now();
+        int units = request != null && request.getUnits() != null && request.getUnits() > 0
+                ? request.getUnits()
+                : computeUnits(stay, checkoutAt);
+        BigDecimal roomCharge = stay.getRate().multiply(BigDecimal.valueOf(units));
+
+        List<RoomStayItemEntity> folio = itemRepository.findByStayIdAndDeletedFalseOrderByCreatedAtAsc(stay.getId());
+        BigDecimal itemsTotal = folio.stream()
+                .map(i -> i.getUnitPrice().multiply(BigDecimal.valueOf(i.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // 4c: late-checkout fee — a flat shop-config fee when the guest leaves more than the
+        // grace period past the expected checkout. Itemised on the settlement order.
+        BigDecimal lateFee = computeLateCheckoutFee(stay, checkoutAt);
+        BigDecimal grandTotal = roomCharge.add(itemsTotal).add(lateFee);
+
+        Long orderId = createSettlementOrder(stay, roomCharge, folio, grandTotal, lateFee,
+                request != null ? request.getPaymentMethod() : null);
+
+        stay.setCheckoutAt(checkoutAt);
+        stay.setUnits(units);
+        stay.setRoomCharge(roomCharge);
+        stay.setStatus("CHECKED_OUT");
+        stay.setLinkedOrderId(orderId);
+        if (request != null && request.getNote() != null) stay.setNote(request.getNote());
+        RoomStayEntity saved = stayRepository.save(stay);
+
+        // Room needs cleaning before it can be re-let.
+        roomRepository.findByIdAndDeletedFalse(stay.getRoomId()).ifPresent(room -> {
+            room.setStatus("DIRTY");
+            roomRepository.save(room);
+        });
+
+        activityLogService.logAsync(stay.getTenantId(), currentUsername(), null, ActivityAction.ROOM_CHECKOUT,
+                "ROOM_STAY", String.valueOf(saved.getId()),
+                "activity.room.checkout", null, stay.getRoomNumber(), grandTotal.toPlainString());
+        log.info("Room checkout: stay={} units={} roomCharge={} grandTotal={} order={}",
+                saved.getStayNumber(), units, roomCharge, grandTotal, orderId);
+        return mapStay(saved, true);
+    }
+
+    @Override
+    @Transactional
+    public RoomStayDTO cancelStay(Long stayId) {
+        RoomStayEntity stay = findStayOrThrow(stayId);
+        assertInHouse(stay);
+        stay.setStatus("CANCELLED");
+        stay.setCheckoutAt(LocalDateTime.now());
+        RoomStayEntity saved = stayRepository.save(stay);
+
+        roomRepository.findByIdAndDeletedFalse(stay.getRoomId()).ifPresent(room -> {
+            room.setStatus("AVAILABLE");
+            roomRepository.save(room);
+        });
+
+        activityLogService.logAsync(stay.getTenantId(), currentUsername(), null, ActivityAction.ROOM_STAY_CANCELLED,
+                "ROOM_STAY", String.valueOf(saved.getId()),
+                "activity.room.cancelled", null, stay.getRoomNumber());
+        return mapStay(saved, true);
+    }
+
+    // ── Order creation on checkout ───────────────────────────────────────────────
+
+    /**
+     * Builds a COMPLETED POS order settling the stay: one room-charge line plus a line per
+     * folio item. Links back to the stay via {@code roomStayId} and is tagged source=ROOM so it
+     * never collides with normal POS orders. Mirrors {@code BookingServiceImpl.createTimeChargeOrder}.
+     */
+    /** Flat late-checkout fee when checkout is more than the configured grace period past expected. */
+    private BigDecimal computeLateCheckoutFee(RoomStayEntity stay, LocalDateTime checkoutAt) {
+        if (stay.getExpectedCheckout() == null) return BigDecimal.ZERO;
+        Double feeCfg = shopConfigService.getDouble(ShopConfigKey.LATE_CHECKOUT_FEE, 0.0);
+        double fee = feeCfg != null ? feeCfg : 0.0;
+        if (fee <= 0) return BigDecimal.ZERO;
+        Integer graceCfg = shopConfigService.getInt(ShopConfigKey.LATE_CHECKOUT_GRACE_HOURS, 1);
+        int graceHours = graceCfg != null ? graceCfg : 1;
+        if (checkoutAt.isAfter(stay.getExpectedCheckout().plusHours(graceHours))) {
+            return BigDecimal.valueOf(fee).setScale(2, RoundingMode.HALF_UP);
+        }
+        return BigDecimal.ZERO;
+    }
+
+    private Long createSettlementOrder(RoomStayEntity stay, BigDecimal roomCharge,
+                                       List<RoomStayItemEntity> folio, BigDecimal grandTotal,
+                                       BigDecimal lateFee,
+                                       String paymentMethod) {
+        String tenantId = stay.getTenantId();
+        String actor = currentUsername();
+
+        // Apply VAT on checkout, mirroring CartServiceImpl: grandTotal (room charge + folio
+        // items) is the taxable subtotal; tax is added on top when the shop auto-applies VAT.
+        boolean autoApply = shopConfigService.getBoolean(ShopConfigKey.TAX_AUTO_APPLY, true);
+        double configuredRate = shopConfigService.getDouble(ShopConfigKey.DEFAULT_TAX_RATE, 0.10);
+        BigDecimal taxRate = autoApply
+                ? BigDecimal.valueOf(configuredRate).setScale(4, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+        BigDecimal taxAmount = grandTotal.multiply(taxRate).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal totalWithTax = grandTotal.add(taxAmount);
+
+        Order order = new Order();
+        order.setTenantId(tenantId);
+        order.setOrderNumber(generateOrderNumber());
+        order.setStatus(Order.OrderStatus.COMPLETED);
+        order.setTotalAmount(totalWithTax);
+        order.setDiscountAmount(BigDecimal.ZERO);
+        order.setTaxPercentage(taxRate.multiply(BigDecimal.valueOf(100)).setScale(2, RoundingMode.HALF_UP));
+        order.setTaxAmount(taxAmount);
+        order.setSource("ROOM");
+        order.setRoomStayId(stay.getId());
+        order.setPaymentMethod(paymentMethod != null && !paymentMethod.isBlank() ? paymentMethod : "CASH");
+        order.setAmountPaid(totalWithTax);
+        order.setCreatedBy(actor);
+        order.setCompletedBy(actor);
+        order.setCompletedAt(LocalDateTime.now());
+        // i18n: store key + args so the "Phòng {0}" label renders in the reader's locale at read time.
+        order.setTableLabelKey("room.label");
+        order.setTableLabelArgs(MessageArgs.toJson(stay.getRoomNumber()));
+        order.setNotes(stay.getNote()); // user-authored stay note — stored verbatim
+
+        List<OrderItem> items = new ArrayList<>();
+        items.add(buildOrderItem(tenantId, order, null,
+                messageService.getMessage("room.charge.label", stay.getRoomNumber()), 1, roomCharge));
+        for (RoomStayItemEntity f : folio) {
+            items.add(buildOrderItem(tenantId, order, f.getProductId(), f.getProductName(), f.getQuantity(), f.getUnitPrice()));
+        }
+        if (lateFee != null && lateFee.compareTo(BigDecimal.ZERO) > 0) {
+            items.add(buildOrderItem(tenantId, order, null,
+                    messageService.getMessage("room.lateCheckout.label"), 1, lateFee));
+        }
+        order.setOrderItems(items);
+
+        return orderRepository.save(order).getId();
+    }
+
+    private OrderItem buildOrderItem(String tenantId, Order order, Long productId,
+                                     String name, Integer quantity, BigDecimal unitPrice) {
+        OrderItem item = new OrderItem();
+        item.setTenantId(tenantId);
+        item.setOrder(order);
+        item.setProductId(productId);
+        item.setProductName(name);
+        item.setQuantity(quantity != null && quantity > 0 ? quantity : 1);
+        item.setUnitPrice(unitPrice);
+        item.setUnitCost(BigDecimal.ZERO);
+        item.setItemType(OrderItem.ItemType.STANDARD);
+        item.setStatus(OrderItem.ItemStatus.PENDING);
+        return item;
+    }
+
+    private String generateOrderNumber() {
+        return "ORD-" + LocalDate.now().format(ORDER_DATE_FMT) + "-" + ThreadLocalRandom.current().nextInt(10000, 99999);
+    }
+
+    private String generateStayNumber() {
+        return "STY-" + LocalDate.now().format(ORDER_DATE_FMT) + "-" + ThreadLocalRandom.current().nextInt(10000, 99999);
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────────
+
+    /** Nights/hours billed when not overridden at checkout. */
+    private int computeUnits(RoomStayEntity stay, LocalDateTime checkoutAt) {
+        // checkin_at is nullable since V009 (reservations); fall back so a malformed/legacy row
+        // can never NPE and break the board. Defaults to reservedCheckin, else the checkout time (→ 1 unit).
+        LocalDateTime start = stay.getCheckinAt() != null ? stay.getCheckinAt()
+                : (stay.getReservedCheckin() != null ? stay.getReservedCheckin() : checkoutAt);
+        switch (stay.getBillingMode()) {
+            case "HOURLY": {
+                long minutes = ChronoUnit.MINUTES.between(start, checkoutAt);
+                return (int) Math.max(1, (minutes + 59) / 60);   // round up to the next hour
+            }
+            case "OVERNIGHT":
+                return 1;
+            case "NIGHTLY":
+            default: {
+                long nights = ChronoUnit.DAYS.between(start.toLocalDate(), checkoutAt.toLocalDate());
+                return (int) Math.max(1, nights);                // same-day checkout still bills 1 night
+            }
+        }
+    }
+
+    private BigDecimal rateForMode(RoomEntity room, String mode) {
+        BigDecimal rate = switch (mode) {
+            case "HOURLY" -> room.getHourlyRate();
+            case "OVERNIGHT" -> room.getOvernightRate();
+            default -> room.getNightlyRate();
+        };
+        return orZero(rate);
+    }
+
+    private String normalizeBillingMode(String mode) {
+        if (mode == null || mode.isBlank()) return "NIGHTLY";
+        String upper = mode.toUpperCase();
+        if (!BILLING_MODES.contains(upper)) {
+            throw new BadRequestException(messageService.getMessage("error.room.billing.mode.invalid", mode));
+        }
+        return upper;
+    }
+
+    private void assertInHouse(RoomStayEntity stay) {
+        if (!"IN_HOUSE".equals(stay.getStatus())) {
+            throw new BadRequestException(messageService.getMessage("error.room.stay.not.active", stay.getStatus()));
+        }
+    }
+
+    private RoomEntity findRoomOrThrow(Long id) {
+        return roomRepository.findByIdAndDeletedFalse(id)
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.room.not.found", id)));
+    }
+
+    private RoomStayEntity findStayOrThrow(Long id) {
+        return stayRepository.findByIdAndDeletedFalse(id)
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.room.stay.not.found", id)));
+    }
+
+    private String currentUsername() {
+        return SecurityContextHolder.getContext().getAuthentication().getName();
+    }
+
+    private static BigDecimal orZero(BigDecimal value) {
+        return value != null ? value : BigDecimal.ZERO;
+    }
+
+    // ── Mappers ────────────────────────────────────────────────────────────────
+
+    private RoomDTO mapRoom(RoomEntity r, RoomStayDTO activeStay) {
+        return mapRoom(r, activeStay, null);
+    }
+
+    private RoomDTO mapRoom(RoomEntity r, RoomStayDTO activeStay, RoomStayDTO reservedStay) {
+        return RoomDTO.builder()
+                .id(r.getId())
+                .roomNumber(r.getRoomNumber())
+                .roomType(r.getRoomType())
+                .floor(r.getFloor())
+                .nightlyRate(r.getNightlyRate())
+                .hourlyRate(r.getHourlyRate())
+                .overnightRate(r.getOvernightRate())
+                .maxOccupancy(r.getMaxOccupancy())
+                .status(r.getStatus())
+                .qrToken(r.getQrToken())
+                .note(r.getNote())
+                .sortOrder(r.getSortOrder())
+                .activeStay(activeStay)
+                .reservedStay(reservedStay)
+                .assignedCleanerId(r.getAssignedCleanerId())
+                .assignedCleanerName(r.getAssignedCleanerName())
+                .cleaningStartedAt(r.getCleaningStartedAt())
+                .cleanedAt(r.getCleanedAt())
+                .build();
+    }
+
+    private RoomStayDTO mapStay(RoomStayEntity s, boolean withFolio) {
+        RoomStayDTO.RoomStayDTOBuilder b = RoomStayDTO.builder()
+                .id(s.getId())
+                .stayNumber(s.getStayNumber())
+                .roomId(s.getRoomId())
+                .roomNumber(s.getRoomNumber())
+                .guestName(s.getGuestName())
+                .guestPhone(s.getGuestPhone())
+                .guestIdNumber(s.getGuestIdNumber())
+                .customerId(s.getCustomerId())
+                .adults(s.getAdults())
+                .billingMode(s.getBillingMode())
+                .rate(s.getRate())
+                .reservedCheckin(s.getReservedCheckin())
+                .checkinAt(s.getCheckinAt())
+                .expectedCheckout(s.getExpectedCheckout())
+                .checkoutAt(s.getCheckoutAt())
+                .deposit(s.getDeposit())
+                .status(s.getStatus())
+                .linkedOrderId(s.getLinkedOrderId())
+                .note(s.getNote());
+
+        // Room charge to date: live estimate while in-house, final stored value once checked out.
+        boolean inHouse = "IN_HOUSE".equals(s.getStatus());
+        int units = inHouse ? computeUnits(s, LocalDateTime.now()) : s.getUnits();
+        BigDecimal roomCharge = inHouse
+                ? s.getRate().multiply(BigDecimal.valueOf(units))
+                : orZero(s.getRoomCharge());
+        b.units(units).roomCharge(roomCharge);
+
+        if (withFolio) {
+            List<RoomStayItemEntity> folio = itemRepository.findByStayIdAndDeletedFalseOrderByCreatedAtAsc(s.getId());
+            List<RoomStayItemDTO> items = folio.stream().map(this::mapItem).collect(Collectors.toList());
+            BigDecimal itemsTotal = items.stream().map(RoomStayItemDTO::getLineTotal).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal grandTotal = roomCharge.add(itemsTotal);
+            b.items(items)
+                    .itemsTotal(itemsTotal)
+                    .grandTotal(grandTotal)
+                    .balanceDue(grandTotal.subtract(orZero(s.getDeposit())));
+        }
+        return b.build();
+    }
+
+    private RoomRequestDTO mapRequest(RoomRequestEntity r) {
+        return RoomRequestDTO.builder()
+                .id(r.getId())
+                .roomId(r.getRoomId())
+                .roomNumber(r.getRoomNumber())
+                .stayId(r.getStayId())
+                .requestType(r.getRequestType())
+                .message(r.getMessage())
+                .status(r.getStatus())
+                .handledBy(r.getHandledBy())
+                .handledAt(r.getHandledAt())
+                .createdAt(r.getCreatedAt())
+                .build();
+    }
+
+    private RoomStayItemDTO mapItem(RoomStayItemEntity i) {
+        return RoomStayItemDTO.builder()
+                .id(i.getId())
+                .productId(i.getProductId())
+                .productName(i.getProductName())
+                .quantity(i.getQuantity())
+                .unitPrice(i.getUnitPrice())
+                .lineTotal(i.getUnitPrice().multiply(BigDecimal.valueOf(i.getQuantity())))
+                .source(i.getSource())
+                .note(i.getNote())
+                .build();
+    }
+}

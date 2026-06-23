@@ -13,6 +13,7 @@ import com.tappy.pos.model.entity.auth.User;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.employee.EmployeeRepository;
 import com.tappy.pos.repository.tenant.AgentRepository;
+import com.tappy.pos.repository.tenant.TenantRepository;
 import com.tappy.pos.repository.auth.RoleRepository;
 import com.tappy.pos.repository.auth.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -73,6 +74,9 @@ class UserServiceTest {
 
     @Mock
     private NotificationService notificationService;
+
+    @Mock
+    private TenantRepository tenantRepository;
 
     @InjectMocks
     private UserService userService;
@@ -372,22 +376,22 @@ class UserServiceTest {
     @DisplayName("Should update user roles")
     void testUpdateUser_UpdateRoles() {
         // Given
-        Role managerRole = Role.builder().name("MANAGER").build();
+        Role managerRole = Role.builder().name("CASHIER").build();
         managerRole.setId(2L);
 
         CreateUserRequest updateRequest = CreateUserRequest.builder()
-                .roleNames(new HashSet<>(List.of("MANAGER")))
+                .roleNames(new HashSet<>(List.of("CASHIER")))
                 .build();
 
         when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
-        when(roleRepository.findByName("MANAGER")).thenReturn(Optional.of(managerRole));
+        when(roleRepository.findByName("CASHIER")).thenReturn(Optional.of(managerRole));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
         userService.updateUser(1L, updateRequest);
 
         // Then
-        verify(roleRepository).findByName("MANAGER");
+        verify(roleRepository).findByName("CASHIER");
         verify(userRepository).save(any(User.class));
     }
 
@@ -515,6 +519,38 @@ class UserServiceTest {
     }
 
     @Test
+    @DisplayName("addRoleToUser: bumps tenant features_version when a new role is added")
+    void testAddRoleToUser_BumpsFeaturesVersion() {
+        // testUser already has SHOP_OWNER; add a role it does NOT have so the change is real.
+        Role addRole = new Role();
+        addRole.setId(2L);
+        addRole.setName("CASHIER");
+        addRole.setUsers(new HashSet<>());
+
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
+        when(roleRepository.findByName("CASHIER")).thenReturn(Optional.of(addRole));
+        when(userRepository.save(any(User.class))).thenReturn(testUser);
+        when(tenantContext.getCurrentTenantId()).thenReturn("shop-1");
+
+        userService.addRoleToUser(1L, "CASHIER");
+
+        verify(tenantRepository).bumpFeaturesVersion("shop-1");
+    }
+
+    @Test
+    @DisplayName("addRoleToUser: no version bump when the role is already present (no-op)")
+    void testAddRoleToUser_NoBumpWhenUnchanged() {
+        // testUser already has SHOP_OWNER — re-adding it must not force a tenant-wide refresh.
+        when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
+        when(roleRepository.findByName("SHOP_OWNER")).thenReturn(Optional.of(testRole));
+        when(userRepository.save(any(User.class))).thenReturn(testUser);
+
+        userService.addRoleToUser(1L, "SHOP_OWNER");
+
+        verify(tenantRepository, never()).bumpFeaturesVersion(anyString());
+    }
+
+    @Test
     @DisplayName("Should fail to add invalid role")
     void testAddRoleToUser_InvalidRole() {
         // Given
@@ -557,12 +593,12 @@ class UserServiceTest {
     void testRemoveRoleFromUser_RoleNotFound() {
         // Given
         when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
-        when(roleRepository.findByName("MANAGER")).thenReturn(Optional.empty());
-        when(messageService.getMessage("error.role.not.found", "MANAGER"))
+        when(roleRepository.findByName("CASHIER")).thenReturn(Optional.empty());
+        when(messageService.getMessage("error.role.not.found", "CASHIER"))
                 .thenReturn("Role not found");
 
         // When & Then
-        assertThatThrownBy(() -> userService.removeRoleFromUser(1L, "MANAGER"))
+        assertThatThrownBy(() -> userService.removeRoleFromUser(1L, "CASHIER"))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
@@ -771,15 +807,15 @@ class UserServiceTest {
     @DisplayName("Should handle multiple roles assignment")
     void testCreateUser_MultipleRoles() {
         // Given
-        Role managerRole = Role.builder().name("MANAGER").build();
+        Role managerRole = Role.builder().name("CASHIER").build();
         managerRole.setId(2L);
-        createUserRequest.setRoleNames(new HashSet<>(Arrays.asList("SHOP_OWNER", "MANAGER")));
+        createUserRequest.setRoleNames(new HashSet<>(Arrays.asList("SHOP_OWNER", "CASHIER")));
 
         when(userRepository.existsByUsernameTenantScoped("testuser")).thenReturn(false);
         when(userRepository.existsByEmailTenantScoped("test@example.com")).thenReturn(false);
         when(passwordEncoder.encode("password123")).thenReturn("hashedPassword");
         when(roleRepository.findByName("SHOP_OWNER")).thenReturn(Optional.of(testRole));
-        when(roleRepository.findByName("MANAGER")).thenReturn(Optional.of(managerRole));
+        when(roleRepository.findByName("CASHIER")).thenReturn(Optional.of(managerRole));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
@@ -849,14 +885,14 @@ class UserServiceTest {
     void testUpdateUser_WithNewRole() {
         // Given
         CreateUserRequest updateRequest = CreateUserRequest.builder()
-                .roleNames(new HashSet<>(List.of("MANAGER")))
+                .roleNames(new HashSet<>(List.of("CASHIER")))
                 .build();
         
-        Role managerRole = Role.builder().name("MANAGER").build();
+        Role managerRole = Role.builder().name("CASHIER").build();
         managerRole.setId(2L);
 
         when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
-        when(roleRepository.findByName("MANAGER")).thenReturn(Optional.of(managerRole));
+        when(roleRepository.findByName("CASHIER")).thenReturn(Optional.of(managerRole));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
@@ -942,12 +978,12 @@ class UserServiceTest {
     void testAddRoleToUser_RoleNotFound() {
         // Given
         when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
-        when(roleRepository.findByName("MANAGER")).thenReturn(Optional.empty());
-        when(messageService.getMessage("error.role.not.found", "MANAGER"))
+        when(roleRepository.findByName("CASHIER")).thenReturn(Optional.empty());
+        when(messageService.getMessage("error.role.not.found", "CASHIER"))
                 .thenReturn("Role not found");
 
         // When & Then
-        assertThatThrownBy(() -> userService.addRoleToUser(1L, "MANAGER"))
+        assertThatThrownBy(() -> userService.addRoleToUser(1L, "CASHIER"))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
@@ -1025,7 +1061,7 @@ class UserServiceTest {
 
         Role role2 = new Role();
         role2.setId(2L);
-        role2.setName("MANAGER");
+        role2.setName("CASHIER");
         role2.setDescription("Manager");
 
         testUser.setRoles(new HashSet<>(List.of(role1, role2)));
@@ -1079,14 +1115,14 @@ class UserServiceTest {
         testUser.setRoles(new HashSet<>());
         Role newRole = new Role();
         newRole.setId(2L);
-        newRole.setName("MANAGER");
+        newRole.setName("CASHIER");
 
         when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
-        when(roleRepository.findByName("MANAGER")).thenReturn(Optional.of(newRole));
+        when(roleRepository.findByName("CASHIER")).thenReturn(Optional.of(newRole));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
-        UserDetailDTO result = userService.addRoleToUser(1L, "MANAGER");
+        UserDetailDTO result = userService.addRoleToUser(1L, "CASHIER");
 
         // Then
         assertThat(result).isNotNull();
@@ -1103,16 +1139,16 @@ class UserServiceTest {
 
         Role role2 = new Role();
         role2.setId(2L);
-        role2.setName("MANAGER");
+        role2.setName("CASHIER");
 
         testUser.setRoles(new HashSet<>(List.of(role1, role2)));
 
         when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
-        when(roleRepository.findByName("MANAGER")).thenReturn(Optional.of(role2));
+        when(roleRepository.findByName("CASHIER")).thenReturn(Optional.of(role2));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
-        UserDetailDTO result = userService.removeRoleFromUser(1L, "MANAGER");
+        UserDetailDTO result = userService.removeRoleFromUser(1L, "CASHIER");
 
         // Then
         assertThat(result).isNotNull();
@@ -1216,7 +1252,7 @@ class UserServiceTest {
     @Test
     @DisplayName("Should create user with all role types")
     void testCreateUser_AllRoleTypes() {
-        // Given - using valid roles from RoleEnum: SHOP_OWNER, MANAGER, RECEPTIONIST
+        // Given - using valid roles from RoleEnum: SHOP_OWNER, CASHIER, ACCOUNTANT
         Role ownerRole = new Role();
         ownerRole.setId(1L);
         ownerRole.setName("SHOP_OWNER");
@@ -1224,22 +1260,22 @@ class UserServiceTest {
 
         Role managerRole = new Role();
         managerRole.setId(2L);
-        managerRole.setName("MANAGER");
+        managerRole.setName("CASHIER");
         managerRole.setUsers(new HashSet<>());
 
         Role receptionistRole = new Role();
         receptionistRole.setId(3L);
-        receptionistRole.setName("RECEPTIONIST");
+        receptionistRole.setName("ACCOUNTANT");
         receptionistRole.setUsers(new HashSet<>());
 
-        createUserRequest.setRoleNames(new HashSet<>(List.of("SHOP_OWNER", "MANAGER", "RECEPTIONIST")));
+        createUserRequest.setRoleNames(new HashSet<>(List.of("SHOP_OWNER", "CASHIER", "ACCOUNTANT")));
 
         when(userRepository.existsByUsernameTenantScoped("testuser")).thenReturn(false);
         when(userRepository.existsByEmailTenantScoped("test@example.com")).thenReturn(false);
         when(passwordEncoder.encode("password123")).thenReturn("hashedPassword");
         when(roleRepository.findByName("SHOP_OWNER")).thenReturn(Optional.of(ownerRole));
-        when(roleRepository.findByName("MANAGER")).thenReturn(Optional.of(managerRole));
-        when(roleRepository.findByName("RECEPTIONIST")).thenReturn(Optional.of(receptionistRole));
+        when(roleRepository.findByName("CASHIER")).thenReturn(Optional.of(managerRole));
+        when(roleRepository.findByName("ACCOUNTANT")).thenReturn(Optional.of(receptionistRole));
         
         User newUser = User.builder()
                 .username("testuser")
@@ -1438,7 +1474,7 @@ class UserServiceTest {
 
         Role role2 = new Role();
         role2.setId(2L);
-        role2.setName("MANAGER");
+        role2.setName("CASHIER");
         role2.setDescription("Manager");
         role2.setCreatedAt(LocalDateTime.now());
 
@@ -1731,15 +1767,15 @@ class UserServiceTest {
         // Given
         Role newRole = new Role();
         newRole.setId(2L);
-        newRole.setName("MANAGER");
+        newRole.setName("CASHIER");
         newRole.setUsers(new HashSet<>());
 
         when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
-        when(roleRepository.findByName("MANAGER")).thenReturn(Optional.of(newRole));
+        when(roleRepository.findByName("CASHIER")).thenReturn(Optional.of(newRole));
         when(userRepository.save(any(User.class))).thenReturn(testUser);
 
         // When
-        UserDetailDTO result = userService.addRoleToUser(1L, "MANAGER");
+        UserDetailDTO result = userService.addRoleToUser(1L, "CASHIER");
 
         // Then
         assertThat(result).isNotNull();
@@ -1893,12 +1929,12 @@ class UserServiceTest {
     void testUpdateUser_RoleNotFoundInRepo() {
         // Given
         CreateUserRequest updateRequest = CreateUserRequest.builder()
-                .roleNames(new HashSet<>(List.of("MANAGER")))
+                .roleNames(new HashSet<>(List.of("CASHIER")))
                 .build();
 
         when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
-        when(roleRepository.findByName("MANAGER")).thenReturn(Optional.empty());
-        when(messageService.getMessage("error.role.not.found", "MANAGER"))
+        when(roleRepository.findByName("CASHIER")).thenReturn(Optional.empty());
+        when(messageService.getMessage("error.role.not.found", "CASHIER"))
                 .thenReturn("Role not found");
 
         // When & Then
@@ -1911,12 +1947,12 @@ class UserServiceTest {
     void testRemoveRoleFromUser_RoleNotFoundInRepo() {
         // Given
         when(userRepository.findByIdTenantScoped(1L)).thenReturn(Optional.of(testUser));
-        when(roleRepository.findByName("MANAGER")).thenReturn(Optional.empty());
-        when(messageService.getMessage("error.role.not.found", "MANAGER"))
+        when(roleRepository.findByName("CASHIER")).thenReturn(Optional.empty());
+        when(messageService.getMessage("error.role.not.found", "CASHIER"))
                 .thenReturn("Role not found");
 
         // When & Then
-        assertThatThrownBy(() -> userService.removeRoleFromUser(1L, "MANAGER"))
+        assertThatThrownBy(() -> userService.removeRoleFromUser(1L, "CASHIER"))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 

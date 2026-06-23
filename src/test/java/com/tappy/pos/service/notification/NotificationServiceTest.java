@@ -1,11 +1,13 @@
 package com.tappy.pos.service.notification;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.notification.CreateNotificationRequest;
 import com.tappy.pos.model.dto.notification.NotificationDTO;
 import com.tappy.pos.model.entity.notification.Notification;
 import com.tappy.pos.model.entity.notification.NotificationPreference;
 import com.tappy.pos.model.entity.tenant.Tenant;
+import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.repository.auth.UserRepository;
 import com.tappy.pos.repository.notification.NotificationPreferenceRepository;
 import com.tappy.pos.repository.notification.NotificationRepository;
@@ -19,6 +21,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -48,6 +51,9 @@ class NotificationServiceTest {
     @Mock private com.tappy.pos.multitenant.TenantContext tenantContext;
     @Mock private MessageService messageService;
     @Mock private com.tappy.pos.config.FeatureContext featureContext;
+    @Mock private com.tappy.pos.repository.notification.DeviceTokenRepository deviceTokenRepository;
+    @Mock private com.tappy.pos.client.ExpoPushClient expoPushClient;
+    @Spy private ObjectMapper objectMapper = new ObjectMapper();
 
     @InjectMocks
     private NotificationService notificationService;
@@ -198,7 +204,7 @@ class NotificationServiceTest {
         when(preferenceRepository.findByUserIdIn(List.of("user1"))).thenReturn(List.of(pref));
 
         notificationService.pushSystem("user1", Notification.NotificationType.SYSTEM,
-                "Title", "Body", null, null);
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.body"), null, null);
 
         verify(notificationRepository, never()).save(any());
     }
@@ -211,9 +217,10 @@ class NotificationServiceTest {
         Tenant tenant = new Tenant();
         tenant.setTenantId("shop-abc");
         when(tenantRepository.findByTenantId("shop-abc")).thenReturn(Optional.of(tenant));
-        when(userRepository.findUsernamesByRoleNames(anyList())).thenReturn(Collections.emptyList());
+        when(userRepository.findUsernamesByRoleNames(anyList(), any())).thenReturn(Collections.emptyList());
 
-        notificationService.pushToRolesAsync(Notification.NotificationType.INFO, "T", "M",
+        notificationService.pushToRolesAsync(Notification.NotificationType.INFO,
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.message"),
                 null, null, List.of("SHOP_OWNER"), "shop-abc");
 
         verify(tenantContext).setCurrentTenant(tenant);
@@ -223,9 +230,10 @@ class NotificationServiceTest {
     @Test
     @DisplayName("pushToRolesAsync: skips context setup when tenantId is null")
     void pushToRolesAsync_withNullTenantId_noContextSetup() {
-        when(userRepository.findUsernamesByRoleNames(anyList())).thenReturn(Collections.emptyList());
+        when(userRepository.findUsernamesByRoleNames(anyList(), any())).thenReturn(Collections.emptyList());
 
-        notificationService.pushToRolesAsync(Notification.NotificationType.INFO, "T", "M",
+        notificationService.pushToRolesAsync(Notification.NotificationType.INFO,
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.message"),
                 null, null, List.of("MASTER_TENANT"), null);
 
         verify(tenantRepository, never()).findByTenantId(anyString());
@@ -236,9 +244,10 @@ class NotificationServiceTest {
     @DisplayName("pushToRolesAsync: swallows exception and clears context")
     void pushToRolesAsync_exceptionSwallowed() {
         when(tenantRepository.findByTenantId("shop-err")).thenReturn(Optional.empty());
-        when(userRepository.findUsernamesByRoleNames(anyList())).thenThrow(new RuntimeException("DB error"));
+        when(userRepository.findUsernamesByRoleNames(anyList(), any())).thenThrow(new RuntimeException("DB error"));
 
-        notificationService.pushToRolesAsync(Notification.NotificationType.INFO, "T", "M",
+        notificationService.pushToRolesAsync(Notification.NotificationType.INFO,
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.message"),
                 null, null, List.of("SHOP_OWNER"), "shop-err");
 
         verify(tenantContext).clear();
@@ -329,7 +338,7 @@ class NotificationServiceTest {
         when(preferenceRepository.findByUserIdIn(List.of("user1", "user2", "user3")))
                 .thenReturn(List.of(pref));
         // user1 and user3 have no pref row; stub feature check so they are not filtered out
-        when(userRepository.findUsernamesWithFeature(anyList(), eq("ORDER")))
+        when(userRepository.findUsernamesWithFeature(anyList(), eq("ORDER"), any()))
                 .thenReturn(Set.of("user1", "user3"));
         when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
 
@@ -367,7 +376,7 @@ class NotificationServiceTest {
         tenant.setName("Shop One");
         tenant.setExpirationDate(LocalDate.now().plusDays(3));
 
-        when(userRepository.findUsernamesByRoleNames(List.of("SHOP_OWNER"))).thenReturn(List.of("owner1", "owner2"));
+        when(userRepository.findUsernamesByRoleNames(eq(List.of("SHOP_OWNER")), any())).thenReturn(List.of("owner1", "owner2"));
         when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
 
         notificationService.pushExpiryWarning(tenant, 3);
@@ -386,7 +395,7 @@ class NotificationServiceTest {
         tenant.setTenantId("shop1");
         tenant.setExpirationDate(LocalDate.now().plusDays(1));
 
-        when(userRepository.findUsernamesByRoleNames(List.of("SHOP_OWNER"))).thenReturn(Collections.emptyList());
+        when(userRepository.findUsernamesByRoleNames(eq(List.of("SHOP_OWNER")), any())).thenReturn(Collections.emptyList());
 
         notificationService.pushExpiryWarning(tenant, 1);
 
@@ -401,7 +410,7 @@ class NotificationServiceTest {
         tenant.setName("Shop One");
         tenant.setExpirationDate(LocalDate.now().plusDays(7));
 
-        when(userRepository.findUsernamesByRoleNames(List.of("SHOP_OWNER"))).thenReturn(List.of("owner1", "owner2"));
+        when(userRepository.findUsernamesByRoleNames(eq(List.of("SHOP_OWNER")), any())).thenReturn(List.of("owner1", "owner2"));
         NotificationPreference pref = NotificationPreference.builder()
                 .userId("owner2").enabledTypes("ORDER,SYSTEM").build();
         when(preferenceRepository.findByUserIdIn(List.of("owner1", "owner2"))).thenReturn(List.of(pref));
@@ -421,10 +430,11 @@ class NotificationServiceTest {
     @Test
     @DisplayName("pushToMasterUsersAsync: sends notification and catches exceptions silently")
     void pushToMasterUsersAsync_callsDelegate() {
-        when(userRepository.findUsernamesByRoleNames(List.of("MASTER_TENANT"))).thenReturn(List.of("admin1"));
+        when(userRepository.findUsernamesByRoleNames(eq(List.of("MASTER_TENANT")), any())).thenReturn(List.of("admin1"));
         when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
 
-        notificationService.pushToMasterUsersAsync("T", "M", "TENANT", 1L);
+        notificationService.pushToMasterUsersAsync(
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.message"), "TENANT", 1L);
 
         verify(notificationRepository).saveAll(anyList());
     }
@@ -432,10 +442,11 @@ class NotificationServiceTest {
     @Test
     @DisplayName("pushToMasterUsersAsync: swallows exceptions without propagating")
     void pushToMasterUsersAsync_swallowsException() {
-        when(userRepository.findUsernamesByRoleNames(anyList())).thenThrow(new RuntimeException("db error"));
+        when(userRepository.findUsernamesByRoleNames(anyList(), any())).thenThrow(new RuntimeException("db error"));
 
         // must not throw
-        notificationService.pushToMasterUsersAsync("T", "M", "TENANT", 1L);
+        notificationService.pushToMasterUsersAsync(
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.message"), "TENANT", 1L);
     }
 
     // ── pushSystemAsync ───────────────────────────────────────────────────────
@@ -449,7 +460,7 @@ class NotificationServiceTest {
         when(notificationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         notificationService.pushSystemAsync("user1", Notification.NotificationType.SYSTEM,
-                "Title", "Body", "ORDER", 1L, "shop1");
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.body"), "ORDER", 1L, "shop1");
 
         verify(tenantContext).setCurrentTenant(tenant);
         verify(tenantContext).clear();
@@ -462,7 +473,7 @@ class NotificationServiceTest {
         when(notificationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         notificationService.pushSystemAsync("user1", Notification.NotificationType.INFO,
-                "T", "M", null, null, null);
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.message"), null, null, null);
 
         verify(tenantRepository, never()).findByTenantId(anyString());
         verify(tenantContext, never()).clear();
@@ -475,7 +486,7 @@ class NotificationServiceTest {
         when(tenantRepository.findByTenantId("shop1")).thenThrow(new RuntimeException("db error"));
 
         notificationService.pushSystemAsync("user1", Notification.NotificationType.SYSTEM,
-                "T", "M", null, null, "shop1");
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.message"), null, null, "shop1");
 
         verify(tenantContext).clear();
     }
@@ -510,15 +521,37 @@ class NotificationServiceTest {
         verify(notificationRepository, never()).findByUserId(any(), any());
     }
 
+    @Test
+    @DisplayName("getForCurrentUser: renders system notification title/message from i18n key in reader's locale")
+    void getForCurrentUser_rendersKeyBackedNotification() {
+        Notification n = Notification.builder()
+                .userId("testuser")
+                .titleKey("notif.expiry.title")
+                .messageKey("notif.expiry.message")
+                .type(Notification.NotificationType.BILLING)
+                .isRead(false).createdBy("SYSTEM").build();
+        when(notificationRepository.findByUserId(eq("testuser"), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(n)));
+        when(messageService.getMessage(eq("notif.expiry.title"), any(Object[].class))).thenReturn("Sắp hết hạn");
+        when(messageService.getMessage(eq("notif.expiry.message"), any(Object[].class))).thenReturn("Cửa hàng sắp hết hạn");
+
+        Page<NotificationDTO> result = notificationService.getForCurrentUser(Pageable.unpaged(), null);
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getTitle()).isEqualTo("Sắp hết hạn");
+        assertThat(result.getContent().get(0).getMessage()).isEqualTo("Cửa hàng sắp hết hạn");
+    }
+
     // ── pushToRoles ───────────────────────────────────────────────────────────
 
     @Test
     @DisplayName("pushToRoles: saves notifications for all matching role users")
     void pushToRoles_success() {
-        when(userRepository.findUsernamesByRoleNames(List.of("SHOP_OWNER"))).thenReturn(List.of("owner1", "owner2"));
+        when(userRepository.findUsernamesByRoleNames(eq(List.of("SHOP_OWNER")), any())).thenReturn(List.of("owner1", "owner2"));
         when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
 
-        notificationService.pushToRoles(Notification.NotificationType.INFO, "Title", "Msg",
+        notificationService.pushToRoles(Notification.NotificationType.INFO,
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.msg"),
                 "ORDER", 1L, List.of("SHOP_OWNER"));
 
         @SuppressWarnings("unchecked")
@@ -526,14 +559,20 @@ class NotificationServiceTest {
         verify(notificationRepository).saveAll(cap.capture());
         assertThat(cap.getValue()).hasSize(2);
         assertThat(cap.getValue().get(0).getType()).isEqualTo(Notification.NotificationType.INFO);
+        // System pushes store i18n key/args; literal title/message stay null
+        assertThat(cap.getValue().get(0).getTitleKey()).isEqualTo("notif.title");
+        assertThat(cap.getValue().get(0).getMessageKey()).isEqualTo("notif.msg");
+        assertThat(cap.getValue().get(0).getTitle()).isNull();
+        assertThat(cap.getValue().get(0).getMessage()).isNull();
     }
 
     @Test
     @DisplayName("pushToRoles: skips save when no users hold the role")
     void pushToRoles_noUsers() {
-        when(userRepository.findUsernamesByRoleNames(List.of("CASHIER"))).thenReturn(Collections.emptyList());
+        when(userRepository.findUsernamesByRoleNames(eq(List.of("CASHIER")), any())).thenReturn(Collections.emptyList());
 
-        notificationService.pushToRoles(Notification.NotificationType.INFO, "T", "M",
+        notificationService.pushToRoles(Notification.NotificationType.INFO,
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.message"),
                 null, null, List.of("CASHIER"));
 
         verify(notificationRepository, never()).saveAll(any());
@@ -547,13 +586,18 @@ class NotificationServiceTest {
         when(notificationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         notificationService.pushSystem("user1", Notification.NotificationType.SYSTEM,
-                "Title", "Body", "ORDER", 42L);
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.body"), "ORDER", 42L);
 
         ArgumentCaptor<Notification> cap = ArgumentCaptor.forClass(Notification.class);
         verify(notificationRepository).save(cap.capture());
         assertThat(cap.getValue().getUserId()).isEqualTo("user1");
         assertThat(cap.getValue().getReferenceId()).isEqualTo(42L);
         assertThat(cap.getValue().getCreatedBy()).isEqualTo("SYSTEM");
+        // System push stores i18n key, not literal text
+        assertThat(cap.getValue().getTitleKey()).isEqualTo("notif.title");
+        assertThat(cap.getValue().getMessageKey()).isEqualTo("notif.body");
+        assertThat(cap.getValue().getTitle()).isNull();
+        assertThat(cap.getValue().getMessage()).isNull();
     }
 
     // ── pushToMasterUsers ─────────────────────────────────────────────────────
@@ -561,10 +605,11 @@ class NotificationServiceTest {
     @Test
     @DisplayName("pushToMasterUsers: broadcasts SYSTEM notification to all master users")
     void pushToMasterUsers_success() {
-        when(userRepository.findUsernamesByRoleNames(List.of("MASTER_TENANT"))).thenReturn(List.of("admin1", "admin2"));
+        when(userRepository.findUsernamesByRoleNames(eq(List.of("MASTER_TENANT")), any())).thenReturn(List.of("admin1", "admin2"));
         when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
 
-        notificationService.pushToMasterUsers("Title", "Msg", "TENANT", 1L);
+        notificationService.pushToMasterUsers(
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.msg"), "TENANT", 1L);
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<Notification>> cap = ArgumentCaptor.forClass(List.class);
@@ -576,9 +621,10 @@ class NotificationServiceTest {
     @Test
     @DisplayName("pushToMasterUsers: skips when no master users found")
     void pushToMasterUsers_noUsers() {
-        when(userRepository.findUsernamesByRoleNames(List.of("MASTER_TENANT"))).thenReturn(Collections.emptyList());
+        when(userRepository.findUsernamesByRoleNames(eq(List.of("MASTER_TENANT")), any())).thenReturn(Collections.emptyList());
 
-        notificationService.pushToMasterUsers("Title", "Msg", "TENANT", 1L);
+        notificationService.pushToMasterUsers(
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.msg"), "TENANT", 1L);
 
         verify(notificationRepository, never()).saveAll(any());
     }
@@ -586,13 +632,14 @@ class NotificationServiceTest {
     @Test
     @DisplayName("pushToMasterUsers: excludes master user who opted out of SYSTEM")
     void pushToMasterUsers_respectsPreference() {
-        when(userRepository.findUsernamesByRoleNames(List.of("MASTER_TENANT"))).thenReturn(List.of("admin1", "admin2"));
+        when(userRepository.findUsernamesByRoleNames(eq(List.of("MASTER_TENANT")), any())).thenReturn(List.of("admin1", "admin2"));
         NotificationPreference pref = NotificationPreference.builder()
                 .userId("admin2").enabledTypes("BILLING,ORDER").build();
         when(preferenceRepository.findByUserIdIn(List.of("admin1", "admin2"))).thenReturn(List.of(pref));
         when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
 
-        notificationService.pushToMasterUsers("Title", "Msg", "TENANT", 1L);
+        notificationService.pushToMasterUsers(
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.msg"), "TENANT", 1L);
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<Notification>> cap = ArgumentCaptor.forClass(List.class);
@@ -698,5 +745,228 @@ class NotificationServiceTest {
             verify(preferenceRepository).save(cap.capture());
             assertThat(cap.getValue().getEnabledTypes()).isEqualTo("ALL");
         }
+    }
+
+    // ── registerDeviceToken ────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("registerDeviceToken")
+    class RegisterDeviceToken {
+
+        @Test
+        @DisplayName("inserts a new device token row when none exists for the push token")
+        void newToken_inserted() {
+            when(tenantContext.getCurrentTenantId()).thenReturn("shop1");
+            when(deviceTokenRepository.findByExpoPushToken("ExpoToken[abc]")).thenReturn(Optional.empty());
+            when(deviceTokenRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+            notificationService.registerDeviceToken("ExpoToken[abc]", "ios");
+
+            ArgumentCaptor<com.tappy.pos.model.entity.notification.DeviceToken> cap =
+                    ArgumentCaptor.forClass(com.tappy.pos.model.entity.notification.DeviceToken.class);
+            verify(deviceTokenRepository).save(cap.capture());
+            com.tappy.pos.model.entity.notification.DeviceToken saved = cap.getValue();
+            assertThat(saved.getExpoPushToken()).isEqualTo("ExpoToken[abc]");
+            assertThat(saved.getUserId()).isEqualTo("testuser");
+            assertThat(saved.getPlatform()).isEqualTo("ios");
+            assertThat(saved.getTenantId()).isEqualTo("shop1");
+            assertThat(saved.isDeleted()).isFalse();
+            assertThat(saved.getLastSeenAt()).isNotNull();
+        }
+
+        @Test
+        @DisplayName("reactivates a soft-deleted existing row instead of inserting a duplicate")
+        void existingSoftDeleted_reactivated() {
+            com.tappy.pos.model.entity.notification.DeviceToken existing =
+                    com.tappy.pos.model.entity.notification.DeviceToken.builder()
+                            .expoPushToken("ExpoToken[abc]").userId("olduser").build();
+            existing.setTenantId("shop1");
+            existing.softDelete();
+            assertThat(existing.isDeleted()).isTrue();
+
+            when(tenantContext.getCurrentTenantId()).thenReturn("shop1");
+            when(deviceTokenRepository.findByExpoPushToken("ExpoToken[abc]")).thenReturn(Optional.of(existing));
+            when(deviceTokenRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+            notificationService.registerDeviceToken("ExpoToken[abc]", "android");
+
+            verify(deviceTokenRepository).save(existing);
+            assertThat(existing.isDeleted()).isFalse();
+            assertThat(existing.getDeletedAt()).isNull();
+            assertThat(existing.getUserId()).isEqualTo("testuser");
+            assertThat(existing.getPlatform()).isEqualTo("android");
+        }
+
+        @Test
+        @DisplayName("no-op when there is no tenant context")
+        void noTenant_noOp() {
+            when(tenantContext.getCurrentTenantId()).thenReturn(null);
+
+            notificationService.registerDeviceToken("ExpoToken[abc]", "ios");
+
+            verify(deviceTokenRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("no-op when the push token is blank")
+        void blankToken_noOp() {
+            when(tenantContext.getCurrentTenantId()).thenReturn("shop1");
+
+            notificationService.registerDeviceToken("   ", "ios");
+
+            verify(deviceTokenRepository, never()).findByExpoPushToken(anyString());
+            verify(deviceTokenRepository, never()).save(any());
+        }
+    }
+
+    // ── removeDeviceToken ──────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("removeDeviceToken")
+    class RemoveDeviceToken {
+
+        @Test
+        @DisplayName("soft-deletes the matching active token")
+        void removesActiveToken() {
+            com.tappy.pos.model.entity.notification.DeviceToken token =
+                    com.tappy.pos.model.entity.notification.DeviceToken.builder()
+                            .expoPushToken("ExpoToken[xyz]").userId("testuser").build();
+            token.setTenantId("shop1");
+            when(deviceTokenRepository.findByExpoPushTokenAndDeletedFalse("ExpoToken[xyz]"))
+                    .thenReturn(Optional.of(token));
+
+            notificationService.removeDeviceToken("ExpoToken[xyz]");
+
+            verify(deviceTokenRepository).save(token);
+            assertThat(token.isDeleted()).isTrue();
+        }
+
+        @Test
+        @DisplayName("no-op when the token is unknown")
+        void unknownToken_noOp() {
+            when(deviceTokenRepository.findByExpoPushTokenAndDeletedFalse("nope")).thenReturn(Optional.empty());
+
+            notificationService.removeDeviceToken("nope");
+
+            verify(deviceTokenRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("no-op when the token is null")
+        void nullToken_noOp() {
+            notificationService.removeDeviceToken(null);
+
+            verify(deviceTokenRepository, never()).findByExpoPushTokenAndDeletedFalse(anyString());
+            verify(deviceTokenRepository, never()).save(any());
+        }
+    }
+
+    // ── sendPush (via pushToRoles) ─────────────────────────────────────────────
+
+    @Test
+    @DisplayName("pushToRoles dispatches an Expo push to the delivered users' device tokens")
+    void pushToRoles_dispatchesPush() {
+        when(userRepository.findUsernamesByRoleNames(eq(List.of("SHOP_OWNER")), any()))
+                .thenReturn(List.of("owner1", "owner2"));
+        // ORDER is a feature-gated type — users with no pref row need the ORDER feature to receive it
+        when(userRepository.findUsernamesWithFeature(anyList(), eq("ORDER"), any()))
+                .thenReturn(Set.of("owner1", "owner2"));
+        when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
+        when(deviceTokenRepository.findActiveTokensByUserIds(anyList()))
+                .thenReturn(List.of("ExpoToken[1]", "ExpoToken[2]"));
+        // sendPush resolves the banner text with the push (vi) locale overload
+        when(messageService.getMessage(eq("notif.title"), any(java.util.Locale.class), any()))
+                .thenReturn("Bàn A1");
+        when(messageService.getMessage(eq("notif.msg"), any(java.util.Locale.class), any()))
+                .thenReturn("Đơn QR-1");
+
+        notificationService.pushToRoles(Notification.NotificationType.ORDER,
+                LocalizedText.of("notif.title", "A1"), LocalizedText.of("notif.msg", "QR-1"),
+                "ORDER", 9L, List.of("SHOP_OWNER"));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<String>> tokensCap = ArgumentCaptor.forClass(List.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<java.util.Map<String, Object>> dataCap = ArgumentCaptor.forClass(java.util.Map.class);
+        verify(expoPushClient).sendAsync(tokensCap.capture(), eq("Bàn A1"), eq("Đơn QR-1"), dataCap.capture());
+        assertThat(tokensCap.getValue()).containsExactly("ExpoToken[1]", "ExpoToken[2]");
+        assertThat(dataCap.getValue()).containsEntry("type", "ORDER")
+                .containsEntry("referenceType", "ORDER")
+                .containsEntry("referenceId", 9L);
+    }
+
+    @Test
+    @DisplayName("pushToRoles skips the Expo push when no device tokens are registered")
+    void pushToRoles_noDeviceTokens_skipsPush() {
+        when(userRepository.findUsernamesByRoleNames(eq(List.of("SHOP_OWNER")), any()))
+                .thenReturn(List.of("owner1"));
+        when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
+        when(deviceTokenRepository.findActiveTokensByUserIds(anyList())).thenReturn(Collections.emptyList());
+
+        notificationService.pushToRoles(Notification.NotificationType.INFO,
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.msg"),
+                null, null, List.of("SHOP_OWNER"));
+
+        verify(expoPushClient, never()).sendAsync(anyList(), anyString(), anyString(), anyMap());
+    }
+
+    @Test
+    @DisplayName("pushToRoles swallows an Expo push failure without affecting the in-app rows")
+    void pushToRoles_pushFailureSwallowed() {
+        when(userRepository.findUsernamesByRoleNames(eq(List.of("SHOP_OWNER")), any()))
+                .thenReturn(List.of("owner1"));
+        when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
+        when(deviceTokenRepository.findActiveTokensByUserIds(anyList())).thenReturn(List.of("ExpoToken[1]"));
+        doThrow(new RuntimeException("expo down"))
+                .when(expoPushClient).sendAsync(anyList(), any(), any(), anyMap());
+
+        // must not throw
+        notificationService.pushToRoles(Notification.NotificationType.INFO,
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.msg"),
+                null, null, List.of("SHOP_OWNER"));
+
+        verify(notificationRepository).saveAll(anyList());
+    }
+
+    @Test
+    @DisplayName("pushToRoles excludes the excludeUsername from delivery")
+    void pushToRoles_excludesUsername() {
+        when(userRepository.findUsernamesByRoleNames(eq(List.of("SHOP_OWNER")), any()))
+                .thenReturn(List.of("owner1", "owner2"));
+        when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
+        when(deviceTokenRepository.findActiveTokensByUserIds(anyList())).thenReturn(Collections.emptyList());
+
+        notificationService.pushToRoles(Notification.NotificationType.INFO,
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.msg"),
+                null, null, List.of("SHOP_OWNER"), "owner1");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<Notification>> cap = ArgumentCaptor.forClass(List.class);
+        verify(notificationRepository).saveAll(cap.capture());
+        assertThat(cap.getValue()).hasSize(1);
+        assertThat(cap.getValue().get(0).getUserId()).isEqualTo("owner2");
+    }
+
+    @Test
+    @DisplayName("pushToRoles delivers nothing (no push) when all targeted users opted out")
+    void pushToRoles_allOptedOut_noPush() {
+        when(userRepository.findUsernamesByRoleNames(eq(List.of("SHOP_OWNER")), any()))
+                .thenReturn(List.of("owner1"));
+        NotificationPreference pref = NotificationPreference.builder()
+                .userId("owner1").enabledTypes("BILLING").build();
+        when(preferenceRepository.findByUserIdIn(List.of("owner1"))).thenReturn(List.of(pref));
+        when(notificationRepository.saveAll(anyList())).thenAnswer(i -> i.getArgument(0));
+
+        notificationService.pushToRoles(Notification.NotificationType.ORDER,
+                LocalizedText.of("notif.title"), LocalizedText.of("notif.msg"),
+                null, null, List.of("SHOP_OWNER"));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<Notification>> cap = ArgumentCaptor.forClass(List.class);
+        verify(notificationRepository).saveAll(cap.capture());
+        assertThat(cap.getValue()).isEmpty();
+        // delivered list is empty → no token resolution, no push
+        verify(deviceTokenRepository, never()).findActiveTokensByUserIds(anyList());
+        verify(expoPushClient, never()).sendAsync(anyList(), anyString(), anyString(), anyMap());
     }
 }

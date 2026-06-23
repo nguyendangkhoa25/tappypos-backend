@@ -1,6 +1,7 @@
 package com.tappy.pos.service.tenant;
 import com.tappy.pos.config.AuthContext;
 import com.tappy.pos.exception.BadRequestException;
+import com.tappy.pos.model.enums.SubscriptionPlan;
 import com.tappy.pos.exception.ForbiddenException;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.tenant.CreateTenantRequest;
@@ -167,6 +168,13 @@ public class TenantService {
             throw new RuntimeException("Tenant already exists: " + request.getTenantId());
         }
 
+        // Reject an unknown subscription plan loudly at the write boundary, so a bad code can
+        // never be persisted and later break the subscription screen / checkout (SubscriptionPlan.of).
+        if (!SubscriptionPlan.isValid(request.getSubscriptionType())) {
+            throw new BadRequestException(
+                    messageService.getMessage("error.subscription.invalid", request.getSubscriptionType()));
+        }
+
         String currentUser = getCurrentUsername();
         String dbName = (request.getDbName() != null && !request.getDbName().isBlank())
                 ? request.getDbName() : deriveTenantDbName(request.getTenantId());
@@ -211,7 +219,13 @@ public class TenantService {
         if (request.getName()              != null) tenant.setName(request.getName());
         if (request.getExpirationDate()    != null) tenant.setExpirationDate(request.getExpirationDate());
         if (request.getMaxUsers()          != null) tenant.setMaxUsers(request.getMaxUsers());
-        if (request.getSubscriptionType()  != null) tenant.setSubscriptionType(request.getSubscriptionType());
+        if (request.getSubscriptionType()  != null) {
+            if (!SubscriptionPlan.isValid(request.getSubscriptionType())) {
+                throw new BadRequestException(
+                        messageService.getMessage("error.subscription.invalid", request.getSubscriptionType()));
+            }
+            tenant.setSubscriptionType(request.getSubscriptionType());
+        }
         if (request.getContactPersonName() != null) tenant.setContactPersonName(request.getContactPersonName());
         if (request.getContactPersonPhone()!= null) tenant.setContactPersonPhone(request.getContactPersonPhone());
         if (request.getContactPersonEmail()!= null) tenant.setContactPersonEmail(request.getContactPersonEmail());
@@ -219,7 +233,17 @@ public class TenantService {
 
         // Only master admin may change features, dbName, or reassign vendor
         if (!isAgent()) {
-            if (request.getFeatures() != null) tenant.setFeatures(String.join(",", request.getFeatures()));
+            if (request.getFeatures() != null) {
+                String newFeatures = String.join(",", request.getFeatures());
+                // Bump features_version only when the feature set actually changes, so logged-in
+                // users are forced to refresh (stale-token signal) and pick up the new package
+                // within seconds. Unrelated edits (contact info, etc.) don't trigger a refresh.
+                if (!java.util.Objects.equals(tenant.getFeatures(), newFeatures)) {
+                    tenant.setFeatures(newFeatures);
+                    int current = tenant.getFeaturesVersion() == null ? 0 : tenant.getFeaturesVersion();
+                    tenant.setFeaturesVersion(current + 1);
+                }
+            }
             if (request.getDbName()   != null) tenant.setDbName(request.getDbName());
             if (request.getVendorId() != null) tenant.setVendorId(request.getVendorId());
         }

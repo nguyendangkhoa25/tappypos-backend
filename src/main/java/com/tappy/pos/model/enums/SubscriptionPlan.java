@@ -11,17 +11,35 @@ public final class SubscriptionPlan {
         public boolean isUserUnlimited()  { return maxUsers == null; }
     }
 
-    // Prices in VND
+    // Prices in VND. Single source of truth for plan limits/pricing — mirrored
+    // by frontend SUBSCRIPTION_TIERS and mobile UpgradeModal PLANS.
+    // Orders are unlimited on every package: pricing is on users, not order volume
+    // (a soft monthly-order cap on the free plan is a pending product decision).
     public static final Map<String, PlanLimits> LIMITS = Map.of(
-        "TRIAL",      new PlanLimits(1,    1_000,  0),
-        "STARTER",    new PlanLimits(1,    1_000,  70_000),
-        "BASIC",      new PlanLimits(3,    5_000,  100_000),
-        "PRO",        new PlanLimits(10,   null,   300_000),
-        "ENTERPRISE", new PlanLimits(null, null,   0)
+        "TRIAL",      new PlanLimits(2,    null,  0),       // Dùng thử (free first year)
+        "BASIC",      new PlanLimits(2,    null,  99_000),  // Gói Cơ bản
+        "PRO",        new PlanLimits(6,    null,  199_000), // Gói Chuyên nghiệp
+        "ENTERPRISE", new PlanLimits(15,   null,  399_000), // Gói Doanh nghiệp
+        "GOLD_PAWN",  new PlanLimits(2,    null,  199_000)  // Gói Vàng & Cầm đồ
     );
 
+    /**
+     * Resolve plan limits for a subscription code. A null/blank code means "no plan set"
+     * and falls back to TRIAL. An unknown non-blank code is a data-integrity error and
+     * fails loudly rather than silently masquerading as TRIAL.
+     */
     public static PlanLimits of(String subscriptionType) {
-        if (subscriptionType == null) return LIMITS.get("TRIAL");
-        return LIMITS.getOrDefault(subscriptionType.toUpperCase(), LIMITS.get("TRIAL"));
+        if (subscriptionType == null || subscriptionType.isBlank()) return LIMITS.get("TRIAL");
+        PlanLimits limits = LIMITS.get(subscriptionType.toUpperCase());
+        if (limits == null) {
+            throw new IllegalArgumentException("Unknown subscription plan code: " + subscriptionType);
+        }
+        return limits;
+    }
+
+    /** True if the code is a known plan (or null/blank, which maps to TRIAL). Use to validate writes. */
+    public static boolean isValid(String subscriptionType) {
+        return subscriptionType == null || subscriptionType.isBlank()
+                || LIMITS.containsKey(subscriptionType.toUpperCase());
     }
 }

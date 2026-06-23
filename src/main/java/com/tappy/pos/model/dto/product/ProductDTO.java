@@ -29,14 +29,21 @@ public class ProductDTO {
     private BigDecimal commissionRate;
     private Integer durationMinutes;
     private String unit;
+    private String altUnit;
+    private BigDecimal altUnitFactor;
+    private BigDecimal altUnitPrice;
+    private BigDecimal wholesalePrice;
     private Long vendorId;
     private String vendorName;
     private String shelfLocation;
     private String status;
+    /** FINISHED (default, sellable) | INGREDIENT | BOTH — Phase 3 two-stage inventory. */
+    private String productKind;
     private Set<Long> categoryIds;
     private Set<String> categoryNames;
     private Map<String, Object> attributes;
     private Boolean hasVariants;
+    private Boolean hasModifiers;
     private Long stockQuantity;
     private Boolean inStock;
     private String imageUrl;

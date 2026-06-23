@@ -1,5 +1,6 @@
 package com.tappy.pos.multitenant;
 
+import com.tappy.pos.config.FeatureContext;
 import com.tappy.pos.model.entity.tenant.Tenant;
 import com.tappy.pos.repository.tenant.TenantRepository;
 import com.tappy.pos.service.MessageService;
@@ -34,6 +35,7 @@ public class TenantInterceptor implements HandlerInterceptor {
     private final TenantRepository tenantRepository;
     private final TenantContext tenantContext;
     private final MessageService messageService;
+    private final FeatureContext featureContext;
 
     // Paths that don't require tenant header (always use master DB)
     private static final String[] PUBLIC_PATHS = {
@@ -231,6 +233,29 @@ public class TenantInterceptor implements HandlerInterceptor {
             response.getWriter().write(errorResponse);
             tenantContext.clear();
             return false;
+        }
+
+        // Stale-token detection: the tenant's features changed after this token was issued
+        // (master admin upgraded/downgraded the package). Signal the client to refresh — both
+        // web and mobile refresh silently on a 401 that is not DEVICE_SWITCHED, picking up the
+        // new features within seconds and without logging the user out.
+        // Skipped for /api/auth so the refresh call itself is never blocked, and for older
+        // tokens that carry no `fv` claim (they refresh naturally within the token lifetime).
+        if (!requestPath.startsWith("/api/auth")) {
+            Integer tokenFv = featureContext.getTokenFeaturesVersion();
+            if (tokenFv != null
+                    && tenant.getFeaturesVersion() != null
+                    && !tokenFv.equals(tenant.getFeaturesVersion())) {
+                log.info("Stale token for tenant {} (token fv={}, current fv={}) — signalling refresh",
+                        tenantId, tokenFv, tenant.getFeaturesVersion());
+                response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                response.setContentType("application/json");
+                String message = messageService.getMessage("error.token.stale");
+                response.getWriter().write(
+                        "{\"success\": false, \"error\": \"TOKEN_STALE\", \"message\": \"" + message + "\"}");
+                tenantContext.clear();
+                return false;
+            }
         }
 
         log.debug("Tenant {} authorized for request to {}", tenantId, requestPath);

@@ -22,4 +22,11 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
     Optional<ProductVariant> findByIdAndProductIdAndDeletedAtIsNull(Long id, Long productId);
 
     boolean existsBySkuAndDeletedAtIsNull(String sku);
+
+    /** Resolve a variant by its barcode for POS scan-to-add (RLS scopes to the current tenant). */
+    Optional<ProductVariant> findFirstByBarcodeAndDeletedAtIsNull(String barcode);
+
+    /** All active variants for the tenant with their parent product eagerly loaded (fashion analytics). */
+    @Query("SELECT v FROM ProductVariant v JOIN FETCH v.product WHERE v.deletedAt IS NULL")
+    List<ProductVariant> findAllActiveWithProduct();
 }

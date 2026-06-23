@@ -22,6 +22,7 @@ public enum FeatureEnum {
     SALARY_VIEW_ALL("Xem Tất Cả Bảng Lương", "Xem bảng lương của tất cả nhân viên; nếu không có quyền này, chỉ xem được bảng lương của bản thân"),
     CUSTOMER("Khách Hàng", "Quản lý thông tin khách hàng, lịch sử mua hàng"),
     LOYALTY("Tích Điểm Khách Hàng", "Chương trình tích điểm và phần thưởng khách hàng"),
+    CUSTOMER_DEBT("Công Nợ Khách Hàng", "Bán chịu, ghi sổ nợ và thu nợ khách hàng (thường dùng cho vật liệu xây dựng)"),
     INVOICE("Hóa Đơn", "Quản lý hóa đơn, xuất hóa đơn điện tử"),
     REVENUE("Doanh Thu", "Xem báo cáo doanh thu, lợi nhuận"),
     EXPENSE("Chi Phí", "Theo dõi và quản lý chi phí hoạt động cửa hàng"),
@@ -30,6 +31,8 @@ public enum FeatureEnum {
     VENDOR("Nhà Cung Cấp", "Quản lý nhà cung cấp, đơn đặt hàng, nhập hàng"),
     INVENTORY("Quản Lý Kho", "Quản lý tồn kho, nhập xuất kho và kiểm kho"),
     STOCK_TAKE("Kiểm Kho", "Kiểm kê tồn kho thực tế bằng cách quét mã, đối chiếu và điều chỉnh chênh lệch so với hệ thống"),
+    RECIPE("Định Lượng & Sản Xuất", "Quản lý công thức/định lượng nguyên liệu cho thành phẩm, tính giá vốn thật và sản xuất (làm bánh) trừ kho nguyên liệu, cộng kho thành phẩm"),
+    ROOM("Quản Lý Phòng", "Quản lý phòng khách sạn / nhà nghỉ / homestay: sơ đồ phòng, nhận phòng, trả phòng, ghi nợ dịch vụ trong phòng"),
     POS("Điểm Bán Hàng", "Bán hàng tại quầy, thanh toán và in hóa đơn"),
     ACTIVITY_LOG("Nhật Ký Hoạt Động", "Xem nhật ký hoạt động của người dùng trong cửa hàng"),
     PAWN("Cầm Đồ", "Quản lý hợp đồng cầm đồ, lãi suất và thanh lý tài sản"),
@@ -47,7 +50,24 @@ public enum FeatureEnum {
     APPOINTMENT("Lịch Hẹn", "Quản lý lịch hẹn với khách hàng, đặt lịch và xác nhận"),
     TABLE_SERVICE("Quản Lý Bàn", "Theo dõi trạng thái bàn và gọi món theo bàn cho quán ăn / quán nhậu"),
     BOOKING("Đặt Bàn / Đặt Sân", "Quản lý bàn bida, sân thể thao: tính giờ chơi, đặt sân theo giờ và tạo hoá đơn khi kết thúc"),
-    UTILITIES("Tiện Ích", "Bộ công cụ tính toán: tính lãi, khoản vay, thuế, ngân sách, đổi tiền, giá vàng thị trường, chia hóa đơn, điểm hòa vốn");
+    UTILITIES("Tiện Ích", "Bộ công cụ tính toán: tính lãi, khoản vay, thuế, ngân sách, đổi tiền, giá vàng thị trường, chia hóa đơn, điểm hòa vốn"),
+    REPAIR("Sửa Chữa", "Quản lý phiếu sửa chữa thiết bị: tiếp nhận máy, ghi lỗi, báo giá, giao thợ, theo dõi tình trạng và bảo hành sửa chữa"),
+    REPAIR_VIEW_ALL("Xem Tất Cả Phiếu Sửa Chữa", "Xem phiếu sửa chữa của tất cả nhân viên; nếu không có quyền này, chỉ xem được phiếu tự tạo"),
+    BUYBACK("Mua Bán Đồ Cũ", "Mua đồ cũ của khách rồi bán lại; dùng cho tiệm vàng, cửa hàng xe máy, đồ cũ"),
+    TRADE_IN("Thu Cũ Đổi Mới", "Định giá xe cũ của khách và quy đổi vào đơn bán xe mới hoặc mua đứt; dùng cho cửa hàng xe"),
+    TRADE_IN_VIEW_ALL("Xem Tất Cả Phiếu Thu Cũ", "Xem phiếu thu cũ đổi mới của tất cả nhân viên; nếu không có quyền này, chỉ xem được phiếu tự tạo"),
+    INSTALLMENT("Bán Trả Góp", "Bán hàng trả góp theo nhiều kỳ: lập lịch trả, theo dõi kỳ đến hạn và thu tiền từng kỳ"),
+    INSTALLMENT_VIEW_ALL("Xem Tất Cả Hợp Đồng Trả Góp", "Xem hợp đồng trả góp của tất cả nhân viên; nếu không có quyền này, chỉ xem được hợp đồng tự tạo"),
+    CONSIGNMENT("Ký Gửi Hàng", "Nhận hàng ký gửi từ nhà cung cấp/NXB, theo dõi số lượng đã bán và thanh toán theo doanh số; dùng cho nhà sách, cửa hàng ký gửi"),
+    CONSIGNMENT_VIEW_ALL("Xem Tất Cả Phiếu Ký Gửi", "Xem phiếu ký gửi của tất cả nhân viên; nếu không có quyền này, chỉ xem được phiếu tự tạo"),
+
+    // ── Master-tenant / agent features (no shop access) — seeded in V001, enforced via @RequiresFeature ──
+    TENANT_MGMT("Quản Lý Cửa Hàng", "Quản lý các cửa hàng (tenant) trong hệ thống — chỉ dành cho cơ sở dữ liệu chính"),
+    AGENT_MGMT("Quản Lý Đại Lý", "Quản lý các đại lý bán hàng của nền tảng — chỉ dành cho cơ sở dữ liệu chính"),
+    MASTER_DASHBOARD("Bảng Điều Khiển Tổng", "Thống kê toàn nền tảng cho quản trị viên và đại lý"),
+    FEEDBACK_MGMT("Quản Lý Góp Ý", "Xem và xử lý góp ý gửi từ các cửa hàng — chỉ dành cho cơ sở dữ liệu chính"),
+    CONTACT_LEAD_MGMT("Quản Lý Yêu Cầu Liên Hệ", "Quản lý yêu cầu dùng thử từ trang giới thiệu — chỉ dành cho cơ sở dữ liệu chính"),
+    PRODUCT_CATALOG("Danh Mục Sản Phẩm Chung", "Cơ sở dữ liệu mã vạch sản phẩm dùng chung — chỉ dành cho cơ sở dữ liệu chính");
 
     /**
      * -- GETTER --

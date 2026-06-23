@@ -6,9 +6,13 @@ import com.tappy.pos.model.dto.contact.ContactLeadRequest;
 import com.tappy.pos.model.dto.contact.UpdateLeadStatusRequest;
 import com.tappy.pos.model.entity.contact.ContactLead;
 import com.tappy.pos.model.enums.LeadStatus;
+import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.repository.contact.ContactLeadRepository;
 import com.tappy.pos.service.MessageService;
+import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.service.notification.NotificationService;
+import com.tappy.pos.config.AuthContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -25,6 +29,8 @@ public class ContactLeadServiceImpl implements ContactLeadService {
     private final ContactLeadRepository contactLeadRepository;
     private final NotificationService notificationService;
     private final MessageService messageService;
+    private final AuthContext authContext;
+    private final ActivityLogService activityLogService;
 
     @Override
     @Transactional
@@ -39,13 +45,14 @@ public class ContactLeadServiceImpl implements ContactLeadService {
 
         contactLeadRepository.save(lead);
 
-        String title = "[Khách hàng mới] " + request.getName();
-        String message = request.getName() + " (" + request.getPhone() + ")"
-                + (request.getShopType() != null ? " — " + request.getShopType() : "")
-                + " vừa đăng ký dùng thử từ trang chủ.";
+        String shopTypeSegment = request.getShopType() != null ? " — " + request.getShopType() : "";
 
         try {
-            notificationService.pushToMasterUsers(title, message, "CONTACT_LEAD", lead.getId());
+            notificationService.pushToMasterUsers(
+                    LocalizedText.of("notification.contact_lead.new.title", request.getName()),
+                    LocalizedText.of("notification.contact_lead.new.message",
+                            request.getName(), request.getPhone(), shopTypeSegment),
+                    "CONTACT_LEAD", lead.getId());
         } catch (Exception e) {
             log.warn("Failed to notify master users for contact lead {}: {}", lead.getId(), e.getMessage());
         }
@@ -66,7 +73,11 @@ public class ContactLeadServiceImpl implements ContactLeadService {
                 .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.contactLead.not.found", id)));
         lead.setStatus(request.getStatus());
         lead.setAdminNote(request.getAdminNote());
-        return toDTO(contactLeadRepository.save(lead));
+        ContactLead saved = contactLeadRepository.save(lead);
+        activityLogService.logAsync("master", authContext.getCurrentUsername(), null,
+                ActivityAction.CONTACT_LEAD_STATUS_CHANGED, "CONTACT_LEAD", String.valueOf(saved.getId()),
+                "activity.contact.lead.status.changed", null);
+        return toDTO(saved);
     }
 
     @Override

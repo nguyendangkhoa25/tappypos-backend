@@ -70,7 +70,7 @@ INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_def
   "showCashDetails": false,
   "paperWidth": "80mm",
   "autoClose": true
-}', TRUE, 'TRACKED'),
+}', TRUE),
     (current_setting('app.current_tenant', true), 'PRODUCT_STAMP', 'Tem dịch vụ', '{
   "showShopName": true,
   "showSku": false,
@@ -81,7 +81,7 @@ INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_def
   "showExpiry": false,
   "labelWidth": 60,
   "labelHeight": 38
-}', TRUE, 'TRACKED')
+}', TRUE)
 ON CONFLICT (template_type, name, tenant_id) DO NOTHING;
 
 -- ── 9. Attribute groups & definitions (SERVICE type) ─────────

@@ -34,7 +34,32 @@ public class CheckoutRequest {
     @DecimalMin(value = "0.0", message = "Tip must be >= 0")
     private BigDecimal tip;
 
+    /**
+     * FnB service-charge rate as a percentage (e.g. 5 = 5%). Null = use the shop-config default;
+     * 0 disables it for this order. Applied to the discounted subtotal.
+     */
+    @DecimalMin(value = "0.0", message = "Service charge must be >= 0")
+    private BigDecimal serviceChargeRate;
+
+    /** Fulfilment channel; if null it is derived from tableId (DINE_IN) / pickupTime (TAKEAWAY). */
+    private Order.OrderChannel orderChannel;
+
+    // ── Delivery details — only used when orderChannel = DELIVERY ────────────────
+    private Order.DeliveryPlatform deliveryPlatform;
+    private String deliveryRecipient;
+    private String deliveryPhone;
+    private String deliveryAddress;
+    /** Ship fee added to the order total (self-delivery). */
+    @DecimalMin(value = "0.0", message = "Delivery fee must be >= 0")
+    private BigDecimal deliveryFee;
+    private String deliveryNote;
+
     private String notes;
+
+    /** Pharmacy prescription dispensing record (§4d) — optional; captured when the
+     *  cart holds a prescription-required drug. Non-blocking. */
+    private String prescriberName;
+    private String prescriptionNote;
 
     /** ID of an existing customer to associate with this order. */
     private Long customerId;
@@ -88,4 +113,27 @@ public class CheckoutRequest {
      * Client supplies this so the receipt can show the "Vàng dư/bù" line.
      */
     private BigDecimal goldDiffAmount;
+
+    // ── Pre-order / deposit (đặt hàng + tiền cọc) — Phase 2 ─────────────────────
+    /**
+     * When true the checkout creates a PENDING pre-order instead of completing a sale:
+     * no inventory is deducted (deferred to settle/pickup), {@code amountPaid} is set to
+     * {@link #depositAmount}, and the balance is collected later via the settle endpoint.
+     * Defaults to false → identical behaviour to a normal checkout.
+     */
+    private boolean preorder;
+
+    /**
+     * When true, the checkout is saved as a quotation (báo giá): the order is flagged
+     * is_quote, no stock is deducted, and it is excluded from revenue until converted
+     * to a real order via the convert-quote endpoint. Defaults to false.
+     */
+    private boolean quote;
+
+    /**
+     * Deposit (tiền cọc) collected at pre-order creation. Must be {@code <= total}.
+     * Zero is allowed (đơn đặt không cọc). Ignored when {@link #preorder} is false.
+     */
+    @DecimalMin(value = "0.0", message = "Deposit must be >= 0")
+    private BigDecimal depositAmount;
 }

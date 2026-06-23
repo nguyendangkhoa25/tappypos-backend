@@ -95,7 +95,7 @@ class TenantServiceTest {
                 .expirationDate(LocalDate.now().plusYears(1))
                 .maxUsers(50)
                 .features("DASHBOARD,ORDER")
-                .subscriptionType("STANDARD")
+                .subscriptionType("BASIC")
                 .contactPersonName("John Doe")
                 .contactPersonPhone("+1234567890")
                 .contactPersonEmail("john@tenant.com")
@@ -112,7 +112,7 @@ class TenantServiceTest {
                 .expirationDate(LocalDate.now().plusYears(1))
                 .maxUsers(50)
                 .features(List.of("DASHBOARD", "ORDER"))
-                .subscriptionType("STANDARD")
+                .subscriptionType("BASIC")
                 .contactPersonName("John Doe")
                 .contactPersonPhone("+1234567890")
                 .contactPersonEmail("john@tenant.com")
@@ -125,7 +125,7 @@ class TenantServiceTest {
                 .expirationDate(LocalDate.now().plusYears(2))
                 .maxUsers(100)
                 .features(List.of("DASHBOARD", "ORDER", "CUSTOMER"))
-                .subscriptionType("PREMIUM")
+                .subscriptionType("PRO")
                 .contactPersonName("Jane Doe")
                 .contactPersonPhone("+0987654321")
                 .contactPersonEmail("jane@tenant.com")
@@ -163,7 +163,7 @@ class TenantServiceTest {
         Tenant tenant2 = Tenant.builder()
                 .tenantId("test-tenant-2").name("Test Tenant 2").dbName("test_tenant_db_2")
                 .active(true).expirationDate(LocalDate.now().plusYears(1))
-                .maxUsers(50).features("DASHBOARD").subscriptionType("STANDARD").build();
+                .maxUsers(50).features("DASHBOARD").subscriptionType("BASIC").build();
         tenant2.setId(2L);
 
         when(tenantRepository.findAllByActiveTrue()).thenReturn(List.of(tenant, tenant2));
@@ -306,7 +306,7 @@ class TenantServiceTest {
         CreateTenantRequest requestNoFeatures = CreateTenantRequest.builder()
                 .tenantId("test-tenant-3").name("Test Tenant 3").dbName("test_tenant_db_3")
                 .expirationDate(LocalDate.now().plusYears(1)).maxUsers(50)
-                .features(null).subscriptionType("STANDARD").build();
+                .features(null).subscriptionType("BASIC").build();
 
         when(authContext.getCurrentUsername()).thenReturn("admin");
         when(tenantRepository.findByTenantId("test-tenant-3")).thenReturn(Optional.empty());
@@ -332,7 +332,7 @@ class TenantServiceTest {
         CreateTenantRequest reservedRequest = CreateTenantRequest.builder()
                 .tenantId("pos-quan-cafe").name("Collision Shop").dbName("collision_db")
                 .expirationDate(LocalDate.now().plusYears(1)).maxUsers(50)
-                .features(List.of("DASHBOARD")).subscriptionType("STANDARD").build();
+                .features(List.of("DASHBOARD")).subscriptionType("BASIC").build();
 
         assertThatThrownBy(() -> tenantService.createTenant(reservedRequest))
                 .isInstanceOf(BadRequestException.class)
@@ -347,7 +347,7 @@ class TenantServiceTest {
         CreateTenantRequest reservedRequest = CreateTenantRequest.builder()
                 .tenantId("MASTER").name("Fake Master").dbName("fake_master_db")
                 .expirationDate(LocalDate.now().plusYears(1)).maxUsers(50)
-                .features(List.of("DASHBOARD")).subscriptionType("STANDARD").build();
+                .features(List.of("DASHBOARD")).subscriptionType("BASIC").build();
 
         assertThatThrownBy(() -> tenantService.createTenant(reservedRequest))
                 .isInstanceOf(BadRequestException.class);
@@ -364,7 +364,7 @@ class TenantServiceTest {
             CreateTenantRequest reservedRequest = CreateTenantRequest.builder()
                     .tenantId(reservedId).name("Collision Shop").dbName("collision_db")
                     .expirationDate(LocalDate.now().plusYears(1)).maxUsers(50)
-                    .features(List.of("DASHBOARD")).subscriptionType("STANDARD").build();
+                    .features(List.of("DASHBOARD")).subscriptionType("BASIC").build();
 
             assertThatThrownBy(() -> tenantService.createTenant(reservedRequest))
                     .as("tenant ID '%s' must be rejected as reserved", reservedId)
@@ -391,12 +391,12 @@ class TenantServiceTest {
         CreateTenantRequest emptyFeaturesRequest = CreateTenantRequest.builder()
                 .tenantId("test-tenant").name("Test Tenant").dbName("test_db")
                 .expirationDate(LocalDate.now().plusYears(1)).maxUsers(50)
-                .features(List.of()).subscriptionType("STANDARD").build();
+                .features(List.of()).subscriptionType("BASIC").build();
 
         Tenant emptyFeaturesTenant = Tenant.builder()
                 .tenantId("test-tenant").name("Test Tenant").dbName("test_db")
                 .active(true).expirationDate(LocalDate.now().plusYears(1))
-                .maxUsers(50).features("").subscriptionType("STANDARD").build();
+                .maxUsers(50).features("").subscriptionType("BASIC").build();
         emptyFeaturesTenant.setId(1L);
 
         when(authContext.getCurrentUsername()).thenReturn("admin");
@@ -413,14 +413,14 @@ class TenantServiceTest {
         CreateTenantRequest requestNoContact = CreateTenantRequest.builder()
                 .tenantId("test-tenant").name("Test Tenant").dbName("test_db")
                 .expirationDate(LocalDate.now().plusYears(1)).maxUsers(50)
-                .features(List.of("DASHBOARD")).subscriptionType("STANDARD")
+                .features(List.of("DASHBOARD")).subscriptionType("BASIC")
                 .contactPersonName(null).contactPersonPhone(null)
                 .contactPersonEmail(null).contactPersonZaloId(null).build();
 
         Tenant noContactTenant = Tenant.builder()
                 .tenantId("test-tenant").name("Test Tenant").dbName("test_db")
                 .active(true).expirationDate(LocalDate.now().plusYears(1))
-                .maxUsers(50).features("DASHBOARD").subscriptionType("STANDARD").build();
+                .maxUsers(50).features("DASHBOARD").subscriptionType("BASIC").build();
         noContactTenant.setId(1L);
 
         when(authContext.getCurrentUsername()).thenReturn("admin");
@@ -429,6 +429,17 @@ class TenantServiceTest {
 
         assertThat(tenantService.createTenant(requestNoContact)).isNotNull();
         verify(tenantRepository).save(any(Tenant.class));
+    }
+
+    @Test
+    @DisplayName("createTenant: rejects an unknown subscription plan code")
+    void testCreateTenant_InvalidSubscription() {
+        CreateTenantRequest bad = CreateTenantRequest.builder()
+                .tenantId("brand-new-shop").name("X").subscriptionType("STANDARD").build();
+
+        assertThatThrownBy(() -> tenantService.createTenant(bad))
+                .isInstanceOf(BadRequestException.class);
+        verify(tenantRepository, never()).save(any(Tenant.class));
     }
 
     // ==================== Update Tenant Tests ====================
@@ -574,7 +585,7 @@ class TenantServiceTest {
         Tenant inactiveTenant = Tenant.builder()
                 .tenantId("test-tenant").name("Test Tenant").dbName("test_tenant_db")
                 .active(false).expirationDate(LocalDate.now().plusYears(1))
-                .maxUsers(50).features("DASHBOARD,ORDER").subscriptionType("STANDARD").build();
+                .maxUsers(50).features("DASHBOARD,ORDER").subscriptionType("BASIC").build();
         inactiveTenant.setId(1L);
 
         when(authContext.getCurrentUsername()).thenReturn("admin");
@@ -615,7 +626,7 @@ class TenantServiceTest {
         Tenant tenantNoFeatures = Tenant.builder()
                 .tenantId("test-tenant").name("Test Tenant").dbName("test_tenant_db")
                 .active(true).expirationDate(LocalDate.now().plusYears(1))
-                .maxUsers(50).features(null).subscriptionType("STANDARD").build();
+                .maxUsers(50).features(null).subscriptionType("BASIC").build();
         tenantNoFeatures.setId(1L);
 
         when(tenantRepository.findByTenantId("test-tenant")).thenReturn(Optional.of(tenantNoFeatures));
@@ -641,7 +652,7 @@ class TenantServiceTest {
                 .hasFieldOrPropertyWithValue("dbName", "test_tenant_db")
                 .hasFieldOrPropertyWithValue("active", true)
                 .hasFieldOrPropertyWithValue("maxUsers", 50)
-                .hasFieldOrPropertyWithValue("subscriptionType", "STANDARD")
+                .hasFieldOrPropertyWithValue("subscriptionType", "BASIC")
                 .hasFieldOrPropertyWithValue("contactPersonName", "John Doe")
                 .hasFieldOrPropertyWithValue("contactPersonPhone", "+1234567890")
                 .hasFieldOrPropertyWithValue("contactPersonEmail", "john@tenant.com");
@@ -652,7 +663,7 @@ class TenantServiceTest {
     void testMapToDTO_FeatureMapping() {
         Tenant multiFeatureTenant = Tenant.builder()
                 .tenantId("test-tenant").name("Test Tenant").dbName("test_db")
-                .active(true).features("FEATURE1,FEATURE2,FEATURE3").subscriptionType("STANDARD").build();
+                .active(true).features("FEATURE1,FEATURE2,FEATURE3").subscriptionType("BASIC").build();
         multiFeatureTenant.setId(1L);
 
         when(tenantRepository.findByTenantId("test-tenant")).thenReturn(Optional.of(multiFeatureTenant));
@@ -668,7 +679,7 @@ class TenantServiceTest {
         Tenant tenantSingleFeature = Tenant.builder()
                 .tenantId("test-tenant").name("Test Tenant").dbName("test_tenant_db")
                 .active(true).expirationDate(LocalDate.now().plusYears(1))
-                .maxUsers(50).features("DASHBOARD").subscriptionType("STANDARD").build();
+                .maxUsers(50).features("DASHBOARD").subscriptionType("BASIC").build();
         tenantSingleFeature.setId(1L);
 
         when(tenantRepository.findByTenantId("test-tenant")).thenReturn(Optional.of(tenantSingleFeature));
@@ -685,7 +696,7 @@ class TenantServiceTest {
     @DisplayName("getStats: returns correct counts for active and inactive tenants")
     void testGetStats_BasicCounts() {
         Tenant inactive = Tenant.builder().tenantId("t2").name("Inactive").active(false)
-                .subscriptionType("STANDARD").build();
+                .subscriptionType("BASIC").build();
         inactive.setId(2L);
 
         when(tenantRepository.findAll()).thenReturn(List.of(tenant, inactive));
@@ -700,7 +711,7 @@ class TenantServiceTest {
     @DisplayName("getStats: counts expired tenants correctly")
     void testGetStats_ExpiredTenants() {
         Tenant expired = Tenant.builder().tenantId("t-exp").name("Expired").active(true)
-                .expirationDate(LocalDate.now().minusDays(1)).subscriptionType("STANDARD").build();
+                .expirationDate(LocalDate.now().minusDays(1)).subscriptionType("BASIC").build();
         expired.setId(3L);
 
         when(tenantRepository.findAll()).thenReturn(List.of(expired));
@@ -714,7 +725,7 @@ class TenantServiceTest {
     @DisplayName("getStats: counts tenants expiring within 7 days")
     void testGetStats_ExpiringSoon() {
         Tenant expiringSoon = Tenant.builder().tenantId("t-soon").name("Expiring").active(true)
-                .expirationDate(LocalDate.now().plusDays(3)).subscriptionType("STANDARD").build();
+                .expirationDate(LocalDate.now().plusDays(3)).subscriptionType("BASIC").build();
         expiringSoon.setId(4L);
 
         when(tenantRepository.findAll()).thenReturn(List.of(expiringSoon));
@@ -751,7 +762,7 @@ class TenantServiceTest {
 
         Tenant agentTenant = Tenant.builder()
                 .tenantId("shop-a").name("Shop A").vendorId(5L)
-                .active(true).subscriptionType("STANDARD").build();
+                .active(true).subscriptionType("BASIC").build();
         agentTenant.setId(10L);
 
         when(userRepository.findByUsernameTenantScoped(anyString())).thenReturn(Optional.of(agentUser));
@@ -804,12 +815,12 @@ class TenantServiceTest {
         agent.setId(5L);
 
         CreateTenantRequest req = CreateTenantRequest.builder()
-                .tenantId("new-shop").name("New Shop").subscriptionType("STANDARD")
+                .tenantId("new-shop").name("New Shop").subscriptionType("BASIC")
                 .vendorId(99L) // agent provides a vendorId but it should be ignored
                 .build();
 
         Tenant saved = Tenant.builder().tenantId("new-shop").name("New Shop")
-                .vendorId(5L).subscriptionType("STANDARD").active(true).build();
+                .vendorId(5L).subscriptionType("BASIC").active(true).build();
         saved.setId(100L);
 
         when(tenantRepository.findByTenantId("new-shop")).thenReturn(Optional.empty());

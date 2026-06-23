@@ -13,6 +13,7 @@ import com.tappy.pos.repository.inventory.InventoryRepository;
 import com.tappy.pos.repository.product.ProductRepository;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.service.notification.NotificationService;
 import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.model.entity.notification.Notification;
@@ -42,6 +43,30 @@ public class InventoryServiceImpl implements InventoryService {
     private final TenantContext tenantContext;
     private final ActivityLogService activityLogService;
     private final NotificationService notificationService;
+    private final com.tappy.pos.repository.product.ProductAttributeValueRepository productAttributeValueRepository;
+
+    /**
+     * Maps a page of Inventory to DTOs and flags the prescription-required drugs (pharmacy) in a
+     * single batch query — no per-row N+1. A no-op (all flags stay null/false) for every shop type
+     * that has no `prescription_required` attribute.
+     */
+    private Page<InventoryDTO> mapWithPrescriptionFlag(Page<Inventory> inventories) {
+        Page<InventoryDTO> dtos = inventories.map(InventoryDTO::fromEntity);
+        List<Long> productIds = dtos.getContent().stream()
+                .map(InventoryDTO::getProductId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        if (!productIds.isEmpty()) {
+            List<Long> rxIds = productAttributeValueRepository.findPrescriptionRequiredProductIds(productIds);
+            if (rxIds != null && !rxIds.isEmpty()) {
+                java.util.Set<Long> rxProductIds = new java.util.HashSet<>(rxIds);
+                dtos.getContent().forEach(d ->
+                        d.setPrescriptionRequired(rxProductIds.contains(d.getProductId())));
+            }
+        }
+        return dtos;
+    }
 
     @Override
     public InventoryDTO createInventory(CreateInventoryRequest request) {
@@ -134,7 +159,7 @@ public class InventoryServiceImpl implements InventoryService {
         log.info("Request: Get all inventory - page: {}, size: {}", pageable.getPageNumber(), pageable.getPageSize());
         Page<Inventory> inventories = inventoryRepository.findAllActive(pageable);
         log.info("Retrieved {} inventories from page {}", inventories.getContent().size(), pageable.getPageNumber());
-        return inventories.map(InventoryDTO::fromEntity);
+        return mapWithPrescriptionFlag(inventories);
     }
 
     @Override
@@ -174,7 +199,7 @@ public class InventoryServiceImpl implements InventoryService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.INVENTORY_ADJUSTED, "INVENTORY", String.valueOf(updated.getId()),
-                "Điều chỉnh tồn kho: " + updated.getProduct().getName() + " → " + updated.getQuantityInStock(), null);
+                "activity.inventory.adjusted", null, updated.getProduct().getName(), String.valueOf(updated.getQuantityInStock()));
 
         return InventoryDTO.fromEntity(updated);
     }
@@ -230,12 +255,12 @@ public class InventoryServiceImpl implements InventoryService {
             Long productId = Long.parseLong(keyword);
             Page<Inventory> inventories = inventoryRepository.searchByKeyword(productId, keyword, pageable);
             log.info("Found {} inventories matching keyword", inventories.getTotalElements());
-            return inventories.map(InventoryDTO::fromEntity);
+            return mapWithPrescriptionFlag(inventories);
         } catch (NumberFormatException e) {
             // Search by batch number or warehouse location instead
             Page<Inventory> inventories = inventoryRepository.searchByKeyword(0L, keyword, pageable);
             log.info("Found {} inventories matching keyword", inventories.getTotalElements());
-            return inventories.map(InventoryDTO::fromEntity);
+            return mapWithPrescriptionFlag(inventories);
         }
     }
 
@@ -313,7 +338,7 @@ public class InventoryServiceImpl implements InventoryService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.INVENTORY_ADJUSTED, "INVENTORY", String.valueOf(updated.getId()),
-                "Nhập kho: " + updated.getProduct().getName() + " +" + quantity + " → " + updated.getQuantityInStock(), null);
+                "activity.inventory.adjusted.in", null, updated.getProduct().getName(), String.valueOf(quantity), String.valueOf(updated.getQuantityInStock()));
 
         return InventoryDTO.fromEntity(updated);
     }
@@ -348,18 +373,18 @@ public class InventoryServiceImpl implements InventoryService {
         String actor = SecurityContextHolder.getContext().getAuthentication().getName();
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.INVENTORY_ADJUSTED, "INVENTORY", String.valueOf(updated.getId()),
-                "Xuất kho: " + updated.getProduct().getName() + " -" + quantity + " → " + updated.getQuantityInStock(), null);
+                "activity.inventory.adjusted.out", null, updated.getProduct().getName(), String.valueOf(quantity), String.valueOf(updated.getQuantityInStock()));
 
         // Fire low-stock notification only when stock first crosses the reorder threshold.
         if (stockBefore > updated.getReorderLevel() && updated.getQuantityInStock() <= updated.getReorderLevel()) {
             String productName = updated.getProduct().getName();
             notificationService.pushToRolesAsync(
                     Notification.NotificationType.LOW_STOCK,
-                    messageService.getMessage("notification.inventory.low_stock.title", productName),
-                    messageService.getMessage("notification.inventory.low_stock.message",
+                    LocalizedText.of("notification.inventory.low_stock.title", productName),
+                    LocalizedText.of("notification.inventory.low_stock.message",
                             updated.getQuantityInStock(), updated.getReorderLevel()),
                     "INVENTORY", updated.getId(),
-                    List.of(RoleEnum.SHOP_OWNER.getCode(), RoleEnum.MANAGER.getCode()),
+                    List.of(RoleEnum.SHOP_OWNER.getCode()),
                     tenantContext.getCurrentTenantId());
         }
 

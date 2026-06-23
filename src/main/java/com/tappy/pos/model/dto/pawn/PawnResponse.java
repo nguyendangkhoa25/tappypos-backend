@@ -24,6 +24,12 @@ public class PawnResponse {
     private BigDecimal interestRate;
     private String customerName;
     private String phone;
+    /** Borrower's CCCD/CMND (KYC), denormalised from the customer for the pawn receipt. */
+    private String customerIdNumber;
+    /** R2 public URL of the borrower's signature for the digital pawn contract (§4d). */
+    private String customerSignatureUrl;
+    /** When the borrower signed the contract; null = unsigned. */
+    private LocalDateTime signedAt;
     private LocalDateTime redeemDate;
     private BigDecimal interestAmount;
     private BigDecimal mainInterestAmount;

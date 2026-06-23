@@ -29,8 +29,17 @@ public class Customer extends TenantAwareEntity {
     @Email(message = "Email should be valid")
     private String email;
 
+    /** RETAIL (default) | WHOLESALE — wholesale customers (e.g. contractors) get product wholesale prices. */
+    @Builder.Default
+    @Column(name = "customer_type", length = 20, nullable = false)
+    private String customerType = "RETAIL";
+
     @Column(length = 500)
     private String notes;
+
+    /** CCCD/CMND for KYC on large gold buys / pawn (jewelry). Optional; blank for most shop types. */
+    @Column(name = "id_number", length = 50)
+    private String idNumber;
 
     // Social IDs
     @Column(name = "zalo_id")
@@ -83,6 +92,16 @@ public class Customer extends TenantAwareEntity {
     @Builder.Default
     @Column(name = "total_spent", nullable = false)
     private BigDecimal totalSpent = BigDecimal.ZERO;
+
+    /** Stamps on the customer's current (unfilled) stamp card — "mua N ly tặng 1". */
+    @Builder.Default
+    @Column(name = "stamp_count", nullable = false)
+    private Integer stampCount = 0;
+
+    /** Filled stamp cards converted to free-item rewards, not yet redeemed. */
+    @Builder.Default
+    @Column(name = "stamp_rewards", nullable = false)
+    private Integer stampRewards = 0;
 
     /** R2 public URL for the customer's avatar photo. */
     @Column(name = "avatar_url", length = 500)

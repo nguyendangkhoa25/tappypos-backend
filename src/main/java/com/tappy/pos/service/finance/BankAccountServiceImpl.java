@@ -6,6 +6,9 @@ import com.tappy.pos.model.entity.finance.BankAccount;
 import com.tappy.pos.repository.finance.BankAccountRepository;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.multitenant.TenantContext;
+import com.tappy.pos.config.AuthContext;
+import com.tappy.pos.model.enums.ActivityAction;
+import com.tappy.pos.service.audit.ActivityLogService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,6 +24,8 @@ public class BankAccountServiceImpl implements BankAccountService {
     private final BankAccountRepository repo;
     private final MessageService messageService;
     private final TenantContext tenantContext;
+    private final AuthContext authContext;
+    private final ActivityLogService activityLogService;
 
     @Override
     public List<BankAccountDTO> getAll() {
@@ -48,7 +53,11 @@ public class BankAccountServiceImpl implements BankAccountService {
         if (Boolean.TRUE.equals(req.getIsDefault())) {
             repo.clearOtherDefaults(-1L);
         }
-        return toDTO(repo.save(account));
+        BankAccount saved = repo.save(account);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.BANK_ACCOUNT_CREATED, "BANK_ACCOUNT", String.valueOf(saved.getId()),
+                "activity.bank.account.created", null);
+        return toDTO(saved);
     }
 
     @Override
@@ -67,7 +76,11 @@ public class BankAccountServiceImpl implements BankAccountService {
         } else {
             account.setIsDefault(false);
         }
-        return toDTO(repo.save(account));
+        BankAccount saved = repo.save(account);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.BANK_ACCOUNT_UPDATED, "BANK_ACCOUNT", String.valueOf(saved.getId()),
+                "activity.bank.account.updated", null);
+        return toDTO(saved);
     }
 
     @Override
@@ -76,6 +89,9 @@ public class BankAccountServiceImpl implements BankAccountService {
         BankAccount account = findActive(id);
         account.softDelete();
         repo.save(account);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.BANK_ACCOUNT_DELETED, "BANK_ACCOUNT", String.valueOf(id),
+                "activity.bank.account.deleted", null);
     }
 
     @Override
@@ -84,7 +100,11 @@ public class BankAccountServiceImpl implements BankAccountService {
         BankAccount account = findActive(id);
         repo.clearOtherDefaults(id);
         account.setIsDefault(true);
-        return toDTO(repo.save(account));
+        BankAccount saved = repo.save(account);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.BANK_ACCOUNT_SET_DEFAULT, "BANK_ACCOUNT", String.valueOf(saved.getId()),
+                "activity.bank.account.set.default", null);
+        return toDTO(saved);
     }
 
     private BankAccount findActive(Long id) {

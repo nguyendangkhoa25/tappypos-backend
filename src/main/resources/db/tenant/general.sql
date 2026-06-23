@@ -60,7 +60,7 @@ INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_def
   "showCashDetails": true,
   "paperWidth": "80mm",
   "autoClose": true
-}', TRUE, 'TRACKED'),
+}', TRUE),
     (current_setting('app.current_tenant', true), 'PRODUCT_STAMP', 'Tem sản phẩm', '{
   "showShopName": true,
   "showSku": true,
@@ -71,7 +71,7 @@ INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_def
   "showExpiry": false,
   "labelWidth": 60,
   "labelHeight": 38
-}', TRUE, 'TRACKED'),
+}', TRUE),
     (current_setting('app.current_tenant', true), 'INVENTORY_STAMP', 'Tem kho', '{
   "showShopName": true,
   "showSku": true,
@@ -82,7 +82,7 @@ INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_def
   "showExpiry": true,
   "labelWidth": 60,
   "labelHeight": 38
-}', TRUE, 'TRACKED')
+}', TRUE)
 ON CONFLICT (template_type, name, tenant_id) DO NOTHING;
 
 -- ── Shop configuration ────────────────────────────────────────

@@ -1,6 +1,9 @@
 package com.tappy.pos.service.goldprice;
 
 import com.tappy.pos.multitenant.TenantContext;
+import com.tappy.pos.config.AuthContext;
+import com.tappy.pos.model.enums.ActivityAction;
+import com.tappy.pos.service.audit.ActivityLogService;
 import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.goldprice.GoldPriceDTO;
@@ -33,11 +36,14 @@ import java.util.stream.Collectors;
 public class GoldPriceServiceImpl implements GoldPriceService {
 
     private final GoldPriceRepository goldPriceRepository;
+    private final com.tappy.pos.repository.tenant.GoldPriceHistoryRepository goldPriceHistoryRepository;
     private final CategoryRepository categoryRepository;
     private final ShopInfoRepository shopInfoRepository;
     private final ShopConfigService shopConfigService;
     private final MessageService messageService;
     private final TenantContext tenantContext;
+    private final ActivityLogService activityLogService;
+    private final AuthContext authContext;
 
     @Override
     public List<GoldPriceDTO> getAllPrices() {
@@ -83,7 +89,11 @@ public class GoldPriceServiceImpl implements GoldPriceService {
                 .build();
         price.setTenantId(tenantContext.getCurrentTenantId());
         GoldPrice saved = goldPriceRepository.save(price);
+        recordHistory(saved);
         log.info("Gold price created id={} for category '{}' by {}", saved.getId(), catName, currentUser);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.GOLD_PRICE_CREATED, "GOLD_PRICE", String.valueOf(saved.getId()),
+                "activity.gold.price.created", null, saved.getLabel());
 
         Map<Long, Category> catMap = buildCategoryMap();
         return toDTO(saved, catMap);
@@ -108,10 +118,49 @@ public class GoldPriceServiceImpl implements GoldPriceService {
         String currentUser = getCurrentUsername();
         price.setUpdatedBy(currentUser);
         GoldPrice saved = goldPriceRepository.save(price);
+        recordHistory(saved);
         log.info("Gold price {} updated by {}", id, currentUser);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.GOLD_PRICE_UPDATED, "GOLD_PRICE", String.valueOf(saved.getId()),
+                "activity.gold.price.updated", null, saved.getLabel());
 
         Map<Long, Category> catMap = buildCategoryMap();
         return toDTO(saved, catMap);
+    }
+
+    /** Snapshot a gold-price row into history (shop's own buy/sell chart). Best-effort. */
+    private void recordHistory(GoldPrice price) {
+        try {
+            com.tappy.pos.model.entity.tenant.GoldPriceHistory h =
+                    com.tappy.pos.model.entity.tenant.GoldPriceHistory.builder()
+                            .code(price.getCode())
+                            .label(price.getLabel())
+                            .buy(price.getBuy())
+                            .sell(price.getSell())
+                            .pawn(price.getPawn())
+                            .recordedAt(java.time.LocalDateTime.now())
+                            .build();
+            h.setTenantId(tenantContext.getCurrentTenantId());
+            goldPriceHistoryRepository.save(h);
+        } catch (Exception e) {
+            log.warn("Failed to record gold-price history for code {}: {}", price.getCode(), e.getMessage());
+        }
+    }
+
+    @Override
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public java.util.List<com.tappy.pos.model.dto.tenant.GoldPriceHistoryDTO> getPriceHistory(int days) {
+        int window = Math.min(Math.max(days, 1), 365);
+        java.time.LocalDateTime from = java.time.LocalDateTime.now().minusDays(window);
+        return goldPriceHistoryRepository.findSince(from).stream()
+                .map(h -> com.tappy.pos.model.dto.tenant.GoldPriceHistoryDTO.builder()
+                        .code(h.getCode())
+                        .label(h.getLabel())
+                        .buy(h.getBuy())
+                        .sell(h.getSell())
+                        .recordedAt(h.getRecordedAt())
+                        .build())
+                .toList();
     }
 
     @Override
@@ -124,6 +173,9 @@ public class GoldPriceServiceImpl implements GoldPriceService {
         price.softDelete();
         goldPriceRepository.save(price);
         log.info("Gold price {} soft-deleted by {}", id, getCurrentUsername());
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.GOLD_PRICE_DELETED, "GOLD_PRICE", String.valueOf(price.getId()),
+                "activity.gold.price.deleted", null, price.getLabel());
     }
 
     @Override

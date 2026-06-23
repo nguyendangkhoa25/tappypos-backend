@@ -125,22 +125,18 @@ class RoleServiceTest {
         doReturn(false).when(roleRepository).existsByName("MASTER_TENANT");
         doReturn(false).when(roleRepository).existsByName("AGENT");
         doReturn(false).when(roleRepository).existsByName("SHOP_OWNER");
-        doReturn(false).when(roleRepository).existsByName("MANAGER");
         doReturn(false).when(roleRepository).existsByName("CASHIER");
         doReturn(false).when(roleRepository).existsByName("ACCOUNTANT");
         doReturn(false).when(roleRepository).existsByName("WAREHOUSE_STAFF");
-        doReturn(false).when(roleRepository).existsByName("PAWN_OFFICER");
         doReturn(false).when(roleRepository).existsByName("SERVICE_STAFF");
         doReturn(false).when(roleRepository).existsByName("TECHNICIAN");
-        doReturn(false).when(roleRepository).existsByName("RECEPTIONIST");
-        doReturn(false).when(roleRepository).existsByName("CLEANER");
         doReturn(adminRole).when(roleRepository).save(any(Role.class));
 
         // When
         roleService.initializeDefaultRoles();
 
         // Then - verify save was called once for each role enum value
-        verify(roleRepository, times(12)).save(any(Role.class));
+        verify(roleRepository, times(8)).save(any(Role.class));
     }
 
     @Test
@@ -153,15 +149,11 @@ class RoleServiceTest {
         doReturn(true).when(roleRepository).existsByName("MASTER_TENANT");
         doReturn(true).when(roleRepository).existsByName("AGENT");
         doReturn(true).when(roleRepository).existsByName("SHOP_OWNER");
-        doReturn(true).when(roleRepository).existsByName("MANAGER");
         doReturn(true).when(roleRepository).existsByName("CASHIER");
         doReturn(true).when(roleRepository).existsByName("ACCOUNTANT");
         doReturn(true).when(roleRepository).existsByName("WAREHOUSE_STAFF");
-        doReturn(true).when(roleRepository).existsByName("PAWN_OFFICER");
         doReturn(true).when(roleRepository).existsByName("SERVICE_STAFF");
         doReturn(true).when(roleRepository).existsByName("TECHNICIAN");
-        doReturn(true).when(roleRepository).existsByName("RECEPTIONIST");
-        doReturn(true).when(roleRepository).existsByName("CLEANER");
 
         // When
         roleService.initializeDefaultRoles();

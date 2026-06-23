@@ -238,7 +238,10 @@ class FeedbackServiceImplTest {
 
         feedbackService.create(req);
 
-        verify(notificationService).pushToMasterUsers(anyString(), anyString(), eq("FEEDBACK"), eq(5L));
+        verify(notificationService).pushToMasterUsers(
+                any(com.tappy.pos.model.i18n.LocalizedText.class),
+                any(com.tappy.pos.model.i18n.LocalizedText.class),
+                eq("FEEDBACK"), eq(5L));
     }
 
     @Test
@@ -273,10 +276,15 @@ class FeedbackServiceImplTest {
 
         feedbackService.create(req);
 
-        verify(notificationService).pushToMasterUsers(anyString(), anyString(), eq("FEEDBACK"), eq(7L));
+        verify(notificationService).pushToMasterUsers(
+                any(com.tappy.pos.model.i18n.LocalizedText.class),
+                any(com.tappy.pos.model.i18n.LocalizedText.class),
+                eq("FEEDBACK"), eq(7L));
         verify(notificationService).pushSystem(
                 eq("agent-user"), eq(Notification.NotificationType.SYSTEM),
-                anyString(), anyString(), eq("FEEDBACK"), eq(7L));
+                any(com.tappy.pos.model.i18n.LocalizedText.class),
+                any(com.tappy.pos.model.i18n.LocalizedText.class),
+                eq("FEEDBACK"), eq(7L));
     }
 
     @Test
@@ -307,6 +315,8 @@ class FeedbackServiceImplTest {
 
         feedbackService.create(req);
 
-        verify(notificationService, never()).pushSystem(anyString(), any(), anyString(), anyString(), anyString(), any());
+        verify(notificationService, never()).pushSystem(anyString(), any(),
+                any(com.tappy.pos.model.i18n.LocalizedText.class),
+                any(com.tappy.pos.model.i18n.LocalizedText.class), anyString(), any());
     }
 }

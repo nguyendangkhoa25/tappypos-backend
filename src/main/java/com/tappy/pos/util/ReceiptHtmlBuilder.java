@@ -30,16 +30,20 @@ public class ReceiptHtmlBuilder {
 
     /** Build receipt HTML from a completed Order entity + shop info using default config. */
     public static String build(Order order, ShopInfo shopInfo) {
-        return build(order, shopInfo, ReceiptTemplateConfig.defaults(), null);
+        return build(order, order.getTableLabel(), shopInfo, ReceiptTemplateConfig.defaults(), null);
     }
 
     /** Build receipt HTML from a completed Order entity + shop info with custom config. */
     public static String build(Order order, ShopInfo shopInfo, ReceiptTemplateConfig cfg) {
-        return build(order, shopInfo, cfg, null);
+        return build(order, order.getTableLabel(), shopInfo, cfg, null);
     }
 
-    /** Build receipt HTML from a completed Order entity + shop info with custom config and optional VietQR bank account. */
-    public static String build(Order order, ShopInfo shopInfo, ReceiptTemplateConfig cfg, BankAccount bankAccount) {
+    /**
+     * Build receipt HTML from a completed Order entity + shop info with custom config and optional VietQR
+     * bank account. {@code tableLabel} is passed in already resolved (rendered in the reader's locale),
+     * because a system table label is stored as key+args (V039) and the entity's literal column is null.
+     */
+    public static String build(Order order, String tableLabel, ShopInfo shopInfo, ReceiptTemplateConfig cfg, BankAccount bankAccount) {
         List<ReceiptItem> items = order.getOrderItems().stream()
                 .map(oi -> new ReceiptItem(
                         oi.getProductName(),
@@ -48,7 +52,8 @@ public class ReceiptHtmlBuilder {
                         oi.getUnitPrice(),
                         oi.getAmount(),
                         oi.getTaxPercentage() != null ? oi.getTaxPercentage() : BigDecimal.ZERO,
-                        oi.getNote()
+                        oi.getNote(),
+                        formatModifiers(oi.getModifiers())
                 ))
                 .toList();
 
@@ -68,9 +73,11 @@ public class ReceiptHtmlBuilder {
                 cfg.isShowOrderNumber() ? order.getOrderNumber() : null,
                 cfg.isShowDateTime() ? displayDate : null,
                 cfg.isShowCustomer() ? customerName : null,
-                cfg.isShowTable() ? order.getTableLabel() : null,
+                cfg.isShowTable() ? tableLabel : null,
                 items,
                 order.getDiscountAmount(),
+                order.getServiceChargeRate(),
+                order.getServiceChargeAmount(),
                 order.getTotalAmount(),
                 order.getPaymentMethod(),
                 cfg.isShowCashDetails() ? order.getAmountPaid() : null,
@@ -80,8 +87,39 @@ public class ReceiptHtmlBuilder {
                 cfg.getFooterText(),
                 cfg.getPaperWidth(),
                 cfg.isAutoClose(),
-                vietQrBlock
+                vietQrBlock,
+                order.isPreorder()
+                        ? new PreorderInfo(
+                                order.getDepositAmount(),
+                                (order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO)
+                                        .subtract(order.getAmountPaid() != null ? order.getAmountPaid() : BigDecimal.ZERO)
+                                        .max(BigDecimal.ZERO),
+                                order.getPickupTime())
+                        : null,
+                buildPrescriptionBlock(order.getPrescriberName(), order.getPrescriptionNote())
         );
+    }
+
+    /**
+     * Pharmacy dispensing footer (PHARMACY §4d): prescriber + note, shown on the "Hóa đơn thuốc"
+     * receipt only when recorded. Returns null for every order without a prescription record, so
+     * non-pharmacy receipts are unchanged.
+     */
+    private static String buildPrescriptionBlock(String prescriberName, String prescriptionNote) {
+        boolean hasName = prescriberName != null && !prescriberName.isBlank();
+        boolean hasNote = prescriptionNote != null && !prescriptionNote.isBlank();
+        if (!hasName && !hasNote) return null;
+        StringBuilder b = new StringBuilder();
+        b.append("  <div style=\"border-top:1px dashed #000;margin-top:6px;padding-top:4px\">\n");
+        b.append("    <p class=\"center meta\" style=\"font-weight:bold\">ĐƠN THUỐC KÊ ĐƠN</p>\n");
+        if (hasName) {
+            b.append("    <p class=\"meta\">Bác sĩ kê đơn: ").append(escHtml(prescriberName)).append("</p>\n");
+        }
+        if (hasNote) {
+            b.append("    <p class=\"meta\">Ghi chú: ").append(escHtml(prescriptionNote)).append("</p>\n");
+        }
+        b.append("  </div>\n");
+        return b.toString();
     }
 
     /** Build receipt HTML from a pre-checkout preview request + shop info. */
@@ -104,7 +142,8 @@ public class ReceiptHtmlBuilder {
                         i.getUnitPrice(),
                         i.getLineTotal(),
                         i.getTaxRate() != null ? i.getTaxRate() : BigDecimal.TEN,
-                        null   // preview requests don't carry per-item notes
+                        null,  // preview requests don't carry per-item notes
+                        null   // ...nor modifiers
                 ))
                 .toList();
 
@@ -122,6 +161,8 @@ public class ReceiptHtmlBuilder {
                 cfg.isShowTable() ? req.getTableLabel() : null,
                 items,
                 req.getTotalDiscount(),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
                 req.getTotal(),
                 req.getPaymentMethod(),
                 cfg.isShowCashDetails() ? req.getAmountPaid() : null,
@@ -131,7 +172,9 @@ public class ReceiptHtmlBuilder {
                 cfg.getFooterText(),
                 cfg.getPaperWidth(),
                 cfg.isAutoClose(),
-                vietQrBlock
+                vietQrBlock,
+                null,  // previews are not pre-orders
+                null   // ...nor do previews carry a prescription record
         );
     }
 
@@ -147,6 +190,8 @@ public class ReceiptHtmlBuilder {
             String tableLabel,
             List<ReceiptItem> items,
             BigDecimal totalDiscount,
+            BigDecimal serviceChargeRate,
+            BigDecimal serviceChargeAmount,
             BigDecimal total,
             String paymentMethod,
             BigDecimal amountPaid,
@@ -156,7 +201,9 @@ public class ReceiptHtmlBuilder {
             String footerText,
             String paperWidth,
             boolean autoClose,
-            String vietQrBlock
+            String vietQrBlock,
+            PreorderInfo preorder,
+            String prescriptionBlock
     ) {
         String width = (paperWidth != null && !paperWidth.isBlank()) ? paperWidth : "80mm";
 
@@ -177,10 +224,13 @@ public class ReceiptHtmlBuilder {
             String noteHtml = (item.note() != null && !item.note().isBlank())
                     ? "<br/><span style=\"color:#b45309;font-style:italic;font-size:9px\">&rarr; " + escHtml(item.note()) + "</span>"
                     : "";
+            String modifiersHtml = (item.modifiers() != null && !item.modifiers().isBlank())
+                    ? "<br/><small style=\"color:#555;font-size:9px\">+ " + escHtml(item.modifiers()) + "</small>"
+                    : "";
 
             if (showTaxBreakdown) {
                 rows.append("<tr>")
-                        .append("<td>").append(escHtml(item.productName())).append(skuHtml).append(noteHtml).append("</td>")
+                        .append("<td>").append(escHtml(item.productName())).append(skuHtml).append(modifiersHtml).append(noteHtml).append("</td>")
                         .append("<td style=\"text-align:center\">").append(item.quantity()).append("</td>")
                         .append("<td style=\"text-align:right\">").append(fmt(item.unitPrice())).append("</td>")
                         .append("<td style=\"text-align:center\">").append(rate).append("%</td>")
@@ -189,7 +239,7 @@ public class ReceiptHtmlBuilder {
                         .append("</tr>\n");
             } else {
                 rows.append("<tr>")
-                        .append("<td>").append(escHtml(item.productName())).append(skuHtml).append(noteHtml).append("</td>")
+                        .append("<td>").append(escHtml(item.productName())).append(skuHtml).append(modifiersHtml).append(noteHtml).append("</td>")
                         .append("<td style=\"text-align:center\">").append(item.quantity()).append("</td>")
                         .append("<td style=\"text-align:right\">").append(fmt(item.unitPrice())).append("</td>")
                         .append("<td style=\"text-align:right\">").append(fmt(item.lineTotal())).append("</td>")
@@ -218,7 +268,39 @@ public class ReceiptHtmlBuilder {
             }
         }
 
+        // FnB service charge (phí dịch vụ) — own line above the grand total.
+        StringBuilder serviceChargeRow = new StringBuilder();
+        if (serviceChargeAmount != null && serviceChargeAmount.compareTo(BigDecimal.ZERO) > 0) {
+            int colspan = showTaxBreakdown ? 5 : 3;
+            BigDecimal scRate = serviceChargeRate != null ? serviceChargeRate : BigDecimal.ZERO;
+            serviceChargeRow.append("<tr>")
+                    .append("<td colspan=\"").append(colspan).append("\">Phí dịch vụ ")
+                    .append(scRate.stripTrailingZeros().toPlainString()).append("%</td>")
+                    .append("<td style=\"text-align:right\">").append(fmt(serviceChargeAmount)).append("</td>")
+                    .append("</tr>\n");
+        }
+
         StringBuilder cashRows = new StringBuilder();
+        // Pre-order (đơn đặt): show deposit taken, balance still due, and pickup time.
+        if (preorder != null) {
+            int colspan = showTaxBreakdown ? 5 : 3;
+            cashRows.append("<tr><td colspan=\"").append(colspan + 1)
+                    .append("\" style=\"text-align:center;font-weight:bold;padding-top:4px\">— ĐƠN ĐẶT TRƯỚC —</td></tr>\n");
+            cashRows.append("<tr>")
+                    .append("<td colspan=\"").append(colspan).append("\">Đã cọc</td>")
+                    .append("<td style=\"text-align:right\">").append(fmt(preorder.deposit())).append("</td>")
+                    .append("</tr>\n");
+            cashRows.append("<tr>")
+                    .append("<td colspan=\"").append(colspan).append("\"><b>Còn lại</b></td>")
+                    .append("<td style=\"text-align:right;font-weight:bold\">").append(fmt(preorder.balance())).append("</td>")
+                    .append("</tr>\n");
+            if (preorder.pickup() != null) {
+                cashRows.append("<tr>")
+                        .append("<td colspan=\"").append(colspan).append("\">Giờ lấy</td>")
+                        .append("<td style=\"text-align:right\">").append(preorder.pickup().format(DATE_FMT)).append("</td>")
+                        .append("</tr>\n");
+            }
+        }
         if ("CASH".equalsIgnoreCase(paymentMethod) && amountPaid != null) {
             int colspan = showTaxBreakdown ? 5 : 3;
             BigDecimal change = changeAmount != null ? changeAmount : BigDecimal.ZERO;
@@ -305,6 +387,7 @@ public class ReceiptHtmlBuilder {
                 rows +
                 discountRow +
                 taxRows +
+                serviceChargeRow +
                 "      <tr class=\"total-row\">\n" +
                 "        <td colspan=\"" + totalColspan + "\">TỔNG CỘNG</td>\n" +
                 "        <td style=\"text-align:right\">" + fmt(total) + "</td>\n" +
@@ -312,6 +395,7 @@ public class ReceiptHtmlBuilder {
                 cashRows +
                 "    </tbody>\n" +
                 "  </table>\n" +
+                (prescriptionBlock != null ? prescriptionBlock : "") +
                 (vietQrBlock != null ? vietQrBlock : "") +
                 footerLines +
                 autoCloseScript +
@@ -373,6 +457,30 @@ public class ReceiptHtmlBuilder {
             BigDecimal unitPrice,
             BigDecimal lineTotal,
             BigDecimal taxRate,
-            String note
+            String note,
+            String modifiers
     ) {}
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper RECEIPT_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /** Turn the modifiers JSON ([{groupName, optionName, priceDelta}]) into "Size L · Trân châu" or null. */
+    private static String formatModifiers(String modifiersJson) {
+        if (modifiersJson == null || modifiersJson.isBlank()) return null;
+        try {
+            java.util.List<com.tappy.pos.model.dto.modifier.ChosenModifierDTO> list = RECEIPT_MAPPER.readValue(modifiersJson,
+                    RECEIPT_MAPPER.getTypeFactory().constructCollectionType(
+                            java.util.List.class, com.tappy.pos.model.dto.modifier.ChosenModifierDTO.class));
+            if (list.isEmpty()) return null;
+            return list.stream()
+                    .map(com.tappy.pos.model.dto.modifier.ChosenModifierDTO::getOptionName)
+                    .filter(java.util.Objects::nonNull)
+                    .collect(java.util.stream.Collectors.joining(" · "));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Pre-order (đơn đặt) extras printed on the slip: deposit, balance due, pickup time. */
+    public record PreorderInfo(BigDecimal deposit, BigDecimal balance, LocalDateTime pickup) {}
 }

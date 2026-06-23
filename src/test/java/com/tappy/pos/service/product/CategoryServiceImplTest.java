@@ -1,5 +1,9 @@
 package com.tappy.pos.service.product;
 
+import com.tappy.pos.service.audit.ActivityLogService;
+
+import com.tappy.pos.config.AuthContext;
+
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.dto.category.CategoryDTO;
 import com.tappy.pos.model.dto.category.CreateCategoryRequest;
@@ -47,6 +51,12 @@ class CategoryServiceImplTest {
 
     @Mock
     private MessageService messageService;
+
+    @Mock
+    private AuthContext authContext;
+
+    @Mock
+    private ActivityLogService activityLogService;
 
     @InjectMocks
     private CategoryServiceImpl categoryService;

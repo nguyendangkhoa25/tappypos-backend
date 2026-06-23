@@ -111,6 +111,10 @@ public interface PawnRepository extends JpaRepository<PawnEntity, Long> {
     @Query("SELECT COUNT(p.pawnId) FROM PawnEntity p WHERE p.pawnStatus = 'PAWNED' AND (p.visible IS NULL OR p.visible = true)")
     Long countActivePawnContracts();
 
+    /** Active (PAWNED) contracts with no borrower signature yet — for the "Hợp đồng chưa ký" dashboard count (§4d). */
+    @Query("SELECT COUNT(p.pawnId) FROM PawnEntity p WHERE p.pawnStatus = 'PAWNED' AND (p.visible IS NULL OR p.visible = true) AND p.signedAt IS NULL")
+    Long countUnsignedActivePawnContracts();
+
     @Query("SELECT COALESCE(SUM(p.pawnAmount), 0) FROM PawnEntity p WHERE p.pawnStatus = 'PAWNED' AND (p.visible IS NULL OR p.visible = true)")
     java.math.BigDecimal sumActivePawnAmount();
 
@@ -227,6 +231,70 @@ public interface PawnRepository extends JpaRepository<PawnEntity, Long> {
             @Param("excludeVisible") boolean excludeVisible,
             Pageable pageable);
 
+    @Query("SELECT p.customerId, p.customerName, " +
+            "COUNT(DISTINCT p.pawnId), " +
+            "COALESCE(SUM(p.pawnAmount), 0), " +
+            "COALESCE(SUM(p.interestAmount), 0) " +
+            "FROM PawnEntity p " +
+            "WHERE p.pawnStatus = 'PAWNED' " +
+            "AND (:excludeVisible = false OR p.visible IS NULL OR p.visible = true) " +
+            "AND p.pawnDate BETWEEN :fromDate AND :toDate " +
+            "GROUP BY p.customerId, p.customerName " +
+            "ORDER BY COUNT(DISTINCT p.pawnId) DESC")
+    List<Object[]> findTopCustomersByPawnCount(
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            @Param("excludeVisible") boolean excludeVisible,
+            Pageable pageable);
+
+    @Query("SELECT p.customerId, p.customerName, " +
+            "COUNT(DISTINCT p.pawnId), " +
+            "COALESCE(SUM(p.pawnAmount), 0), " +
+            "COALESCE(SUM(p.interestAmount), 0) " +
+            "FROM PawnEntity p " +
+            "WHERE p.pawnStatus = 'REDEEMED' " +
+            "AND (:excludeVisible = false OR p.visible IS NULL OR p.visible = true) " +
+            "AND p.redeemDate BETWEEN :fromDate AND :toDate " +
+            "GROUP BY p.customerId, p.customerName " +
+            "ORDER BY COALESCE(SUM(p.pawnAmount), 0) DESC")
+    List<Object[]> findTopCustomersByCompletedAmount(
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            @Param("excludeVisible") boolean excludeVisible,
+            Pageable pageable);
+
+    @Query("SELECT p.customerId, p.customerName, " +
+            "COUNT(DISTINCT p.pawnId), " +
+            "COALESCE(SUM(p.pawnAmount), 0), " +
+            "COALESCE(SUM(p.interestAmount), 0) " +
+            "FROM PawnEntity p " +
+            "WHERE p.pawnStatus = 'REDEEMED' " +
+            "AND (:excludeVisible = false OR p.visible IS NULL OR p.visible = true) " +
+            "AND p.redeemDate BETWEEN :fromDate AND :toDate " +
+            "GROUP BY p.customerId, p.customerName " +
+            "ORDER BY COUNT(DISTINCT p.pawnId) DESC")
+    List<Object[]> findTopCustomersByCompletedCount(
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            @Param("excludeVisible") boolean excludeVisible,
+            Pageable pageable);
+
+    @Query("SELECT p.customerId, p.customerName, " +
+            "COUNT(DISTINCT p.pawnId), " +
+            "COALESCE(SUM(p.pawnAmount), 0), " +
+            "COALESCE(SUM(p.interestAmount), 0) " +
+            "FROM PawnEntity p " +
+            "WHERE p.pawnStatus = 'REDEEMED' " +
+            "AND (:excludeVisible = false OR p.visible IS NULL OR p.visible = true) " +
+            "AND p.redeemDate BETWEEN :fromDate AND :toDate " +
+            "GROUP BY p.customerId, p.customerName " +
+            "ORDER BY COALESCE(SUM(p.interestAmount), 0) DESC")
+    List<Object[]> findTopCustomersByInterestAmount(
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            @Param("excludeVisible") boolean excludeVisible,
+            Pageable pageable);
+
     @Query("SELECT COALESCE(SUM(p.pawnAmount), 0) as amount, COUNT(DISTINCT p.pawnId) as totalCount FROM PawnEntity p WHERE p.pawnStatus = :pawnStatus AND (:excludeVisibleItem = false OR p.visible IS NULL OR p.visible = true) AND p.updatedAt BETWEEN :fromDate AND :toDate")
     List<Object[]> sumByPawnStatusAndUpdatedAtBetween(@Param("pawnStatus") PawnStatus pawnStatus, @Param("fromDate") LocalDateTime fromDate, @Param("toDate") LocalDateTime toDate, @Param("excludeVisibleItem") boolean excludeVisibleItem);
 
@@ -267,4 +335,20 @@ public interface PawnRepository extends JpaRepository<PawnEntity, Long> {
 
     @Query("SELECT COUNT(p) FROM PawnEntity p WHERE p.customerId IS NULL AND p.pawnDate BETWEEN :fromDate AND :toDate AND (:excludeVisibleItem = false OR p.visible IS NULL OR p.visible = true)")
     long countWalkInPawns(@Param("fromDate") LocalDateTime fromDate, @Param("toDate") LocalDateTime toDate, @Param("excludeVisibleItem") boolean excludeVisibleItem);
+
+    /**
+     * Active contracts whose due date falls in the window, joined to the borrower's customer record
+     * for the phone number — used by the scheduler to send each borrower a Zalo ZNS due-date reminder.
+     * Excludes walk-in pawns (no customer / the canonical walk-in phone) and blank phones.
+     * Projection: [pawnId(Long), customerName(String), phone(String), pawnDueDate(LocalDateTime), pawnAmount(BigDecimal)].
+     */
+    @Query("SELECT p.pawnId, p.customerName, c.phone, p.pawnDueDate, p.pawnAmount " +
+            "FROM PawnEntity p, Customer c " +
+            "WHERE c.id = p.customerId " +
+            "AND p.pawnStatus = :pawnStatus " +
+            "AND (p.visible IS NULL OR p.visible = true) " +
+            "AND p.pawnDueDate BETWEEN :fromDate AND :toDate " +
+            "AND c.phone IS NOT NULL AND c.phone <> '' AND c.phone <> '0000000000'")
+    List<Object[]> findDueForCustomerReminder(@Param("pawnStatus") PawnStatus pawnStatus,
+            @Param("fromDate") LocalDateTime fromDate, @Param("toDate") LocalDateTime toDate);
 }

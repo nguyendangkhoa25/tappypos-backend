@@ -9,6 +9,11 @@ import com.tappy.pos.model.dto.auth.UserProfile;
 import com.tappy.pos.model.entity.auth.Role;
 import com.tappy.pos.model.entity.auth.User;
 import com.tappy.pos.repository.auth.UserRepository;
+import com.tappy.pos.multitenant.TenantContext;
+import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.service.storage.R2CleanupService;
+import com.tappy.pos.service.storage.R2StorageService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -16,8 +21,15 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.multipart.MultipartFile;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.Set;
@@ -27,6 +39,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import com.tappy.pos.service.MessageService;
@@ -43,6 +58,18 @@ class ProfileServiceImplTest {
 
     @Mock
     private MessageService messageService;
+
+    @Mock
+    private R2StorageService r2StorageService;
+
+    @Mock
+    private R2CleanupService r2CleanupService;
+
+    @Mock
+    private ActivityLogService activityLogService;
+
+    @Mock
+    private TenantContext tenantContext;
 
     @InjectMocks
     private ProfileServiceImpl profileService;
@@ -68,6 +95,19 @@ class ProfileServiceImplTest {
                 .build();
         user.setId(1L);
         user.setCreatedAt(LocalDateTime.now());
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    /** Build a small valid PNG so Thumbnails can process it. */
+    private MultipartFile validImage(String contentType) throws Exception {
+        BufferedImage img = new BufferedImage(100, 100, BufferedImage.TYPE_INT_RGB);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ImageIO.write(img, "png", baos);
+        return new MockMultipartFile("file", "avatar.png", contentType, baos.toByteArray());
     }
 
     @Test
@@ -855,6 +895,180 @@ class ProfileServiceImplTest {
         when(messageService.getMessage(anyString(), anyString())).thenReturn("Not found");
 
         assertThatThrownBy(() -> profileService.updatePreferences("nobody", "{}"))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── uploadAvatar ──────────────────────────────────────────────────────────
+
+    private void authenticate(String username) {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(username, "pw"));
+    }
+
+    @Test
+    @DisplayName("uploadAvatar: success — resizes, uploads, logs and returns profile")
+    void testUploadAvatar_Success() throws Exception {
+        authenticate("testuser");
+        MultipartFile file = validImage("image/png");
+
+        when(userRepository.findByUsernameActive("testuser")).thenReturn(Optional.of(user));
+        when(r2StorageService.keyFromUrl(any())).thenReturn(null);
+        when(r2StorageService.upload(anyString(), any(byte[].class), eq("image/jpeg")))
+                .thenReturn("https://cdn.example.com/avatars/1.jpg");
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(tenantContext.getCurrentTenantId()).thenReturn("shop1");
+
+        UserProfile result = profileService.uploadAvatar("testuser", file);
+
+        assertThat(result).isNotNull();
+        assertThat(user.getAvatarUrl()).isEqualTo("https://cdn.example.com/avatars/1.jpg");
+        verify(r2StorageService).upload(eq("avatars/1.jpg"), any(byte[].class), eq("image/jpeg"));
+        verify(r2CleanupService).deleteAsync(any());
+        verify(activityLogService).logAsync(eq("shop1"), eq("testuser"), any(), any(), eq("USER"),
+                anyString(), anyString(), any(), eq("testuser"));
+    }
+
+    @Test
+    @DisplayName("uploadAvatar: master context uses 'master' tenant id")
+    void testUploadAvatar_MasterTenant() throws Exception {
+        authenticate("testuser");
+        MultipartFile file = validImage("image/jpeg");
+
+        when(userRepository.findByUsernameActive("testuser")).thenReturn(Optional.of(user));
+        when(r2StorageService.keyFromUrl(any())).thenReturn("avatars/old.jpg");
+        when(r2StorageService.upload(anyString(), any(byte[].class), eq("image/jpeg")))
+                .thenReturn("https://cdn.example.com/avatars/1.jpg");
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(tenantContext.getCurrentTenantId()).thenReturn(null);
+
+        profileService.uploadAvatar("testuser", file);
+
+        verify(r2CleanupService).deleteAsync("avatars/old.jpg");
+        verify(activityLogService).logAsync(eq("master"), eq("testuser"), any(), any(), eq("USER"),
+                anyString(), anyString(), any(), eq("testuser"));
+    }
+
+    @Test
+    @DisplayName("uploadAvatar: blank upload URL sets avatarUrl to null")
+    void testUploadAvatar_BlankUrl_SetsNull() throws Exception {
+        authenticate("testuser");
+        MultipartFile file = validImage("image/png");
+
+        when(userRepository.findByUsernameActive("testuser")).thenReturn(Optional.of(user));
+        when(r2StorageService.keyFromUrl(any())).thenReturn(null);
+        when(r2StorageService.upload(anyString(), any(byte[].class), eq("image/jpeg"))).thenReturn("");
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(tenantContext.getCurrentTenantId()).thenReturn("shop1");
+
+        profileService.uploadAvatar("testuser", file);
+
+        assertThat(user.getAvatarUrl()).isNull();
+    }
+
+    @Test
+    @DisplayName("uploadAvatar: throws BadRequestException when content type is null")
+    void testUploadAvatar_NullContentType() {
+        MultipartFile file = new MockMultipartFile("file", "x.bin", null, new byte[]{1, 2, 3});
+        when(messageService.getMessage(anyString())).thenReturn("Invalid type");
+
+        assertThatThrownBy(() -> profileService.uploadAvatar("testuser", file))
+                .isInstanceOf(BadRequestException.class);
+        verify(userRepository, never()).findByUsernameActive(anyString());
+    }
+
+    @Test
+    @DisplayName("uploadAvatar: throws BadRequestException when content type is unsupported")
+    void testUploadAvatar_UnsupportedContentType() {
+        MultipartFile file = new MockMultipartFile("file", "x.gif", "image/gif", new byte[]{1, 2, 3});
+        when(messageService.getMessage(anyString())).thenReturn("Invalid type");
+
+        assertThatThrownBy(() -> profileService.uploadAvatar("testuser", file))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("uploadAvatar: throws ResourceNotFoundException when user not found")
+    void testUploadAvatar_UserNotFound() throws Exception {
+        MultipartFile file = validImage("image/png");
+        when(userRepository.findByUsernameActive("testuser")).thenReturn(Optional.empty());
+        when(messageService.getMessage(anyString(), anyString())).thenReturn("Not found");
+
+        assertThatThrownBy(() -> profileService.uploadAvatar("testuser", file))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("uploadAvatar: throws BadRequestException when image processing fails")
+    void testUploadAvatar_ProcessingFails() {
+        // Declared as image/png but bytes are not a valid image → Thumbnails throws IOException
+        MultipartFile file = new MockMultipartFile("file", "bad.png", "image/png", new byte[]{0, 1, 2, 3, 4});
+        when(userRepository.findByUsernameActive("testuser")).thenReturn(Optional.of(user));
+        when(r2StorageService.keyFromUrl(any())).thenReturn(null);
+        when(messageService.getMessage(anyString())).thenReturn("Process failed");
+
+        assertThatThrownBy(() -> profileService.uploadAvatar("testuser", file))
+                .isInstanceOf(BadRequestException.class);
+        verify(r2StorageService, never()).upload(anyString(), any(byte[].class), anyString());
+    }
+
+    // ── deleteAvatar ──────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("deleteAvatar: clears avatarUrl, cleans up R2 and logs activity")
+    void testDeleteAvatar_Success() {
+        authenticate("testuser");
+        user.setAvatarUrl("https://cdn.example.com/avatars/1.jpg");
+
+        when(userRepository.findByUsernameActive("testuser")).thenReturn(Optional.of(user));
+        when(r2StorageService.keyFromUrl("https://cdn.example.com/avatars/1.jpg")).thenReturn("avatars/1.jpg");
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(tenantContext.getCurrentTenantId()).thenReturn("shop1");
+
+        profileService.deleteAvatar("testuser");
+
+        assertThat(user.getAvatarUrl()).isNull();
+        verify(r2CleanupService).deleteAsync("avatars/1.jpg");
+        verify(activityLogService).logAsync(eq("shop1"), eq("testuser"), any(), any(), eq("USER"),
+                anyString(), anyString(), any(), eq("testuser"));
+    }
+
+    @Test
+    @DisplayName("deleteAvatar: master context uses 'master' tenant id")
+    void testDeleteAvatar_MasterTenant() {
+        authenticate("testuser");
+        user.setAvatarUrl("https://cdn.example.com/avatars/1.jpg");
+
+        when(userRepository.findByUsernameActive("testuser")).thenReturn(Optional.of(user));
+        when(r2StorageService.keyFromUrl(anyString())).thenReturn("avatars/1.jpg");
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(tenantContext.getCurrentTenantId()).thenReturn(null);
+
+        profileService.deleteAvatar("testuser");
+
+        verify(activityLogService).logAsync(eq("master"), eq("testuser"), any(), any(), eq("USER"),
+                anyString(), anyString(), any(), eq("testuser"));
+    }
+
+    @Test
+    @DisplayName("deleteAvatar: no-op when user has no avatar")
+    void testDeleteAvatar_NoAvatar() {
+        user.setAvatarUrl(null);
+        when(userRepository.findByUsernameActive("testuser")).thenReturn(Optional.of(user));
+        when(r2StorageService.keyFromUrl(any())).thenReturn(null);
+
+        profileService.deleteAvatar("testuser");
+
+        verify(userRepository, never()).save(any(User.class));
+        verify(r2CleanupService, never()).deleteAsync(anyString());
+    }
+
+    @Test
+    @DisplayName("deleteAvatar: throws ResourceNotFoundException when user not found")
+    void testDeleteAvatar_UserNotFound() {
+        when(userRepository.findByUsernameActive("testuser")).thenReturn(Optional.empty());
+        when(messageService.getMessage(anyString(), anyString())).thenReturn("Not found");
+
+        assertThatThrownBy(() -> profileService.deleteAvatar("testuser"))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 }

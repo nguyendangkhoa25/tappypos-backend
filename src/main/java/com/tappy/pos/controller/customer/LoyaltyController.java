@@ -83,6 +83,13 @@ public class LoyaltyController {
         return ResponseEntity.ok(ApiResponse.success(loyaltyService.getTransactionHistory(customerId, pageable)));
     }
 
+    @PostMapping("/customers/{customerId}/redeem-stamp")
+    public ResponseEntity<ApiResponse<CustomerLoyaltySummaryDTO>> redeemStamp(@PathVariable Long customerId) {
+        log.info("Endpoint: POST /loyalty/customers/{}/redeem-stamp", customerId);
+        return ResponseEntity.ok(ApiResponse.success(loyaltyService.redeemStampReward(customerId),
+                "Stamp reward redeemed"));
+    }
+
     @PostMapping("/customers/{customerId}/adjust")
     public ResponseEntity<ApiResponse<LoyaltyTransactionDTO>> adjustPoints(
             @PathVariable Long customerId,

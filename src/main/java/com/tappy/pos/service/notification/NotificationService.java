@@ -1,11 +1,13 @@
 package com.tappy.pos.service.notification;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tappy.pos.config.FeatureContext;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.model.dto.notification.CreateNotificationRequest;
 import com.tappy.pos.model.dto.notification.NotificationDTO;
 import com.tappy.pos.model.entity.notification.Notification;
+import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.model.entity.notification.NotificationPreference;
 import com.tappy.pos.model.entity.tenant.Tenant;
 import com.tappy.pos.model.enums.RoleEnum;
@@ -31,7 +33,6 @@ import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -49,6 +50,14 @@ public class NotificationService {
     private final TenantContext tenantContext;
     private final MessageService messageService;
     private final FeatureContext featureContext;
+    private final ObjectMapper objectMapper;
+    private final com.tappy.pos.repository.notification.DeviceTokenRepository deviceTokenRepository;
+    private final com.tappy.pos.client.ExpoPushClient expoPushClient;
+
+    /** Push notification banners are rendered Vietnamese-first (primary audience); the in-app row stays per-locale. */
+    private static final java.util.Locale PUSH_LOCALE = java.util.Locale.forLanguageTag("vi");
+
+    private static final Object[] NO_ARGS = new Object[0];
 
     /**
      * Maps notification types that require a specific feature to receive by default.
@@ -156,7 +165,7 @@ public class NotificationService {
                 : userRepository.findAllActiveUsernames();
 
         String tenantId = tenantContext.getCurrentTenantId();
-        Set<String> optedOut = optedOutUsers(targets, type);
+        Set<String> optedOut = optedOutUsers(targets, type, tenantId);
         List<Notification> created = targets.stream()
                 .filter(userId -> !optedOut.contains(userId))
                 .map(userId -> Notification.builder()
@@ -186,29 +195,35 @@ public class NotificationService {
      * Respects per-user opt-out preferences.
      */
     @Transactional
-    public void pushToRoles(Notification.NotificationType type, String title, String message,
+    public void pushToRoles(Notification.NotificationType type, LocalizedText title, LocalizedText message,
                              String referenceType, Long referenceId, List<String> roleNames) {
         pushToRoles(type, title, message, referenceType, referenceId, roleNames, null);
     }
 
     @Transactional
-    public void pushToRoles(Notification.NotificationType type, String title, String message,
+    public void pushToRoles(Notification.NotificationType type, LocalizedText title, LocalizedText message,
                              String referenceType, Long referenceId, List<String> roleNames,
                              String excludeUsername) {
-        List<String> targets = userRepository.findUsernamesByRoleNames(roleNames);
+        // Explicit tenantId (from the ThreadLocal) — not current_tenant_id() — because async
+        // callers run with no transaction, so app.current_tenant is never set on the connection.
+        String tenantId = tenantContext.getCurrentTenantId();
+        List<String> targets = userRepository.findUsernamesByRoleNames(roleNames, tenantId);
         if (targets.isEmpty()) {
-            log.warn("pushToRoles: no active users found for roles {}", roleNames);
+            log.warn("pushToRoles: no active users found for roles {} (tenant={})", roleNames, tenantId);
             return;
         }
-        String tenantId = tenantContext.getCurrentTenantId();
-        Set<String> optedOut = optedOutUsers(targets, type);
-        List<Notification> notifications = targets.stream()
+        Set<String> optedOut = optedOutUsers(targets, type, tenantId);
+        List<String> delivered = targets.stream()
                 .filter(userId -> !optedOut.contains(userId))
                 .filter(userId -> excludeUsername == null || !excludeUsername.equals(userId))
+                .collect(Collectors.toList());
+        List<Notification> notifications = delivered.stream()
                 .map(userId -> Notification.builder()
                         .userId(userId)
-                        .title(title)
-                        .message(message)
+                        .titleKey(title.key())
+                        .titleArgs(serializeArgs(title.args()))
+                        .messageKey(message.key())
+                        .messageArgs(serializeArgs(message.args()))
                         .type(type)
                         .referenceType(referenceType)
                         .referenceId(referenceId)
@@ -220,6 +235,62 @@ public class NotificationService {
         notificationRepository.saveAll(notifications);
         log.info("pushToRoles: {} notification(s) → roles={} ({} opted out, excluded={})",
                 notifications.size(), roleNames, optedOut.size(), excludeUsername);
+
+        // Best-effort real push (banner when the app is backgrounded). Tokens are resolved here, in
+        // tenant context, then handed to the async client — a push failure never affects the in-app row.
+        sendPush(delivered, type, title, message, referenceType, referenceId);
+    }
+
+    /** Resolve the delivered users' device tokens and fire an Expo push (fire-and-forget). */
+    private void sendPush(List<String> usernames, Notification.NotificationType type, LocalizedText title,
+                          LocalizedText message, String referenceType, Long referenceId) {
+        if (usernames.isEmpty()) return;
+        try {
+            List<String> tokens = deviceTokenRepository.findActiveTokensByUserIds(usernames);
+            if (tokens.isEmpty()) return;
+            String pushTitle = messageService.getMessage(title.key(), PUSH_LOCALE,
+                    title.args() != null ? title.args() : NO_ARGS);
+            String pushBody = messageService.getMessage(message.key(), PUSH_LOCALE,
+                    message.args() != null ? message.args() : NO_ARGS);
+            Map<String, Object> data = new java.util.HashMap<>();
+            data.put("type", type.name());
+            if (referenceType != null) data.put("referenceType", referenceType);
+            if (referenceId != null) data.put("referenceId", referenceId);
+            expoPushClient.sendAsync(tokens, pushTitle, pushBody, data);
+        } catch (Exception e) {
+            log.warn("Failed to dispatch push for type={}: {}", type, e.getMessage());
+        }
+    }
+
+    /** Register (upsert) the calling user's Expo push token. */
+    @Transactional
+    public void registerDeviceToken(String expoPushToken, String platform) {
+        String tenantId = tenantContext.getCurrentTenantId();
+        if (tenantId == null || expoPushToken == null || expoPushToken.isBlank()) return;
+        String username = currentUsername();
+        // Look up regardless of soft-delete so a re-login reactivates the existing row
+        // instead of inserting a duplicate (which would violate the per-tenant unique key).
+        com.tappy.pos.model.entity.notification.DeviceToken token = deviceTokenRepository
+                .findByExpoPushToken(expoPushToken)
+                .orElseGet(() -> com.tappy.pos.model.entity.notification.DeviceToken.builder()
+                        .tenantId(tenantId)
+                        .expoPushToken(expoPushToken)
+                        .build());
+        token.setTenantId(tenantId);
+        token.setUserId(username);
+        token.setPlatform(platform);
+        token.setLastSeenAt(java.time.LocalDateTime.now());
+        token.setDeleted(false);
+        token.setDeletedAt(null);
+        deviceTokenRepository.save(token);
+    }
+
+    /** Remove a device token (called on logout). No-op if the token is unknown. */
+    @Transactional
+    public void removeDeviceToken(String expoPushToken) {
+        if (expoPushToken == null || expoPushToken.isBlank()) return;
+        deviceTokenRepository.findByExpoPushTokenAndDeletedFalse(expoPushToken)
+                .ifPresent(t -> { t.softDelete(); deviceTokenRepository.save(t); });
     }
 
     /**
@@ -233,7 +304,7 @@ public class NotificationService {
      */
     @Async
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public void pushToRolesAsync(Notification.NotificationType type, String title, String message,
+    public void pushToRolesAsync(Notification.NotificationType type, LocalizedText title, LocalizedText message,
                                   String referenceType, Long referenceId,
                                   List<String> roleNames, String tenantId) {
         pushToRolesAsync(type, title, message, referenceType, referenceId, roleNames, tenantId, null);
@@ -241,7 +312,7 @@ public class NotificationService {
 
     @Async
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public void pushToRolesAsync(Notification.NotificationType type, String title, String message,
+    public void pushToRolesAsync(Notification.NotificationType type, LocalizedText title, LocalizedText message,
                                   String referenceType, Long referenceId,
                                   List<String> roleNames, String tenantId, String excludeUsername) {
         try {
@@ -266,12 +337,10 @@ public class NotificationService {
      */
     @Transactional
     public void pushExpiryWarning(Tenant tenant, int daysRemaining) {
-        Locale vi = new Locale("vi");
         String expiryDate = tenant.getExpirationDate().format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
-        String title = messageService.getMessage("notification.expiry.warning.title", vi, daysRemaining);
-        String message = messageService.getMessage("notification.expiry.warning.message", vi,
-                tenant.getName(), expiryDate);
-        pushToRoles(Notification.NotificationType.BILLING, title, message,
+        pushToRoles(Notification.NotificationType.BILLING,
+                LocalizedText.of("notification.expiry.warning.title", daysRemaining),
+                LocalizedText.of("notification.expiry.warning.message", tenant.getName(), expiryDate),
                 "TENANT", tenant.getId(), List.of(RoleEnum.SHOP_OWNER.getCode()));
     }
 
@@ -280,12 +349,10 @@ public class NotificationService {
      */
     @Transactional
     public void pushExpiryExpired(Tenant tenant) {
-        Locale vi = new Locale("vi");
         String expiryDate = tenant.getExpirationDate().format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
-        String title = messageService.getMessage("notification.subscription.expired.title", vi);
-        String message = messageService.getMessage("notification.subscription.expired.message", vi,
-                tenant.getName(), expiryDate);
-        pushToRoles(Notification.NotificationType.BILLING, title, message,
+        pushToRoles(Notification.NotificationType.BILLING,
+                LocalizedText.of("notification.subscription.expired.title"),
+                LocalizedText.of("notification.subscription.expired.message", tenant.getName(), expiryDate),
                 "TENANT", tenant.getId(), List.of(RoleEnum.SHOP_OWNER.getCode()));
     }
 
@@ -293,7 +360,7 @@ public class NotificationService {
      * Broadcast a SYSTEM notification to all active MASTER_TENANT users.
      */
     @Transactional
-    public void pushToMasterUsers(String title, String message, String referenceType, Long referenceId) {
+    public void pushToMasterUsers(LocalizedText title, LocalizedText message, String referenceType, Long referenceId) {
         pushToRoles(Notification.NotificationType.SYSTEM, title, message,
                 referenceType, referenceId, List.of("MASTER_TENANT"));
     }
@@ -303,7 +370,7 @@ public class NotificationService {
      */
     @Async
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public void pushToMasterUsersAsync(String title, String message, String referenceType, Long referenceId) {
+    public void pushToMasterUsersAsync(LocalizedText title, LocalizedText message, String referenceType, Long referenceId) {
         try {
             pushToRoles(Notification.NotificationType.SYSTEM, title, message,
                     referenceType, referenceId, List.of("MASTER_TENANT"));
@@ -317,17 +384,19 @@ public class NotificationService {
      * feature-based defaults — skips the insert if the user has opted out of this type.
      */
     @Transactional
-    public void pushSystem(String userId, Notification.NotificationType type, String title, String message,
+    public void pushSystem(String userId, Notification.NotificationType type, LocalizedText title, LocalizedText message,
                            String referenceType, Long referenceId) {
-        Set<String> optedOut = optedOutUsers(List.of(userId), type);
+        Set<String> optedOut = optedOutUsers(List.of(userId), type, tenantContext.getCurrentTenantId());
         if (optedOut.contains(userId)) {
             log.debug("pushSystem: skipped — user {} opted out of type {}", userId, type);
             return;
         }
         Notification n = Notification.builder()
                 .userId(userId)
-                .title(title)
-                .message(message)
+                .titleKey(title.key())
+                .titleArgs(serializeArgs(title.args()))
+                .messageKey(message.key())
+                .messageArgs(serializeArgs(message.args()))
                 .type(type)
                 .referenceType(referenceType)
                 .referenceId(referenceId)
@@ -345,7 +414,7 @@ public class NotificationService {
     @Async
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void pushSystemAsync(String userId, Notification.NotificationType type,
-                                String title, String message,
+                                LocalizedText title, LocalizedText message,
                                 String referenceType, Long referenceId, String tenantId) {
         try {
             if (tenantId != null) {
@@ -369,7 +438,7 @@ public class NotificationService {
      *   1. Explicit pref row — type is not in the user's enabled list.
      *   2. No pref row + feature-gated type — user's roles don't grant the required feature.
      */
-    private Set<String> optedOutUsers(List<String> userIds, Notification.NotificationType type) {
+    private Set<String> optedOutUsers(List<String> userIds, Notification.NotificationType type, String tenantId) {
         List<NotificationPreference> prefs = preferenceRepository.findByUserIdIn(userIds);
         Map<String, NotificationPreference> prefMap = prefs.stream()
                 .collect(Collectors.toMap(NotificationPreference::getUserId, p -> p));
@@ -390,7 +459,7 @@ public class NotificationService {
                     .filter(id -> !prefMap.containsKey(id))
                     .collect(Collectors.toList());
             if (!usersWithoutPref.isEmpty()) {
-                Set<String> usersWithFeature = userRepository.findUsernamesWithFeature(usersWithoutPref, requiredFeature);
+                Set<String> usersWithFeature = userRepository.findUsernamesWithFeature(usersWithoutPref, requiredFeature, tenantId);
                 usersWithoutPref.stream()
                         .filter(id -> !usersWithFeature.contains(id))
                         .forEach(optedOut::add);
@@ -417,8 +486,8 @@ public class NotificationService {
         return NotificationDTO.builder()
                 .id(n.getId())
                 .userId(n.getUserId())
-                .title(n.getTitle())
-                .message(n.getMessage())
+                .title(render(n.getTitleKey(), n.getTitleArgs(), n.getTitle()))
+                .message(render(n.getMessageKey(), n.getMessageArgs(), n.getMessage()))
                 .type(n.getType().name())
                 .referenceType(n.getReferenceType())
                 .referenceId(n.getReferenceId())
@@ -427,5 +496,41 @@ public class NotificationService {
                 .createdBy(n.getCreatedBy())
                 .createdAt(n.getCreatedAt())
                 .build();
+    }
+
+    /**
+     * Prefer the i18n key (rendered in the reader's current locale); fall back to the literal value
+     * for user-authored notifications and pre-V037 rows, or if the key cannot be resolved.
+     */
+    private String render(String key, String argsJson, String literal) {
+        if (key == null || key.isBlank()) {
+            return literal;
+        }
+        try {
+            return messageService.getMessage(key, deserializeArgs(argsJson));
+        } catch (Exception e) {
+            log.warn("Notification: failed to render key={}: {}", key, e.getMessage());
+            return literal != null ? literal : key;
+        }
+    }
+
+    private String serializeArgs(Object[] args) {
+        if (args == null || args.length == 0) return null;
+        try {
+            return objectMapper.writeValueAsString(args);
+        } catch (Exception e) {
+            log.warn("Notification: failed to serialize args: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private Object[] deserializeArgs(String json) {
+        if (json == null || json.isBlank()) return NO_ARGS;
+        try {
+            return objectMapper.readValue(json, Object[].class);
+        } catch (Exception e) {
+            log.warn("Notification: failed to deserialize args '{}': {}", json, e.getMessage());
+            return NO_ARGS;
+        }
     }
 }

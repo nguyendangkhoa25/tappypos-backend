@@ -72,10 +72,19 @@ public class EndOfDayReportServiceImpl implements EndOfDayReportService {
             cashIn = cashIn.add(redeemPrincipal).add(redeemInterest);
         }
 
+        // ── Closing gold-weight position (4c): net weight in vs out for the day ──
+        BigDecimal netWeight = nz(goldBought.getWeightChi()).subtract(nz(goldSold.getWeightChi()));
+        EndOfDayReportDTO.GoldPosition goldPosition = EndOfDayReportDTO.GoldPosition.builder()
+                .weightBoughtChi(nz(goldBought.getWeightChi()))
+                .weightSoldChi(nz(goldSold.getWeightChi()))
+                .netWeightChi(netWeight)
+                .build();
+
         return EndOfDayReportDTO.builder()
                 .date(date)
                 .goldSold(goldSold)
                 .goldBought(goldBought)
+                .goldPosition(goldPosition)
                 .pawnEnabled(pawnEnabled)
                 .pawnNew(pawnNew)
                 .pawnRedeemed(pawnRedeemed)

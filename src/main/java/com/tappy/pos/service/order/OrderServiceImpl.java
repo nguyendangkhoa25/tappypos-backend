@@ -1,6 +1,7 @@
 package com.tappy.pos.service.order;
 
 import com.tappy.pos.exception.BadRequestException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.exception.ResourceNotFoundException;
 import com.tappy.pos.model.enums.ActivityAction;
@@ -12,7 +13,10 @@ import com.tappy.pos.model.dto.order.MyWorkStatsDTO;
 import com.tappy.pos.model.dto.order.OrderDTO;
 import com.tappy.pos.model.dto.order.OrderItemDTO;
 import com.tappy.pos.model.dto.order.PayAndCompleteRequest;
+import com.tappy.pos.model.dto.order.SettlePreOrderRequest;
 import com.tappy.pos.model.dto.order.UpdateOrderMetaRequest;
+import com.tappy.pos.model.dto.product.ProductDTO;
+import java.text.NumberFormat;
 import com.tappy.pos.model.dto.order.VoidOrderRequest;
 import com.tappy.pos.model.dto.order.WorkItemDTO;
 import com.tappy.pos.model.dto.order.WorkItemSummaryDTO;
@@ -50,6 +54,7 @@ import com.tappy.pos.service.inventory.InventoryService;
 import com.tappy.pos.service.product.ProductService;
 import com.tappy.pos.service.tenant.PrintTemplateService;
 import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.service.notification.NotificationService;
 import com.tappy.pos.model.entity.notification.Notification;
 import com.tappy.pos.model.enums.RoleEnum;
@@ -73,7 +78,10 @@ public class OrderServiceImpl implements OrderService {
     private final LoyaltyService loyaltyService;
     private final InventoryService inventoryService;
     private final ProductService productService;
+    private final com.tappy.pos.repository.product.ProductVariantRepository productVariantRepository;
     private final MessageService messageService;
+    private final ObjectMapper objectMapper;
+    private static final Object[] NO_ARGS = new Object[0];
     private final PrintTemplateService printTemplateService;
     private final ActivityLogService activityLogService;
     private final NotificationService notificationService;
@@ -162,6 +170,53 @@ public class OrderServiceImpl implements OrderService {
         return mapToDTO(order);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderDTO> getQuotes() {
+        return orderRepository.findActiveQuotes().stream().map(this::mapToDTO).collect(java.util.stream.Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public OrderDTO convertQuote(Long id) {
+        Order order = orderRepository.findById(id)
+                .filter(o -> !Boolean.TRUE.equals(o.getDeleted()))
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.order.not.found", id)));
+        if (!order.isQuote()) {
+            throw new BadRequestException(messageService.getMessage("error.quote.not_quote"));
+        }
+        // A quote was allowed to exceed stock at creation time (báo giá). Re-validate availability now
+        // and surface a recoverable error — otherwise deductStockForOrder swallows removeStock's failure
+        // and the quote would complete with no deduction (oversell).
+        assertStockAvailableForQuote(order);
+        // Now a real sale — deduct stock (reuses the same path as preorder settle) and finalize.
+        deductStockForOrder(order);
+        order.setQuote(false);
+        order.setStatus(Order.OrderStatus.COMPLETED);
+        order.setCompletedAt(java.time.LocalDateTime.now());
+        Order saved = orderRepository.save(order);
+        String actor = getCurrentUsername();
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.ORDER_CONFIRMED, "ORDER", String.valueOf(id),
+                "activity.order.confirmed.quote", null, order.getOrderNumber());
+        // Award loyalty now that the quote is a real, completed sale (no points/stamps were granted
+        // when the quote was saved). Mirrors the completeOrder / settle completion paths.
+        if (saved.getCustomer() != null) {
+            try {
+                loyaltyService.awardPointsForOrder(
+                        saved.getCustomer().getId(), saved.getId(), saved.getTotalAmount());
+                if (!saved.isStampsAwarded()) {
+                    loyaltyService.awardStampsForOrder(
+                            saved.getCustomer().getId(), saved.getId(), stampQtyForOrder(saved));
+                    saved.setStampsAwarded(true);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to award loyalty for converted quote {}: {}", saved.getId(), e.getMessage());
+            }
+        }
+        return mapToDTO(saved);
+    }
+
     private OrderDTO mapToDTO(Order order) {
         List<OrderItemDTO> items = order.getOrderItems().stream()
                 .map(this::mapItemToDTO)
@@ -178,18 +233,30 @@ public class OrderServiceImpl implements OrderService {
                 .discountAmount(order.getDiscountAmount())
                 .tipAmount(order.getTipAmount())
                 .taxAmount(order.getTaxAmount())
+                .serviceChargeRate(order.getServiceChargeRate())
+                .serviceChargeAmount(order.getServiceChargeAmount())
+                .orderChannel(order.getOrderChannel() != null ? order.getOrderChannel().name() : null)
+                .deliveryPlatform(order.getDeliveryPlatform() != null ? order.getDeliveryPlatform().name() : null)
+                .deliveryRecipient(order.getDeliveryRecipient())
+                .deliveryPhone(order.getDeliveryPhone())
+                .deliveryAddress(order.getDeliveryAddress())
+                .deliveryFee(order.getDeliveryFee())
+                .deliveryNote(order.getDeliveryNote())
+                .deliveryStatus(order.getDeliveryStatus() != null ? order.getDeliveryStatus().name() : null)
                 .paymentMethod(order.getPaymentMethod())
                 .amountPaid(order.getAmountPaid())
                 .changeAmount(order.getChangeAmount())
-                .notes(order.getNotes())
+                .notes(render(order.getNotesKey(), order.getNotesArgs(), order.getNotes()))
+                .prescriberName(order.getPrescriberName())
+                .prescriptionNote(order.getPrescriptionNote())
                 .createdBy(order.getCreatedBy())
                 .completedAt(order.getCompletedAt())
                 .completedBy(order.getCompletedBy())
                 .cancelledAt(order.getCancelledAt())
-                .cancelReason(order.getCancelReason())
+                .cancelReason(render(order.getCancelReasonKey(), order.getCancelReasonArgs(), order.getCancelReason()))
                 .cancelledBy(order.getCancelledBy())
                 .voidedAt(order.getVoidedAt())
-                .voidReason(order.getVoidReason())
+                .voidReason(render(order.getVoidReasonKey(), order.getVoidReasonArgs(), order.getVoidReason()))
                 .voidedBy(order.getVoidedBy())
                 .createdAt(order.getCreatedAt())
                 .invoiceId(order.getInvoice() != null ? order.getInvoice().getId() : null)
@@ -198,14 +265,65 @@ public class OrderServiceImpl implements OrderService {
                 .promotionDiscount(order.getPromotionDiscount())
                 .loyaltyPointsRedeemed(order.getLoyaltyPointsRedeemed())
                 .loyaltyDiscount(order.getLoyaltyDiscount())
-                .tableLabel(order.getTableLabel())
+                .tableLabel(render(order.getTableLabelKey(), order.getTableLabelArgs(), order.getTableLabel()))
+                .tableId(order.getTableId())
+                .parentOrderId(order.getParentOrderId())
                 .pickupTime(order.getPickupTime())
+                .preorder(order.isPreorder())
+                .quote(order.isQuote())
+                .quoteNumber(order.getQuoteNumber())
+                .depositAmount(order.getDepositAmount())
+                .balanceDue(computeBalanceDue(order))
                 .buyAmount(order.getBuyAmount())
                 .sellAmount(order.getSellAmount())
                 .goldDiffWeight(order.getGoldDiffWeight())
                 .goldDiffAmount(order.getGoldDiffAmount())
                 .items(items)
                 .build();
+    }
+
+    /**
+     * Render a notes/reason field: prefer the i18n key (in the reader's locale) for system-generated
+     * text; fall back to the literal value for user-authored text and pre-V038 rows.
+     */
+    private String render(String key, String argsJson, String literal) {
+        if (key == null || key.isBlank()) {
+            return literal;
+        }
+        try {
+            return messageService.getMessage(key, deserializeArgs(argsJson));
+        } catch (Exception e) {
+            log.warn("Order: failed to render key={}: {}", key, e.getMessage());
+            return literal != null ? literal : key;
+        }
+    }
+
+    /** Serialize message args to JSON for storage on a *_args column (null when empty). */
+    private String serializeArgs(Object... args) {
+        if (args == null || args.length == 0) return null;
+        try {
+            return objectMapper.writeValueAsString(args);
+        } catch (Exception e) {
+            log.warn("Order: failed to serialize args: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private Object[] deserializeArgs(String json) {
+        if (json == null || json.isBlank()) return NO_ARGS;
+        try {
+            return objectMapper.readValue(json, Object[].class);
+        } catch (Exception e) {
+            log.warn("Order: failed to deserialize args '{}': {}", json, e.getMessage());
+            return NO_ARGS;
+        }
+    }
+
+    /** Balance still owed: totalAmount - amountPaid, floored at 0. Derived, never stored. */
+    private BigDecimal computeBalanceDue(Order order) {
+        BigDecimal total = order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO;
+        BigDecimal paid  = order.getAmountPaid()  != null ? order.getAmountPaid()  : BigDecimal.ZERO;
+        return total.subtract(paid).max(BigDecimal.ZERO);
     }
 
     @Override
@@ -240,23 +358,41 @@ public class OrderServiceImpl implements OrderService {
         order.complete(completedBy);
         Order saved = orderRepository.save(order);
         log.info("Order {} completed by {}", id, completedBy);
-        releaseTableForOrder(saved);
+        // A split-group check releases the table only when every sibling is settled; others release now.
+        if (saved.getParentOrderId() != null || !orderRepository.findByParentOrderId(saved.getId()).isEmpty()) {
+            releaseTableForSplitGroupIfComplete(saved);
+        } else {
+            releaseTableForOrder(saved);
+        }
 
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), completedBy, null,
                 ActivityAction.ORDER_COMPLETED, "ORDER", saved.getOrderNumber(),
-                "Completed order #" + saved.getOrderNumber(), null);
+                "activity.order.completed.basic", null, saved.getOrderNumber());
 
         // Award loyalty points to customer if applicable
         if (saved.getCustomer() != null) {
             try {
                 loyaltyService.awardPointsForOrder(
                         saved.getCustomer().getId(), saved.getId(), saved.getTotalAmount());
+                if (!saved.isStampsAwarded()) {
+                    loyaltyService.awardStampsForOrder(
+                            saved.getCustomer().getId(), saved.getId(), stampQtyForOrder(saved));
+                    saved.setStampsAwarded(true);
+                }
             } catch (Exception e) {
                 log.warn("Failed to award loyalty points for order {}: {}", saved.getId(), e.getMessage());
             }
         }
 
         return mapToDTO(saved);
+    }
+
+    /** Total item quantity on an order — one stamp per cup/món for the loyalty stamp card. */
+    private int stampQtyForOrder(Order order) {
+        if (order.getOrderItems() == null) return 0;
+        return order.getOrderItems().stream()
+                .mapToInt(oi -> oi.getQuantity() != null ? oi.getQuantity() : 0)
+                .sum();
     }
 
     @Override
@@ -285,27 +421,202 @@ public class OrderServiceImpl implements OrderService {
         releaseTableForOrder(saved);
 
         String tenantId = tenantContext.getCurrentTenantId();
+        // Pre-orders log their own action so the Activity Log "Hủy đơn đặt" filter works.
+        ActivityAction cancelAction = saved.isPreorder()
+                ? ActivityAction.PREORDER_CANCELLED : ActivityAction.ORDER_CANCELLED;
+        String cancelKey = saved.isPreorder() ? "activity.preorder.cancelled" : "activity.order.cancelled";
         activityLogService.logAsync(tenantId, cancelledBy, null,
-                ActivityAction.ORDER_CANCELLED, "ORDER", saved.getOrderNumber(),
-                "Cancelled order #" + saved.getOrderNumber() + " — " + request.getReason(), null);
+                cancelAction, "ORDER", saved.getOrderNumber(),
+                cancelKey, null, saved.getOrderNumber(), request.getReason());
 
         try {
-            Locale vi = new Locale("vi");
             String amountStr = String.format("%,.0f ₫", saved.getTotalAmount());
-            String title = messageService.getMessage("notification.order.cancelled.title", vi,
-                    saved.getOrderNumber());
-            String msg = messageService.getMessage("notification.order.cancelled.message", vi,
-                    saved.getOrderNumber(), amountStr, cancelledBy,
-                    request.getReason() != null ? request.getReason() : "—");
-            notificationService.pushToRolesAsync(Notification.NotificationType.ORDER, title, msg,
+            notificationService.pushToRolesAsync(Notification.NotificationType.ORDER,
+                    LocalizedText.of("notification.order.cancelled.title", saved.getOrderNumber()),
+                    LocalizedText.of("notification.order.cancelled.message",
+                            saved.getOrderNumber(), amountStr, cancelledBy,
+                            request.getReason() != null ? request.getReason() : "—"),
                     "ORDER", saved.getId(),
-                    List.of(RoleEnum.SHOP_OWNER.getCode(), RoleEnum.MANAGER.getCode()),
+                    List.of(RoleEnum.SHOP_OWNER.getCode()),
                     tenantId);
         } catch (Exception e) {
             log.warn("Failed to push order-cancelled notification (order={}): {}", saved.getOrderNumber(), e.getMessage());
         }
 
         return mapToDTO(saved);
+    }
+
+    // ── Pre-order / deposit (đặt hàng + tiền cọc) — Phase 2 ─────────────────────
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<OrderDTO> getPreOrders(String status, LocalDate from, LocalDate to, Pageable pageable) {
+        Order.OrderStatus st = null;
+        if (status != null && !status.isBlank()) {
+            try { st = Order.OrderStatus.valueOf(status.trim().toUpperCase()); }
+            catch (IllegalArgumentException e) {
+                throw new BadRequestException(messageService.getMessage("error.order.invalid.status"));
+            }
+        }
+        // Wide sentinels when unbounded — Postgres can't type a null-only timestamp param.
+        LocalDateTime fromDt = from != null ? from.atStartOfDay() : LocalDateTime.of(1970, 1, 1, 0, 0);
+        LocalDateTime toDt   = to   != null ? to.atTime(23, 59, 59) : LocalDateTime.of(9999, 12, 31, 23, 59, 59);
+
+        // ORDER_VIEW_ALL gates own-vs-all, mirroring the rest of the order module.
+        Page<Order> page;
+        if (featureContext.hasFeature("ORDER_VIEW_ALL")) {
+            page = orderRepository.findPreorders(st, fromDt, toDt, pageable);
+        } else {
+            String me = SecurityContextHolder.getContext().getAuthentication().getName();
+            page = orderRepository.findPreordersByCreatedBy(st, fromDt, toDt, me, pageable);
+        }
+        return page.map(this::mapToDTO);
+    }
+
+    @Override
+    @Transactional
+    public OrderDTO settlePreOrder(Long id, SettlePreOrderRequest request) {
+        log.info("Request: Settle pre-order id: {}", id);
+        Order order = findActiveOrder(id);
+
+        if (!order.isPreorder()) {
+            throw new BadRequestException(messageService.getMessage("error.preorder.not.preorder"));
+        }
+        if (order.getStatus() != Order.OrderStatus.PENDING) {
+            throw new BadRequestException(messageService.getMessage("error.preorder.not.pending"));
+        }
+
+        BigDecimal total = order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO;
+        BigDecimal balanceDue = computeBalanceDue(order);
+        BigDecimal received = request != null && request.getAmountReceived() != null
+                ? request.getAmountReceived() : balanceDue;
+        if (received.compareTo(balanceDue) < 0) {
+            // No underpayment: owner must use discountAmount to forgive a balance.
+            throw new BadRequestException(messageService.getMessage("error.preorder.underpaid"));
+        }
+
+        // Option A — deduct finished-goods stock now (at pickup), not at creation.
+        deductStockForOrder(order);
+
+        if (request != null && request.getPaymentMethod() != null && !request.getPaymentMethod().isBlank()) {
+            order.setPaymentMethod(request.getPaymentMethod());
+        }
+        order.setAmountPaid(total);
+        order.setChangeAmount(received.subtract(balanceDue).max(BigDecimal.ZERO));
+
+        String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+        order.complete(actor);
+        Order saved = orderRepository.save(order);
+        releaseTableForOrder(saved);
+        log.info("Pre-order {} settled & completed by {} (balance {} collected)",
+                saved.getOrderNumber(), actor, balanceDue);
+
+        NumberFormat vnd = NumberFormat.getNumberInstance(new Locale("vi", "VN"));
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.PREORDER_SETTLED, "ORDER", saved.getOrderNumber(),
+                "activity.preorder.settled", null,
+                saved.getOrderNumber(), vnd.format(balanceDue.longValue()) + " ₫");
+
+        if (saved.getCustomer() != null) {
+            try {
+                loyaltyService.awardPointsForOrder(saved.getCustomer().getId(), saved.getId(), saved.getTotalAmount());
+                if (!saved.isStampsAwarded()) {
+                    loyaltyService.awardStampsForOrder(saved.getCustomer().getId(), saved.getId(), stampQtyForOrder(saved));
+                    saved.setStampsAwarded(true);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to award loyalty points for settled pre-order {}: {}", saved.getId(), e.getMessage());
+            }
+        }
+        return mapToDTO(saved);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.tappy.pos.model.dto.order.PreOrderSummaryDTO getPreOrderSummary() {
+        BigDecimal deposits = orderRepository.sumDepositsHeld();
+        // All PENDING pre-orders (shop-wide) — small set; compute today's pickups in memory.
+        // Wide sentinels: Postgres can't type a null-only timestamp bind param.
+        var page = orderRepository.findPreorders(Order.OrderStatus.PENDING,
+                LocalDateTime.of(1970, 1, 1, 0, 0), LocalDateTime.of(9999, 12, 31, 23, 59, 59),
+                org.springframework.data.domain.PageRequest.of(0, 1000));
+        LocalDateTime todayStart = LocalDate.now().atStartOfDay();
+        LocalDateTime todayEnd = LocalDate.now().atTime(23, 59, 59);
+        long today = page.getContent().stream()
+                .filter(o -> o.getPickupTime() != null
+                        && !o.getPickupTime().isBefore(todayStart) && !o.getPickupTime().isAfter(todayEnd))
+                .count();
+        return com.tappy.pos.model.dto.order.PreOrderSummaryDTO.builder()
+                .depositsHeld(deposits != null ? deposits : BigDecimal.ZERO)
+                .pendingCount(page.getTotalElements())
+                .todayCount(today)
+                .build();
+    }
+
+    /**
+     * Deducts stock for an order's STANDARD items (TRACKED → decrement, UNIQUE → mark sold),
+     * mirroring the checkout deduction. Fire-and-forget per item — never aborts the settle.
+     */
+    /**
+     * Re-validate stock for a quote being converted to a real order. A quote may have been saved with
+     * quantities exceeding stock; this throws a recoverable {@link BadRequestException} (Vietnamese,
+     * with the shortfall) before any deduction so the cashier sees a clear "thiếu hàng" message rather
+     * than the order silently completing with no stock removed. Required base-unit quantity is
+     * aggregated per product/variant so multiple lines of the same product are summed.
+     */
+    private void assertStockAvailableForQuote(Order order) {
+        java.util.Map<String, Long> needed = new java.util.LinkedHashMap<>();
+        java.util.Map<String, OrderItem> sample = new java.util.HashMap<>();
+        for (OrderItem item : order.getOrderItems()) {
+            if (item.getItemType() != OrderItem.ItemType.STANDARD || item.getProductId() == null) continue;
+            String key = item.getProductId() + ":" + (item.getVariantId() == null ? "" : item.getVariantId());
+            needed.merge(key, item.baseQuantity(), Long::sum);
+            sample.putIfAbsent(key, item);
+        }
+        for (var entry : needed.entrySet()) {
+            OrderItem item = sample.get(entry.getKey());
+            long qtyNeeded = entry.getValue();
+            ProductDTO product;
+            try { product = productService.getProductById(item.getProductId()); }
+            catch (Exception e) { continue; }
+            if (!"TRACKED".equals(product.getInventoryMode())) continue;
+            var pageable = PageRequest.of(0, 1);
+            var inv = item.getVariantId() != null
+                    ? inventoryService.getInventoryByProductIdAndVariantId(item.getProductId(), item.getVariantId(), pageable)
+                    : inventoryService.getInventoryByProductId(item.getProductId(), pageable);
+            long available = (!inv.isEmpty() && inv.getContent().get(0).getQuantityInStock() != null)
+                    ? inv.getContent().get(0).getQuantityInStock() : 0L;
+            if (available < qtyNeeded) {
+                throw new BadRequestException(String.format(
+                        messageService.getMessage("product.insufficient.stock"),
+                        product.getName(), available));
+            }
+        }
+    }
+
+    private void deductStockForOrder(Order order) {
+        for (OrderItem item : order.getOrderItems()) {
+            if (item.getItemType() != OrderItem.ItemType.STANDARD || item.getProductId() == null) continue;
+            try {
+                ProductDTO product = productService.getProductById(item.getProductId());
+                String mode = product.getInventoryMode();
+                if ("TRACKED".equals(mode)) {
+                    var pageable = PageRequest.of(0, 1);
+                    var inv = item.getVariantId() != null
+                            ? inventoryService.getInventoryByProductIdAndVariantId(item.getProductId(), item.getVariantId(), pageable)
+                            : inventoryService.getInventoryByProductId(item.getProductId(), pageable);
+                    if (!inv.isEmpty()) {
+                        inventoryService.removeStock(inv.getContent().get(0).getId(), item.baseQuantity());
+                    } else {
+                        log.warn("No inventory for product {} — stock not deducted at settle", item.getProductId());
+                    }
+                } else if ("UNIQUE".equals(mode)) {
+                    productService.markAsSold(item.getProductId());
+                }
+            } catch (Exception e) {
+                log.warn("Settle stock deduction failed for product {}: {}", item.getProductId(), e.getMessage());
+            }
+        }
     }
 
     @Override
@@ -331,8 +642,8 @@ public class OrderServiceImpl implements OrderService {
                         item.getProductId(), PageRequest.of(0, 1));
                 if (!inventoryPage.isEmpty()) {
                     Long inventoryId = inventoryPage.getContent().get(0).getId();
-                    inventoryService.addStock(inventoryId, (long) item.getQuantity());
-                    log.info("Restored {} units of product {} to inventory", item.getQuantity(), item.getProductId());
+                    inventoryService.addStock(inventoryId, item.baseQuantity());
+                    log.info("Restored {} base-units of product {} to inventory", item.baseQuantity(), item.getProductId());
                 } else {
                     log.warn("No inventory found for product {} — stock not restored", item.getProductId());
                 }
@@ -347,8 +658,81 @@ public class OrderServiceImpl implements OrderService {
 
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), voidedBy, null,
                 ActivityAction.ORDER_VOIDED, "ORDER", saved.getOrderNumber(),
-                "Voided order #" + saved.getOrderNumber() + " — " + request.getReason(), null);
+                "activity.order.voided", null, saved.getOrderNumber(), request.getReason());
 
+        return mapToDTO(saved);
+    }
+
+    @Override
+    public OrderDTO exchangeOrderItem(Long orderId, Long itemId,
+            com.tappy.pos.model.dto.order.ExchangeOrderItemRequest request) {
+        log.info("Request: Exchange item {} on order {} -> variant {}", itemId, orderId, request.getNewVariantId());
+        Order order = findActiveOrder(orderId);
+
+        if (order.getStatus() != Order.OrderStatus.COMPLETED) {
+            throw new BadRequestException(messageService.getMessage("error.exchange.only.completed", order.getStatus()));
+        }
+
+        OrderItem item = order.getOrderItems().stream()
+                .filter(i -> i.getId().equals(itemId))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException(messageService.getMessage("error.order.item.not.found", itemId)));
+
+        if (item.getProductId() == null || item.getVariantId() == null) {
+            throw new BadRequestException(messageService.getMessage("error.exchange.not.variant"));
+        }
+        if (item.getVariantId().equals(request.getNewVariantId())) {
+            throw new BadRequestException(messageService.getMessage("error.exchange.same.variant"));
+        }
+
+        // New variant must be an active variant of the SAME product.
+        var newVariant = productVariantRepository
+                .findByIdAndProductIdAndDeletedAtIsNull(request.getNewVariantId(), item.getProductId())
+                .orElseThrow(() -> new BadRequestException(messageService.getMessage("error.exchange.variant.invalid")));
+        if (newVariant.getStatus() != com.tappy.pos.model.entity.product.ProductVariant.VariantStatus.ACTIVE) {
+            throw new BadRequestException(messageService.getMessage("error.exchange.variant.invalid"));
+        }
+
+        // Equal-price swap only — keeps the order total and payment untouched.
+        BigDecimal newPrice = newVariant.getPriceOverride() != null
+                ? newVariant.getPriceOverride()
+                : (newVariant.getProduct() != null ? newVariant.getProduct().getPrice() : null);
+        if (newPrice == null || item.getUnitPrice() == null || newPrice.compareTo(item.getUnitPrice()) != 0) {
+            throw new BadRequestException(messageService.getMessage("error.exchange.price.mismatch"));
+        }
+
+        long qty = item.baseQuantity();   // base-unit qty (handles alt-unit lines)
+        Long oldVariantId = item.getVariantId();
+
+        // Deduct the new variant's stock (must be available); then restock the returned variant.
+        var newInvPage = inventoryService.getInventoryByProductIdAndVariantId(
+                item.getProductId(), request.getNewVariantId(), PageRequest.of(0, 1));
+        if (newInvPage.isEmpty()) {
+            throw new BadRequestException(messageService.getMessage("error.exchange.no.inventory"));
+        }
+        var newInv = newInvPage.getContent().get(0);
+        if (newInv.getQuantityInStock() == null || newInv.getQuantityInStock() < qty) {
+            throw new BadRequestException(messageService.getMessage("error.exchange.insufficient.stock"));
+        }
+        inventoryService.removeStock(newInv.getId(), qty);
+
+        var oldInvPage = inventoryService.getInventoryByProductIdAndVariantId(
+                item.getProductId(), oldVariantId, PageRequest.of(0, 1));
+        if (!oldInvPage.isEmpty()) {
+            inventoryService.addStock(oldInvPage.getContent().get(0).getId(), qty);
+        } else {
+            log.warn("No inventory for returned variant {} — stock not restored", oldVariantId);
+        }
+
+        item.setVariantId(request.getNewVariantId());
+        Order saved = orderRepository.save(order);
+
+        String actor = SecurityContextHolder.getContext().getAuthentication().getName();
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.ORDER_EXCHANGED, "ORDER", saved.getOrderNumber(),
+                "activity.order.exchanged", null, saved.getOrderNumber(), item.getProductName());
+
+        log.info("Exchanged item {} on order {}: variant {} -> {}", itemId, orderId, oldVariantId, request.getNewVariantId());
         return mapToDTO(saved);
     }
 
@@ -359,7 +743,8 @@ public class OrderServiceImpl implements OrderService {
         ShopInfo shopInfo = shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc().orElse(null);
         var cfg = printTemplateService.getReceiptConfig();
         BankAccount bankAccount = cfg.isShowVietQr() ? bankAccountRepository.findDefault().orElse(null) : null;
-        return ReceiptHtmlBuilder.build(order, shopInfo, cfg, bankAccount);
+        String tableLabel = render(order.getTableLabelKey(), order.getTableLabelArgs(), order.getTableLabel());
+        return ReceiptHtmlBuilder.build(order, tableLabel, shopInfo, cfg, bankAccount);
     }
 
     @Override
@@ -457,14 +842,18 @@ public class OrderServiceImpl implements OrderService {
         return OrderItemDTO.builder()
                 .id(item.getId())
                 .productId(item.getProductId())
+                .variantId(item.getVariantId())
                 .productName(item.getProductName())
                 .quantity(item.getQuantity())
+                .sellUnit(item.getSellUnit())
+                .unitFactor(item.getUnitFactor())
                 .unitPrice(item.getUnitPrice())
                 .amount(item.getAmount())
                 .taxPercentage(item.getTaxPercentage())
                 .taxAmount(item.getTaxAmount())
                 .itemType(item.getItemType())
                 .metadata(item.getMetadata())
+                .modifiers(item.getModifiers())
                 .note(item.getNote())
                 .itemStatus(item.getStatus() != null ? item.getStatus().name() : "PENDING")
                 .durationMinutes(item.getDurationMinutes() != null ? item.getDurationMinutes() : 0)
@@ -1005,7 +1394,7 @@ public class OrderServiceImpl implements OrderService {
         }
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.ORDER_CONFIRMED, "ORDER", saved.getOrderNumber(),
-                "Xác nhận đơn khách đặt #" + saved.getOrderNumber(), null);
+                "activity.order.confirmed", null, saved.getOrderNumber());
         return mapToDTO(saved);
     }
 
@@ -1018,11 +1407,39 @@ public class OrderServiceImpl implements OrderService {
             throw new BadRequestException(messageService.getMessage("error.order.not.submitted"));
         }
         String actor = getCurrentUsername();
-        order.cancel(reason != null && !reason.isBlank() ? reason : "Từ chối đơn khách đặt", actor);
+        if (reason != null && !reason.isBlank()) {
+            order.cancel(reason, actor);                                  // user-entered reason
+        } else {
+            order.cancel("order.cancel.rejected_default", serializeArgs(), actor);  // system default
+        }
         Order saved = orderRepository.save(order);
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
                 ActivityAction.ORDER_REJECTED, "ORDER", saved.getOrderNumber(),
-                "Từ chối đơn khách đặt #" + saved.getOrderNumber(), null);
+                "activity.order.rejected", null, saved.getOrderNumber());
+        return mapToDTO(saved);
+    }
+
+    @Override
+    @Transactional
+    public OrderDTO updateDeliveryStatus(Long orderId, Order.DeliveryStatus status) {
+        log.info("Request: Update delivery status of order {} → {}", orderId, status);
+        Order order = findActiveOrder(orderId);
+        if (order.getOrderChannel() != Order.OrderChannel.DELIVERY) {
+            throw new BadRequestException(messageService.getMessage("error.order.not.delivery"));
+        }
+        order.setDeliveryStatus(status);
+        Order saved = orderRepository.save(order);
+
+        String actor = getCurrentUsername();
+        String statusLabel = switch (status) {
+            case PENDING -> "Chờ lấy hàng";
+            case DELIVERING -> "Đang giao";
+            case DELIVERED -> "Đã giao";
+            case CANCELLED -> "Đã hủy giao";
+        };
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), actor, null,
+                ActivityAction.ORDER_DELIVERY_UPDATED, "ORDER", saved.getOrderNumber(),
+                "activity.order.delivery.updated", null, saved.getOrderNumber(), statusLabel);
         return mapToDTO(saved);
     }
 
@@ -1123,7 +1540,7 @@ public class OrderServiceImpl implements OrderService {
             try {
                 var inventoryPage = inventoryService.getInventoryByProductId(item.getProductId(), PageRequest.of(0, 1));
                 if (!inventoryPage.isEmpty()) {
-                    inventoryService.addStock(inventoryPage.getContent().get(0).getId(), (long) item.getQuantity());
+                    inventoryService.addStock(inventoryPage.getContent().get(0).getId(), item.baseQuantity());
                 }
             } catch (Exception e) {
                 log.warn("Inventory restore failed for product {}: {}", item.getProductId(), e.getMessage());
@@ -1310,6 +1727,10 @@ public class OrderServiceImpl implements OrderService {
         if (saved.getCustomer() != null) {
             try {
                 loyaltyService.awardPointsForOrder(saved.getCustomer().getId(), saved.getId(), saved.getTotalAmount());
+                if (!saved.isStampsAwarded()) {
+                    loyaltyService.awardStampsForOrder(saved.getCustomer().getId(), saved.getId(), stampQtyForOrder(saved));
+                    saved.setStampsAwarded(true);
+                }
             } catch (Exception e) {
                 log.warn("Failed to award loyalty points for order {}: {}", saved.getId(), e.getMessage());
             }
@@ -1317,8 +1738,306 @@ public class OrderServiceImpl implements OrderService {
 
         activityLogService.logAsync(tenantContext.getCurrentTenantId(), currentUser, null,
                 ActivityAction.ORDER_COMPLETED, "ORDER", saved.getOrderNumber(),
-                "Thanh toán và hoàn tất đơn hàng #" + saved.getOrderNumber(), null);
+                "activity.order.completed", null, saved.getOrderNumber());
+
+        // For a split-group check, release the table only once every sibling check is settled.
+        releaseTableForSplitGroupIfComplete(saved);
 
         return mapToDTO(saved);
+    }
+
+    // ── Split / merge bill (FnB table tabs) ─────────────────────────────────────
+
+    private static final java.util.EnumSet<Order.OrderStatus> ACTIVE_TAB_STATUSES =
+            java.util.EnumSet.of(Order.OrderStatus.PENDING, Order.OrderStatus.IN_PROGRESS,
+                    Order.OrderStatus.SUBMITTED);
+
+    @Override
+    @Transactional
+    public List<OrderDTO> splitBill(Long orderId, com.tappy.pos.model.dto.order.SplitBillRequest request) {
+        log.info("Request: Split bill order {} mode={}", orderId, request.getMode());
+        Order order = findActiveOrder(orderId);
+        if (!ACTIVE_TAB_STATUSES.contains(order.getStatus())) {
+            throw new BadRequestException(messageService.getMessage("error.order.split.invalid.status"));
+        }
+        if (order.getParentOrderId() != null) {
+            throw new BadRequestException(messageService.getMessage("error.order.split.already.child"));
+        }
+
+        String mode = request.getMode() == null ? "ITEM" : request.getMode().trim().toUpperCase();
+        String tenantId = tenantContext.getCurrentTenantId();
+        String actor = getCurrentUsername();
+
+        List<OrderDTO> result = "EVEN".equals(mode)
+                ? splitEvenly(order, request, tenantId, actor)
+                : splitByItem(order, request, tenantId, actor);
+
+        activityLogService.logAsync(tenantId, actor, null,
+                ActivityAction.ORDER_SPLIT, "ORDER", order.getOrderNumber(),
+                "activity.order.split", null,
+                order.getOrderNumber(), ("EVEN".equals(mode) ? "chia đều" : "theo món"));
+        return result;
+    }
+
+    /** EVEN: divide the order total into N equal child checks; void the source order. */
+    private List<OrderDTO> splitEvenly(Order order, com.tappy.pos.model.dto.order.SplitBillRequest request,
+                                       String tenantId, String actor) {
+        Integer n = request.getSplitCount();
+        if (n == null || n < 2 || n > 20) {
+            throw new BadRequestException(messageService.getMessage("error.order.split.count.invalid"));
+        }
+        BigDecimal total = order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO;
+        BigDecimal share = total.divide(BigDecimal.valueOf(n), 0, java.math.RoundingMode.HALF_UP);
+
+        List<Order> children = new java.util.ArrayList<>();
+        BigDecimal allocated = BigDecimal.ZERO;
+        for (int i = 1; i <= n; i++) {
+            // Last child absorbs the rounding remainder so the children sum back to the original.
+            BigDecimal childTotal = (i == n) ? total.subtract(allocated).max(BigDecimal.ZERO) : share;
+            allocated = allocated.add(childTotal);
+            Order child = newChildCheck(order, tenantId, actor);
+            child.setTotalAmount(childTotal);
+            String tableLabel = render(order.getTableLabelKey(), order.getTableLabelArgs(), order.getTableLabel());
+            if (tableLabel != null) {
+                child.setNotesKey("order.note.split_even.table");
+                child.setNotesArgs(serializeArgs(String.valueOf(i), String.valueOf(n), tableLabel));
+            } else {
+                child.setNotesKey("order.note.split_even");
+                child.setNotesArgs(serializeArgs(String.valueOf(i), String.valueOf(n)));
+            }
+            children.add(orderRepository.save(child));
+        }
+
+        // Zero the source total before voiding (matches splitByItem) so any report that sums
+        // total_amount without excluding VOIDED rows doesn't double-count the split-out value.
+        order.setTotalAmount(BigDecimal.ZERO);
+        order.voidOrder("order.void.split_even", serializeArgs(String.valueOf(n)), actor);
+        orderRepository.save(order);
+        return children.stream().map(this::mapToDTO).collect(Collectors.toList());
+    }
+
+    /** ITEM: move chosen item quantities into one child check per group; remainder stays on the source. */
+    private List<OrderDTO> splitByItem(Order order, com.tappy.pos.model.dto.order.SplitBillRequest request,
+                                       String tenantId, String actor) {
+        List<com.tappy.pos.model.dto.order.SplitBillRequest.SplitGroup> groups = request.getGroups();
+        if (groups == null || groups.isEmpty()) {
+            throw new BadRequestException(messageService.getMessage("error.order.split.groups.required"));
+        }
+
+        // Capture the grand total before any mutation so the child checks sum back to it exactly
+        // (covers any service charge / tip baked into the total beyond the raw line items).
+        BigDecimal grandTotal = order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO;
+
+        // Snapshot the source items and a running "remaining quantity" ledger keyed by item id.
+        List<OrderItem> sourceItems = new java.util.ArrayList<>(order.getOrderItems());
+        java.util.Map<Long, OrderItem> itemById = new java.util.HashMap<>();
+        java.util.Map<Long, Integer> remaining = new java.util.HashMap<>();
+        for (OrderItem it : sourceItems) {
+            itemById.put(it.getId(), it);
+            remaining.put(it.getId(), it.getQuantity());
+        }
+
+        List<Order> children = new java.util.ArrayList<>();
+        for (com.tappy.pos.model.dto.order.SplitBillRequest.SplitGroup group : groups) {
+            if (group.getItems() == null || group.getItems().isEmpty()) {
+                continue; // skip empty groups defensively
+            }
+            Order child = newChildCheck(order, tenantId, actor);
+            BigDecimal childSubtotal = BigDecimal.ZERO;
+            for (com.tappy.pos.model.dto.order.SplitBillRequest.SplitItem si : group.getItems()) {
+                OrderItem src = itemById.get(si.getItemId());
+                if (src == null) {
+                    throw new ResourceNotFoundException(messageService.getMessage("error.order.item.not.found", si.getItemId()));
+                }
+                int qty = si.getQuantity() == null ? 0 : si.getQuantity();
+                if (qty <= 0 || qty > remaining.get(si.getItemId())) {
+                    throw new BadRequestException(messageService.getMessage("error.order.split.quantity.invalid", src.getProductName()));
+                }
+                // Add to the child's collection (cascade ALL persists on save) so the returned
+                // DTO carries the line items — not orderItemRepository.save(), which leaves the
+                // in-memory collection empty and renders the response check itemless.
+                OrderItem copy = copyItem(src, qty, child, tenantId);
+                child.getOrderItems().add(copy);
+                childSubtotal = childSubtotal.add(copy.getUnitPrice().multiply(BigDecimal.valueOf(qty)));
+                remaining.put(si.getItemId(), remaining.get(si.getItemId()) - qty);
+            }
+            if (child.getOrderItems().isEmpty()) { continue; } // never persisted — nothing to delete
+            child.setTotalAmount(childSubtotal);
+            children.add(orderRepository.save(child));
+        }
+        if (children.isEmpty()) {
+            throw new BadRequestException(messageService.getMessage("error.order.split.groups.required"));
+        }
+
+        // Apply the ledger to the source items: shrink partially-moved, delete fully-moved.
+        BigDecimal originalSubtotal = BigDecimal.ZERO;
+        boolean originalHasItems = false;
+        for (OrderItem src : sourceItems) {
+            int left = remaining.get(src.getId());
+            if (left <= 0) {
+                order.getOrderItems().remove(src); // orphanRemoval deletes it on save
+            } else {
+                src.setQuantity(left);
+                originalSubtotal = originalSubtotal.add(src.getUnitPrice().multiply(BigDecimal.valueOf(left)));
+                originalHasItems = true;
+            }
+        }
+
+        List<Order> checks = new java.util.ArrayList<>(children);
+        if (originalHasItems) {
+            order.setTotalAmount(originalSubtotal);
+            checks.add(order);
+        } else {
+            // Everything was split out — close the now-empty source order.
+            order.setTotalAmount(BigDecimal.ZERO);
+            order.voidOrder("order.void.split_all", serializeArgs(String.valueOf(children.size())), actor);
+        }
+
+        // Keep the checks summing to the captured grand total; the first check absorbs any
+        // non-item remainder (service charge / tip) or rounding.
+        BigDecimal checksTotal = checks.stream().map(Order::getTotalAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal diff = grandTotal.subtract(checksTotal);
+        if (diff.signum() != 0 && !checks.isEmpty()) {
+            Order first = checks.get(0);
+            first.setTotalAmount(first.getTotalAmount().add(diff).max(BigDecimal.ZERO));
+            orderRepository.save(first);
+        }
+
+        orderRepository.save(order);
+        return checks.stream().map(this::mapToDTO).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public OrderDTO mergeBill(Long targetOrderId, com.tappy.pos.model.dto.order.MergeBillRequest request) {
+        log.info("Request: Merge order {} into {}", request.getSourceOrderId(), targetOrderId);
+        if (request.getSourceOrderId() == null || request.getSourceOrderId().equals(targetOrderId)) {
+            throw new BadRequestException(messageService.getMessage("error.order.merge.same"));
+        }
+        Order target = findActiveOrder(targetOrderId);
+        Order source = findActiveOrder(request.getSourceOrderId());
+        if (!ACTIVE_TAB_STATUSES.contains(target.getStatus())
+                || !ACTIVE_TAB_STATUSES.contains(source.getStatus())) {
+            throw new BadRequestException(messageService.getMessage("error.order.merge.invalid.status"));
+        }
+
+        String tenantId = tenantContext.getCurrentTenantId();
+        String actor = getCurrentUsername();
+
+        // Copy each source item onto the target, then empty the source (orphanRemoval deletes originals).
+        for (OrderItem src : new java.util.ArrayList<>(source.getOrderItems())) {
+            OrderItem copy = copyItem(src, src.getQuantity(), target, tenantId);
+            orderItemRepository.save(copy);
+        }
+        BigDecimal sourceTotal = source.getTotalAmount() != null ? source.getTotalAmount() : BigDecimal.ZERO;
+        target.setTotalAmount((target.getTotalAmount() != null ? target.getTotalAmount() : BigDecimal.ZERO).add(sourceTotal));
+        orderRepository.save(target);
+
+        source.getOrderItems().clear(); // orphanRemoval deletes the moved-out items
+        source.setTotalAmount(BigDecimal.ZERO);
+        source.voidOrder("order.void.merged", serializeArgs(target.getOrderNumber()), actor);
+        Order savedSource = orderRepository.save(source);
+        releaseTableForOrder(savedSource); // free the merged-away table
+
+        activityLogService.logAsync(tenantId, actor, null,
+                ActivityAction.ORDER_MERGED, "ORDER", target.getOrderNumber(),
+                "activity.order.merged", null, savedSource.getOrderNumber(), target.getOrderNumber());
+
+        // Reload the target so the response carries the merged-in items.
+        return mapToDTO(findActiveOrder(targetOrderId));
+    }
+
+    /** A fresh IN_PROGRESS child check that inherits the source order's table + channel context. */
+    private Order newChildCheck(Order source, String tenantId, String actor) {
+        Order child = Order.builder()
+                .orderNumber(generateUniqueOrderNumber())
+                .status(Order.OrderStatus.IN_PROGRESS)
+                .orderType(source.getOrderType())
+                .orderChannel(source.getOrderChannel())
+                .source("SPLIT")
+                .parentOrderId(source.getId())
+                .tableId(source.getTableId())
+                .tableLabel(source.getTableLabel())
+                .tableLabelKey(source.getTableLabelKey())
+                .tableLabelArgs(source.getTableLabelArgs())
+                .serviceChargeRate(source.getServiceChargeRate())
+                .createdBy(actor)
+                .totalAmount(BigDecimal.ZERO)
+                .build();
+        // @Builder on Order does not include the @SuperBuilder parent's tenantId — set it explicitly.
+        child.setTenantId(tenantId);
+        return child;
+    }
+
+    /** Deep-copy an order item for a different order, with a (possibly reduced) quantity. */
+    private OrderItem copyItem(OrderItem src, int qty, Order targetOrder, String tenantId) {
+        OrderItem c = new OrderItem();
+        c.setTenantId(tenantId);
+        c.setOrder(targetOrder);
+        c.setProductId(src.getProductId());
+        c.setProductName(src.getProductName());
+        c.setVariantId(src.getVariantId());
+        c.setQuantity(qty);
+        c.setSellUnit(src.getSellUnit());
+        c.setUnitFactor(src.getUnitFactor());
+        c.setUnitPrice(src.getUnitPrice());
+        c.setUnitCost(src.getUnitCost() != null ? src.getUnitCost() : BigDecimal.ZERO);
+        c.setItemType(src.getItemType());
+        c.setStatus(src.getStatus());
+        c.setCompletedAt(src.getCompletedAt());
+        c.setTaxPercentage(src.getTaxPercentage() != null ? src.getTaxPercentage() : BigDecimal.ZERO);
+        c.setTaxAmount(BigDecimal.ZERO);
+        c.setCommissionRate(src.getCommissionRate() != null ? src.getCommissionRate() : BigDecimal.ZERO);
+        c.setCommissionAmount(BigDecimal.ZERO);
+        c.setAssignedEmployeeId(src.getAssignedEmployeeId());
+        c.setAssignedEmployeeName(src.getAssignedEmployeeName());
+        c.setMetadata(src.getMetadata());
+        c.setModifiers(src.getModifiers());
+        c.setNote(src.getNote());
+        c.setComboId(src.getComboId());
+        c.setDurationMinutes(src.getDurationMinutes() != null ? src.getDurationMinutes() : 0);
+        return c; // amount / costAmount computed in @PrePersist
+    }
+
+    /** Order number generator (mirrors CartServiceImpl), retried for uniqueness. */
+    private String generateUniqueOrderNumber() {
+        for (int attempt = 0; attempt < 10; attempt++) {
+            String datePart = LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
+            int seq = java.util.concurrent.ThreadLocalRandom.current().nextInt(10000, 99999);
+            String candidate = "ORD-" + datePart + "-" + seq;
+            if (orderRepository.findByOrderNumber(candidate).isEmpty()) {
+                return candidate;
+            }
+        }
+        return "ORD-" + LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
+    }
+
+    /**
+     * Release the table backing a split group once every member check is settled. No-op for any
+     * order that is not part of a split group, so non-FnB and unsplit orders are untouched.
+     */
+    private void releaseTableForSplitGroupIfComplete(Order order) {
+        Long rootId = order.getParentOrderId() != null ? order.getParentOrderId() : order.getId();
+        List<Order> children = orderRepository.findByParentOrderId(rootId);
+        if (order.getParentOrderId() == null && children.isEmpty()) {
+            return; // not a split group
+        }
+        List<Order> members = new java.util.ArrayList<>(children);
+        orderRepository.findById(rootId).ifPresent(members::add);
+        boolean anyActive = members.stream().anyMatch(o -> ACTIVE_TAB_STATUSES.contains(o.getStatus()));
+        if (anyActive) {
+            return;
+        }
+        try {
+            tableRepository.findByTenantIdAndCurrentOrderId(order.getTenantId(), rootId)
+                    .ifPresent(table -> {
+                        table.setStatus(com.tappy.pos.model.enums.TableStatus.AVAILABLE);
+                        table.setCurrentOrderId(null);
+                        tableRepository.save(table);
+                        log.debug("Table {} released after split group {} fully settled", table.getId(), rootId);
+                    });
+        } catch (Exception e) {
+            log.warn("Could not release table for split group {}: {}", rootId, e.getMessage());
+        }
     }
 }

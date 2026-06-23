@@ -91,4 +91,19 @@ public class NotificationController {
     public ResponseEntity<ApiResponse<List<String>>> savePreferences(@RequestBody List<String> enabledTypes) {
         return ResponseEntity.ok(ApiResponse.success(notificationService.savePreferences(enabledTypes)));
     }
+
+    /** POST /notifications/device-token — register (upsert) this device's Expo push token. */
+    @PostMapping("/device-token")
+    public ResponseEntity<ApiResponse<Void>> registerDeviceToken(
+            @RequestBody @Valid com.tappy.pos.model.dto.notification.RegisterDeviceTokenRequest req) {
+        notificationService.registerDeviceToken(req.getExpoPushToken(), req.getPlatform());
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    /** DELETE /notifications/device-token — remove this device's token (on logout). */
+    @DeleteMapping("/device-token")
+    public ResponseEntity<ApiResponse<Void>> removeDeviceToken(@RequestParam String expoPushToken) {
+        notificationService.removeDeviceToken(expoPushToken);
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
 }

@@ -1,5 +1,9 @@
 package com.tappy.pos.service.finance;
 
+import com.tappy.pos.service.audit.ActivityLogService;
+
+import com.tappy.pos.config.AuthContext;
+
 import com.tappy.pos.model.dto.bank.BankAccountDTO;
 import com.tappy.pos.model.dto.bank.SaveBankAccountRequest;
 import com.tappy.pos.model.entity.finance.BankAccount;
@@ -33,6 +37,12 @@ class BankAccountServiceImplTest {
     @Mock private TenantContext tenantContext;
     @Mock private BankAccountRepository repo;
     @Mock private MessageService messageService;
+
+    @Mock
+    private AuthContext authContext;
+
+    @Mock
+    private ActivityLogService activityLogService;
 
     @InjectMocks
     private BankAccountServiceImpl service;

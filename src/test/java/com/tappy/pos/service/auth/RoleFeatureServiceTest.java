@@ -3,8 +3,10 @@ package com.tappy.pos.service.auth;
 import com.tappy.pos.model.dto.auth.PermissionsMatrixDTO;
 import com.tappy.pos.model.entity.auth.Feature;
 import com.tappy.pos.model.entity.auth.Role;
+import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.auth.RoleFeatureRepository;
 import com.tappy.pos.repository.auth.RoleRepository;
+import com.tappy.pos.repository.tenant.TenantRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -16,6 +18,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+
+import org.mockito.ArgumentCaptor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -30,6 +34,10 @@ class RoleFeatureServiceTest {
     private RoleFeatureRepository roleFeatureRepository;
     @Mock
     private RoleRepository roleRepository;
+    @Mock
+    private TenantRepository tenantRepository;
+    @Mock
+    private TenantContext tenantContext;
 
     @InjectMocks
     private RoleFeatureService roleFeatureService;
@@ -690,6 +698,119 @@ class RoleFeatureServiceTest {
 
         verify(roleFeatureRepository).removeAllFeaturesFromRole("CASHIER");
         verify(roleFeatureRepository, never()).assignFeatureToRole(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("setRoleFeatures: bumps tenant features_version so stale tokens refresh")
+    void testSetRoleFeatures_BumpsFeaturesVersion() {
+        when(tenantContext.getCurrentTenantId()).thenReturn("shop-1");
+
+        roleFeatureService.setRoleFeatures("CASHIER", List.of("DASHBOARD"));
+
+        verify(tenantRepository).bumpFeaturesVersion("shop-1");
+    }
+
+    @Test
+    @DisplayName("setRoleFeatures: no version bump when there is no tenant context")
+    void testSetRoleFeatures_NoBumpWithoutTenant() {
+        when(tenantContext.getCurrentTenantId()).thenReturn(null);
+
+        roleFeatureService.setRoleFeatures("CASHIER", List.of("DASHBOARD"));
+
+        verify(tenantRepository, never()).bumpFeaturesVersion(anyString());
+    }
+
+    // ── setRoleFeatures: no-op change does not bump version ─────────────────────
+
+    @Test
+    @DisplayName("setRoleFeatures: no version bump when feature set is unchanged")
+    void testSetRoleFeatures_NoBumpWhenUnchanged() {
+        // before == after, so no version bump even with a tenant context
+        when(roleFeatureRepository.findActiveFeatureNamesByRoleName("CASHIER"))
+                .thenReturn(List.of("DASHBOARD", "ORDER"));
+
+        roleFeatureService.setRoleFeatures("CASHIER", List.of("ORDER", "DASHBOARD"));
+
+        verify(roleFeatureRepository).removeAllFeaturesFromRole("CASHIER");
+        verify(roleFeatureRepository).assignFeatureToRole("CASHIER", "ORDER");
+        verify(roleFeatureRepository).assignFeatureToRole("CASHIER", "DASHBOARD");
+        verify(tenantRepository, never()).bumpFeaturesVersion(anyString());
+    }
+
+    // ── seedRolesForTenant ──────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("seedRolesForTenant: saves roles that do not yet exist")
+    void testSeedRolesForTenant_SavesNewRoles() {
+        when(roleRepository.nativeExistsByNameAndTenant(anyString(), eq("tenant-1")))
+                .thenReturn(false);
+
+        roleFeatureService.seedRolesForTenant(List.of("SHOP_OWNER", "CASHIER"), "tenant-1");
+
+        ArgumentCaptor<Role> cap = ArgumentCaptor.forClass(Role.class);
+        verify(roleRepository, times(2)).save(cap.capture());
+        assertThat(cap.getAllValues()).extracting(Role::getName)
+                .containsExactlyInAnyOrder("SHOP_OWNER", "CASHIER");
+        assertThat(cap.getAllValues()).allMatch(r -> "tenant-1".equals(r.getTenantId()));
+    }
+
+    @Test
+    @DisplayName("seedRolesForTenant: skips roles that already exist")
+    void testSeedRolesForTenant_SkipsExisting() {
+        when(roleRepository.nativeExistsByNameAndTenant("SHOP_OWNER", "tenant-1")).thenReturn(true);
+        when(roleRepository.nativeExistsByNameAndTenant("CASHIER", "tenant-1")).thenReturn(false);
+
+        roleFeatureService.seedRolesForTenant(List.of("SHOP_OWNER", "CASHIER"), "tenant-1");
+
+        ArgumentCaptor<Role> cap = ArgumentCaptor.forClass(Role.class);
+        verify(roleRepository, times(1)).save(cap.capture());
+        assertThat(cap.getValue().getName()).isEqualTo("CASHIER");
+    }
+
+    @Test
+    @DisplayName("seedRolesForTenant: ignores unknown (non-enum) role names")
+    void testSeedRolesForTenant_IgnoresUnknownRole() {
+        lenient().when(roleRepository.nativeExistsByNameAndTenant(anyString(), anyString()))
+                .thenReturn(false);
+
+        roleFeatureService.seedRolesForTenant(List.of("NOT_A_ROLE"), "tenant-1");
+
+        verify(roleRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("seedRolesForTenant: swallows save exception and continues seeding remaining roles")
+    void testSeedRolesForTenant_SwallowsSaveException() {
+        when(roleRepository.nativeExistsByNameAndTenant(anyString(), eq("tenant-1"))).thenReturn(false);
+        when(roleRepository.save(any())).thenThrow(new RuntimeException("RLS reject"));
+
+        // should not throw
+        roleFeatureService.seedRolesForTenant(List.of("SHOP_OWNER", "CASHIER"), "tenant-1");
+
+        verify(roleRepository, times(2)).save(any());
+    }
+
+    // ── syncTenantFeatureChanges ────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("syncTenantFeatureChanges: added features assigned to SHOP_OWNER, removed deleted from all roles")
+    void testSyncTenantFeatureChanges_AddedAndRemoved() {
+        roleFeatureService.syncTenantFeatureChanges(
+                List.of("INVENTORY", "REVENUE"), List.of("PROMOTION"));
+
+        verify(roleFeatureRepository).assignFeatureToRole("SHOP_OWNER", "INVENTORY");
+        verify(roleFeatureRepository).assignFeatureToRole("SHOP_OWNER", "REVENUE");
+        verify(roleFeatureRepository).removeFeatureFromAllRoles("PROMOTION");
+        verify(roleFeatureRepository, never()).removeFeatureFromAllRoles("INVENTORY");
+    }
+
+    @Test
+    @DisplayName("syncTenantFeatureChanges: empty lists make no repository calls")
+    void testSyncTenantFeatureChanges_EmptyLists() {
+        roleFeatureService.syncTenantFeatureChanges(List.of(), List.of());
+
+        verify(roleFeatureRepository, never()).assignFeatureToRole(anyString(), anyString());
+        verify(roleFeatureRepository, never()).removeFeatureFromAllRoles(anyString());
     }
 
     // ============= Helper Methods =============

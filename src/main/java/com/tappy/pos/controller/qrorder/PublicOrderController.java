@@ -28,6 +28,11 @@ public class PublicOrderController {
         return ApiResponse.success(publicOrderService.resolveTable(qrToken));
     }
 
+    @GetMapping("/shop")
+    public ApiResponse<PublicTableDTO> getShop() {
+        return ApiResponse.success(publicOrderService.getShop());
+    }
+
     @GetMapping("/menu")
     public ApiResponse<PublicMenuDTO> getMenu() {
         return ApiResponse.success(publicOrderService.getMenu());
@@ -37,6 +42,11 @@ public class PublicOrderController {
     public ApiResponse<PublicOrderResponse> submitOrder(@PathVariable String qrToken,
                                                         @Valid @RequestBody PublicOrderRequest request) {
         return ApiResponse.success(publicOrderService.submitOrder(qrToken, request));
+    }
+
+    @PostMapping("/orders")
+    public ApiResponse<PublicOrderResponse> submitShopOrder(@Valid @RequestBody PublicOrderRequest request) {
+        return ApiResponse.success(publicOrderService.submitShopOrder(request));
     }
 
     @GetMapping("/orders/{orderId}")

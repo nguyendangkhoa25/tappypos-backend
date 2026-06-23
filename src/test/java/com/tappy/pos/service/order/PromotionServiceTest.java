@@ -9,7 +9,9 @@ import com.tappy.pos.model.entity.order.Promotion;
 import com.tappy.pos.model.enums.DiscountType;
 import com.tappy.pos.repository.order.PromotionRepository;
 import com.tappy.pos.service.MessageService;
+import com.tappy.pos.service.audit.ActivityLogService;
 import com.tappy.pos.multitenant.TenantContext;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,9 +23,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -41,6 +46,7 @@ class PromotionServiceTest {
     @Mock private PromotionRepository promotionRepository;
     @Mock private MessageService messageService;
     @Mock private TenantContext tenantContext;
+    @Mock private ActivityLogService activityLogService;
 
     @InjectMocks
     private PromotionService promotionService;
@@ -48,8 +54,15 @@ class PromotionServiceTest {
     private Promotion percentagePromo;
     private Promotion amountPromo;
 
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("tester", null, Collections.emptyList()));
         percentagePromo = Promotion.builder()
                 .name("10% OFF")
                 .code("SAVE10")
@@ -88,6 +101,25 @@ class PromotionServiceTest {
 
         assertThat(result.getContent()).hasSize(1);
         assertThat(result.getContent().get(0).getCode()).isEqualTo("SAVE10");
+    }
+
+    @Test
+    @DisplayName("getActivePromotions: maps currently-valid promotions to DTOs")
+    void getActivePromotions_returnsList() {
+        when(promotionRepository.findAllValid(any(LocalDateTime.class)))
+                .thenReturn(List.of(percentagePromo, amountPromo));
+
+        List<PromotionDTO> result = promotionService.getActivePromotions();
+
+        assertThat(result).hasSize(2);
+        assertThat(result).extracting(PromotionDTO::getCode).containsExactly("SAVE10", "FLAT50K");
+    }
+
+    @Test
+    @DisplayName("getActivePromotions: returns empty list when none valid")
+    void getActivePromotions_empty() {
+        when(promotionRepository.findAllValid(any(LocalDateTime.class))).thenReturn(List.of());
+        assertThat(promotionService.getActivePromotions()).isEmpty();
     }
 
     @Test

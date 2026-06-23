@@ -98,6 +98,41 @@ class SchedulerNotificationHelperTest {
     }
 
     @Test
+    @DisplayName("sendPawnDueNotification: ZNS-reminds each borrower whose contract is upcoming-due")
+    void pawnDue_borrowerReminder_sendsZns() {
+        when(pawnRepository.sumByPawnStatusAndPawnDueDateBetween(any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean()))
+                .thenReturn(List.of());
+        when(pawnRepository.findDueForCustomerReminder(any(), any(), any()))
+                .thenReturn(List.<Object[]>of(new Object[]{
+                        7L, "Khách B", "0900000001",
+                        LocalDate.of(2026, 6, 23).atStartOfDay(), new BigDecimal("5000000")}));
+        when(zaloMessageTemplateService.getDefaultTemplateId(any())).thenReturn("pawn-tmpl-1");
+        when(zaloOaService.getAccessToken()).thenReturn("token-1");
+
+        helper.sendPawnDueNotification(tenant());
+
+        verify(zaloZnsService).sendPawnDueReminderAsync(
+                anyString(), anyString(), anyString(), anyString(), anyLong(), anyString(), any());
+    }
+
+    @Test
+    @DisplayName("sendPawnDueNotification: upcoming-due but no ZNS template → no borrower reminder")
+    void pawnDue_borrowerReminder_noTemplate_skips() {
+        when(pawnRepository.sumByPawnStatusAndPawnDueDateBetween(any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean()))
+                .thenReturn(List.of());
+        when(pawnRepository.findDueForCustomerReminder(any(), any(), any()))
+                .thenReturn(List.<Object[]>of(new Object[]{
+                        7L, "Khách B", "0900000001",
+                        LocalDate.of(2026, 6, 23).atStartOfDay(), new BigDecimal("5000000")}));
+        when(zaloMessageTemplateService.getDefaultTemplateId(any())).thenReturn(null);
+
+        helper.sendPawnDueNotification(tenant());
+
+        verify(zaloZnsService, never()).sendPawnDueReminderAsync(
+                any(), any(), any(), any(), anyLong(), any(), any());
+    }
+
+    @Test
     @DisplayName("sendAppointmentReminders: sends a Zalo reminder per due appointment and marks them sent")
     void appointmentReminders_withDue() {
         Appointment appt = Appointment.builder()

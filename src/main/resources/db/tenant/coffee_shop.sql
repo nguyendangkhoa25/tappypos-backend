@@ -76,7 +76,7 @@ VALUES
     (current_setting('app.current_tenant', true), 'Thành viên',   0,        1.00, '#CD7F32', 'Thành viên cơ bản',        1),
     (current_setting('app.current_tenant', true), 'Bạc',          500000,   1.25, '#9E9E9E', 'Chi tiêu từ 500K VND',     2),
     (current_setting('app.current_tenant', true), 'Vàng',         2000000,  1.50, '#FFC107', 'Chi tiêu từ 2 triệu VND',  3),
-    (current_setting('app.current_tenant', true), 'VIP',          10000000, 2.00, '#00BCD4', 'Chi tiêu từ 10 triệu VND', 4, 'TRACKED');
+    (current_setting('app.current_tenant', true), 'VIP',          10000000, 2.00, '#00BCD4', 'Chi tiêu từ 10 triệu VND', 4);
 
 -- ── 9. Print templates ────────────────────────────────────────
 INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_default) VALUES
@@ -92,7 +92,7 @@ INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_def
   "showCashDetails": true,
   "paperWidth": "80mm",
   "autoClose": true
-}', TRUE, 'TRACKED'),
+}', TRUE),
     (current_setting('app.current_tenant', true), 'PRODUCT_STAMP', 'Tem sản phẩm', '{
   "showShopName": true,
   "showSku": true,
@@ -103,7 +103,7 @@ INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_def
   "showExpiry": false,
   "labelWidth": 60,
   "labelHeight": 38
-}', TRUE, 'TRACKED'),
+}', TRUE),
     (current_setting('app.current_tenant', true), 'INVENTORY_STAMP', 'Tem kho', '{
   "showShopName": true,
   "showSku": true,
@@ -114,7 +114,7 @@ INSERT INTO print_templates (tenant_id, template_type, name, config_json, is_def
   "showExpiry": false,
   "labelWidth": 60,
   "labelHeight": 38
-}', TRUE, 'TRACKED')
+}', TRUE)
 ON CONFLICT (template_type, name, tenant_id) DO NOTHING;
 
 -- ── 10. Attribute groups & definitions (BEVERAGE) ─────────────
@@ -187,3 +187,50 @@ ON CONFLICT (code, product_type_id) DO UPDATE SET name = EXCLUDED.name;
 INSERT INTO shop_config (tenant_id, config_key, config_value, config_group, encrypted) VALUES
     (current_setting('app.current_tenant', true), 'cash_denominations', '1000,2000,5000,10000,20000,50000,100000,200000,500000', 'POS', FALSE)
 ON CONFLICT (config_key, tenant_id) DO NOTHING;
+
+-- ── 12. Tùy chọn món (modifier groups) ────────────────────────
+-- Café-defining add-ons: Cỡ ly / Mức đá / Mức đường / Topping. The modifier engine is
+-- shared (gated by the PRODUCT feature); these seed rows give a new quán cà phê / trà sữa
+-- ready-made groups it can attach to its drinks immediately. Idempotent via NOT EXISTS
+-- (these tables have no natural unique key to ON CONFLICT on).
+INSERT INTO modifier_groups (tenant_id, name, min_select, max_select, required, sort_order)
+SELECT current_setting('app.current_tenant', true), v.name, v.min_select, v.max_select, v.required, v.sort_order
+FROM (VALUES
+    ('Cỡ ly',     1, 1, TRUE,  1),
+    ('Mức đá',    1, 1, TRUE,  2),
+    ('Mức đường', 1, 1, TRUE,  3),
+    ('Topping',   0, 5, FALSE, 4)
+) AS v(name, min_select, max_select, required, sort_order)
+WHERE NOT EXISTS (
+    SELECT 1 FROM modifier_groups g
+    WHERE g.tenant_id = current_setting('app.current_tenant', true) AND g.name = v.name
+);
+
+INSERT INTO modifier_options (tenant_id, modifier_group_id, name, price_delta, sort_order)
+SELECT current_setting('app.current_tenant', true), g.id, o.name, o.price_delta, o.sort_order
+FROM modifier_groups g
+JOIN (VALUES
+    ('Cỡ ly',     'Nhỏ (S)',           0,     1),
+    ('Cỡ ly',     'Vừa (M)',           5000,  2),
+    ('Cỡ ly',     'Lớn (L)',           10000, 3),
+    ('Mức đá',    'Đá bình thường',    0,     1),
+    ('Mức đá',    'Ít đá',             0,     2),
+    ('Mức đá',    'Đá riêng',          0,     3),
+    ('Mức đá',    'Không đá',          0,     4),
+    ('Mức đường', 'Ngọt bình thường',  0,     1),
+    ('Mức đường', 'Ít ngọt (70%)',     0,     2),
+    ('Mức đường', 'Ít ngọt (50%)',     0,     3),
+    ('Mức đường', 'Không đường',       0,     4),
+    ('Topping',   'Trân châu đen',     8000,  1),
+    ('Topping',   'Trân châu trắng',   8000,  2),
+    ('Topping',   'Thạch trái cây',    7000,  3),
+    ('Topping',   'Kem cheese',        10000, 4),
+    ('Topping',   'Pudding trứng',     8000,  5),
+    ('Topping',   'Đào miếng',         10000, 6)
+) AS o(group_name, name, price_delta, sort_order) ON o.group_name = g.name
+WHERE g.tenant_id = current_setting('app.current_tenant', true)
+  AND NOT EXISTS (
+    SELECT 1 FROM modifier_options mo
+    WHERE mo.tenant_id = current_setting('app.current_tenant', true)
+      AND mo.modifier_group_id = g.id AND mo.name = o.name
+  );

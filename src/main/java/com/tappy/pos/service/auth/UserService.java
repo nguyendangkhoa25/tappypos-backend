@@ -19,9 +19,11 @@ import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.employee.EmployeeRepository;
 import com.tappy.pos.repository.tenant.AgentRepository;
+import com.tappy.pos.repository.tenant.TenantRepository;
 import com.tappy.pos.repository.auth.RoleRepository;
 import com.tappy.pos.repository.auth.UserRepository;
 import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -60,6 +62,7 @@ public class UserService {
     private final TenantContext tenantContext;
     private final ActivityLogService activityLogService;
     private final NotificationService notificationService;
+    private final TenantRepository tenantRepository;
 
     /**
      * Create a new user
@@ -131,11 +134,12 @@ public class UserService {
                     .map(User::getFullName).orElse(actorUsername);
             activityLogService.logAsync("master", actorUsername, actorFullName,
                     ActivityAction.USER_CREATED, "USER", String.valueOf(createdUser.getId()),
-                    "Created master user: " + createdUser.getUsername(), null);
-            String title = messageService.getMessage("notification.master.user.created.title");
-            String msg = messageService.getMessage("notification.master.user.created.message",
-                    createdUser.getUsername(), actorUsername);
-            notificationService.pushToMasterUsers(title, msg, "USER", createdUser.getId());
+                    "activity.user.created", null, createdUser.getUsername());
+            notificationService.pushToMasterUsers(
+                    LocalizedText.of("notification.master.user.created.title"),
+                    LocalizedText.of("notification.master.user.created.message",
+                            createdUser.getUsername(), actorUsername),
+                    "USER", createdUser.getId());
         }
 
         return mapToDTO(createdUser);
@@ -207,8 +211,13 @@ public class UserService {
             user.setFullName(request.getFullName());
         }
 
+        // Track whether this edit changes the user's effective features (roles or per-user
+        // overrides), so we only fire the stale-token signal when access actually changes.
+        boolean permissionsChanged = false;
+
         // Update roles if provided
         if (request.getRoleNames() != null) {
+            Set<String> oldRoleNames = user.getRoles().stream().map(Role::getName).collect(Collectors.toSet());
             Set<Role> roles = new HashSet<>();
             for (String roleName : request.getRoleNames()) {
                 // Validate role code against predefined roles
@@ -225,6 +234,8 @@ public class UserService {
                 roles.add(role);
             }
             user.setRoles(roles);
+            Set<String> newRoleNames = roles.stream().map(Role::getName).collect(Collectors.toSet());
+            if (!oldRoleNames.equals(newRoleNames)) permissionsChanged = true;
         }
 
         // Update notes if provided
@@ -235,6 +246,8 @@ public class UserService {
         // Update per-user feature overrides
         // null = don't touch; empty set = clear overrides (revert to role defaults); non-empty = replace
         if (request.getFeatureNames() != null) {
+            Set<String> oldFeatureNames = user.getUserFeatures() == null ? Set.of()
+                    : user.getUserFeatures().stream().map(Feature::getName).collect(Collectors.toSet());
             if (request.getFeatureNames().isEmpty()) {
                 user.setUserFeatures(new HashSet<>());
                 log.info("Cleared user-specific features for user: {}", id);
@@ -243,12 +256,19 @@ public class UserService {
                 user.setUserFeatures(features);
                 log.info("Updated {} user-specific features for user: {}", features.size(), id);
             }
+            if (!oldFeatureNames.equals(new HashSet<>(request.getFeatureNames()))) permissionsChanged = true;
         }
 
         User updatedUser = userRepository.save(user);
         log.info("User updated successfully: {}", updatedUser.getUsername());
 
         assignVendor(updatedUser.getId(), request.getVendorId());
+
+        // A role/override change alters this user's JWT feature set — fire the stale-token signal
+        // so they refresh within seconds (see TenantInterceptor + TenantRepository.bumpFeaturesVersion).
+        if (permissionsChanged) {
+            bumpFeaturesVersionForCurrentTenant();
+        }
 
         return mapToDTO(updatedUser);
     }
@@ -328,9 +348,12 @@ public class UserService {
                     return new ResourceNotFoundException(errorMessage);
                 });
 
+        boolean changed = user.getRoles().stream().noneMatch(r -> roleName.equals(r.getName()));
         user.addRole(role);
         User updatedUser = userRepository.save(user);
         log.info("Role {} added to user {}", roleName, user.getUsername());
+        // Only fire the stale-token signal if the role was not already present.
+        if (changed) bumpFeaturesVersionForCurrentTenant();
         return mapToDTO(updatedUser);
     }
 
@@ -357,10 +380,27 @@ public class UserService {
                     return new ResourceNotFoundException(errorMessage);
                 });
 
+        boolean changed = user.getRoles().stream().anyMatch(r -> roleName.equals(r.getName()));
         user.removeRole(role);
         User updatedUser = userRepository.save(user);
         log.info("Role {} removed from user {}", roleName, user.getUsername());
+        // Only fire the stale-token signal if the role was actually present.
+        if (changed) bumpFeaturesVersionForCurrentTenant();
         return mapToDTO(updatedUser);
+    }
+
+    /**
+     * Fire the stale-token signal for the current tenant after a per-user permission change
+     * (role assignment or per-user feature override). Bumps features_version so every active
+     * token for the tenant is detected as stale on its next request and silently refreshed.
+     * No-op outside a tenant context (e.g. master-side operations).
+     */
+    private void bumpFeaturesVersionForCurrentTenant() {
+        String tenantId = tenantContext.getCurrentTenantId();
+        if (tenantId != null) {
+            tenantRepository.bumpFeaturesVersion(tenantId);
+            log.info("Bumped features_version for tenant {} after user permission change", tenantId);
+        }
     }
 
     /**
@@ -565,11 +605,10 @@ public class UserService {
      * Format: Random UUID (first 12 characters) + random numbers
      * Example: a1f2b3c4d5e6-1234
      */
+    // Maps an access role to an HR employee position when auto-creating an employee on join.
+    // Only roles that correspond to a distinct EmployeePosition are listed; others get a null position.
     private static final Map<String, EmployeePosition> ROLE_TO_POSITION = Map.of(
-        "TECHNICIAN",    EmployeePosition.TECHNICIAN,
-        "RECEPTIONIST",  EmployeePosition.RECEPTIONIST,
-        "MANAGER",       EmployeePosition.MANAGER,
-        "CLEANER",       EmployeePosition.CLEANER
+        "TECHNICIAN", EmployeePosition.TECHNICIAN
     );
 
     private void autoCreateEmployee(User user, java.util.Set<String> roleNames) {

@@ -20,6 +20,10 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
     @Query("SELECT c FROM Customer c WHERE c.deleted = false AND c.id = :id")
     Optional<Customer> findByIdActive(Long id);
 
+    // Explicit tenant scoping — does not rely on the Hibernate filter / RLS being active
+    @Query("SELECT c FROM Customer c WHERE c.deleted = false AND c.id = :id AND c.tenantId = :tenantId")
+    Optional<Customer> findByIdActiveAndTenantId(@Param("id") Long id, @Param("tenantId") String tenantId);
+
     @Query("SELECT c FROM Customer c WHERE c.deleted = false AND c.phone = :phone")
     Optional<Customer> findByPhone(String phone);
 

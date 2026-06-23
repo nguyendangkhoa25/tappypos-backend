@@ -1,11 +1,14 @@
 package com.tappy.pos.service.audit;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tappy.pos.model.dto.audit.ActivityLogDTO;
 import com.tappy.pos.model.entity.audit.ActivityLog;
 import com.tappy.pos.model.entity.tenant.Tenant;
 import com.tappy.pos.model.enums.ActivityAction;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.audit.ActivityLogRepository;
 import com.tappy.pos.repository.tenant.TenantRepository;
+import com.tappy.pos.service.MessageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -13,6 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -33,6 +37,8 @@ class ActivityLogServiceImplTest {
     @Mock private ActivityLogRepository activityLogRepository;
     @Mock private TenantRepository tenantRepository;
     @Mock private TenantContext tenantContext;
+    @Mock private MessageService messageService;
+    @Spy private ObjectMapper objectMapper = new ObjectMapper();
 
     @InjectMocks
     private ActivityLogServiceImpl activityLogService;
@@ -150,5 +156,235 @@ class ActivityLogServiceImplTest {
 
         verify(activityLogRepository).findWithFilters(eq("user1"), eq("PRODUCT_CREATED"), eq("PRODUCT"),
                 eq(from), eq(to), any());
+    }
+
+    // ── logAsync: master/actor handling & arg serialization ─────────────────────
+
+    @Test
+    @DisplayName("logAsync: master tenantId is translated to null tenant_id and skips tenant lookup")
+    void logAsync_masterTenantTranslatedToNull() {
+        when(activityLogRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        activityLogService.logAsync("master", "admin", "Admin",
+                ActivityAction.TENANT_CREATED, "TENANT", "9",
+                "activity.tenant.created", "10.0.0.1", "Shop X");
+
+        ArgumentCaptor<ActivityLog> cap = ArgumentCaptor.forClass(ActivityLog.class);
+        verify(activityLogRepository).save(cap.capture());
+        assertThat(cap.getValue().getTenantId()).isNull();
+        assertThat(cap.getValue().getDescriptionKey()).isEqualTo("activity.tenant.created");
+        // master path must not consult tenant repo or set tenant context
+        verify(tenantRepository, never()).findByTenantId(anyString());
+        verify(tenantContext, never()).setCurrentTenant(any());
+        verify(tenantContext).clear();
+    }
+
+    @Test
+    @DisplayName("logAsync: case-insensitive MASTER is treated as master")
+    void logAsync_masterCaseInsensitive() {
+        when(activityLogRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        activityLogService.logAsync("MASTER", "admin", null,
+                ActivityAction.AGENT_CREATED, "AGENT", "1", "activity.agent.created", null);
+
+        ArgumentCaptor<ActivityLog> cap = ArgumentCaptor.forClass(ActivityLog.class);
+        verify(activityLogRepository).save(cap.capture());
+        assertThat(cap.getValue().getTenantId()).isNull();
+        verify(tenantRepository, never()).findByTenantId(anyString());
+    }
+
+    @Test
+    @DisplayName("logAsync: shop tenantId is stored and tenant context is set")
+    void logAsync_shopTenantStored() {
+        when(tenantRepository.findByTenantId("shop1")).thenReturn(Optional.of(tenant));
+        when(activityLogRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        activityLogService.logAsync("shop1", "user1", "User One",
+                ActivityAction.PRODUCT_CREATED, "PRODUCT", "1", "activity.product.created", null);
+
+        ArgumentCaptor<ActivityLog> cap = ArgumentCaptor.forClass(ActivityLog.class);
+        verify(activityLogRepository).save(cap.capture());
+        assertThat(cap.getValue().getTenantId()).isEqualTo("shop1");
+        verify(tenantContext).setCurrentTenant(tenant);
+    }
+
+    @Test
+    @DisplayName("logAsync: skips when tenantId is blank")
+    void logAsync_blankTenantId() {
+        activityLogService.logAsync("   ", "user1", null,
+                ActivityAction.PRODUCT_CREATED, "PRODUCT", "1", "desc", null);
+
+        verify(activityLogRepository, never()).save(any());
+        verify(tenantContext, never()).clear();
+    }
+
+    @Test
+    @DisplayName("logAsync: serializes varargs into descriptionArgs JSON")
+    void logAsync_serializesArgs() {
+        when(tenantRepository.findByTenantId("shop1")).thenReturn(Optional.of(tenant));
+        when(activityLogRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        activityLogService.logAsync("shop1", "user1", null,
+                ActivityAction.PRODUCT_CREATED, "PRODUCT", "1",
+                "activity.product.created", null, "Áo thun", "1.500.000 ₫");
+
+        ArgumentCaptor<ActivityLog> cap = ArgumentCaptor.forClass(ActivityLog.class);
+        verify(activityLogRepository).save(cap.capture());
+        assertThat(cap.getValue().getDescriptionArgs())
+                .contains("Áo thun")
+                .contains("1.500.000");
+    }
+
+    @Test
+    @DisplayName("logAsync: stores null descriptionArgs when no varargs given")
+    void logAsync_noArgsNullDescriptionArgs() {
+        when(tenantRepository.findByTenantId("shop1")).thenReturn(Optional.of(tenant));
+        when(activityLogRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        activityLogService.logAsync("shop1", "user1", null,
+                ActivityAction.PRODUCT_CREATED, "PRODUCT", "1", "activity.product.created", null);
+
+        ArgumentCaptor<ActivityLog> cap = ArgumentCaptor.forClass(ActivityLog.class);
+        verify(activityLogRepository).save(cap.capture());
+        assertThat(cap.getValue().getDescriptionArgs()).isNull();
+    }
+
+    // ── toDto / renderDescription (via getActivityLogs) ─────────────────────────
+
+    @Test
+    @DisplayName("getActivityLogs: renders description from i18n key in reader locale")
+    void getActivityLogs_rendersFromKey() {
+        ActivityLog entry = ActivityLog.builder()
+                .id(7L)
+                .actorUsername("user1")
+                .actorFullName("User One")
+                .action(ActivityAction.PRODUCT_CREATED.name())
+                .targetType("PRODUCT")
+                .targetId("1")
+                .descriptionKey("activity.product.created")
+                .descriptionArgs("[\"Áo thun\"]")
+                .ipAddress("10.0.0.1")
+                .build();
+        when(messageService.getMessage(eq("activity.product.created"), any(Object[].class)))
+                .thenReturn("Đã tạo sản phẩm Áo thun");
+        when(activityLogRepository.findWithFilters(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of(entry)));
+
+        Page<ActivityLogDTO> result = activityLogService.getActivityLogs(null, null, null, null, null,
+                PageRequest.of(0, 10));
+
+        assertThat(result.getContent()).hasSize(1);
+        ActivityLogDTO dto = result.getContent().getFirst();
+        assertThat(dto.getId()).isEqualTo(7L);
+        assertThat(dto.getActorUsername()).isEqualTo("user1");
+        assertThat(dto.getAction()).isEqualTo("PRODUCT_CREATED");
+        assertThat(dto.getDescription()).isEqualTo("Đã tạo sản phẩm Áo thun");
+    }
+
+    @Test
+    @DisplayName("getActivityLogs: falls back to legacy description when key is null")
+    void getActivityLogs_fallbackToLegacyDescription() {
+        ActivityLog entry = ActivityLog.builder()
+                .id(8L)
+                .actorUsername("user1")
+                .action(ActivityAction.PRODUCT_UPDATED.name())
+                .description("Đã cập nhật sản phẩm (legacy)")
+                .descriptionKey(null)
+                .build();
+        when(activityLogRepository.findWithFilters(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of(entry)));
+
+        Page<ActivityLogDTO> result = activityLogService.getActivityLogs(null, null, null, null, null,
+                PageRequest.of(0, 10));
+
+        assertThat(result.getContent().getFirst().getDescription())
+                .isEqualTo("Đã cập nhật sản phẩm (legacy)");
+        verifyNoInteractions(messageService);
+    }
+
+    @Test
+    @DisplayName("getActivityLogs: blank key falls back to legacy description")
+    void getActivityLogs_blankKeyFallback() {
+        ActivityLog entry = ActivityLog.builder()
+                .id(9L)
+                .actorUsername("user1")
+                .action(ActivityAction.PRODUCT_UPDATED.name())
+                .description("legacy text")
+                .descriptionKey("   ")
+                .build();
+        when(activityLogRepository.findWithFilters(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of(entry)));
+
+        Page<ActivityLogDTO> result = activityLogService.getActivityLogs(null, null, null, null, null,
+                PageRequest.of(0, 10));
+
+        assertThat(result.getContent().getFirst().getDescription()).isEqualTo("legacy text");
+    }
+
+    @Test
+    @DisplayName("getActivityLogs: when key cannot be resolved, falls back to legacy description")
+    void getActivityLogs_renderFailureFallsBackToDescription() {
+        ActivityLog entry = ActivityLog.builder()
+                .id(10L)
+                .actorUsername("user1")
+                .action(ActivityAction.PRODUCT_CREATED.name())
+                .description("frozen fallback")
+                .descriptionKey("activity.unknown.key")
+                .descriptionArgs(null)
+                .build();
+        when(messageService.getMessage(eq("activity.unknown.key"), any(Object[].class)))
+                .thenThrow(new RuntimeException("no such message"));
+        when(activityLogRepository.findWithFilters(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of(entry)));
+
+        Page<ActivityLogDTO> result = activityLogService.getActivityLogs(null, null, null, null, null,
+                PageRequest.of(0, 10));
+
+        assertThat(result.getContent().getFirst().getDescription()).isEqualTo("frozen fallback");
+    }
+
+    @Test
+    @DisplayName("getActivityLogs: render failure with null legacy description falls back to the key itself")
+    void getActivityLogs_renderFailureNullDescriptionFallsBackToKey() {
+        ActivityLog entry = ActivityLog.builder()
+                .id(11L)
+                .actorUsername("user1")
+                .action(ActivityAction.PRODUCT_CREATED.name())
+                .description(null)
+                .descriptionKey("activity.broken.key")
+                .build();
+        when(messageService.getMessage(eq("activity.broken.key"), any(Object[].class)))
+                .thenThrow(new RuntimeException("boom"));
+        when(activityLogRepository.findWithFilters(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of(entry)));
+
+        Page<ActivityLogDTO> result = activityLogService.getActivityLogs(null, null, null, null, null,
+                PageRequest.of(0, 10));
+
+        assertThat(result.getContent().getFirst().getDescription()).isEqualTo("activity.broken.key");
+    }
+
+    @Test
+    @DisplayName("getActivityLogs: malformed descriptionArgs JSON still renders with empty args")
+    void getActivityLogs_malformedArgsDeserializesToEmpty() {
+        ActivityLog entry = ActivityLog.builder()
+                .id(12L)
+                .actorUsername("user1")
+                .action(ActivityAction.PRODUCT_CREATED.name())
+                .descriptionKey("activity.product.created")
+                .descriptionArgs("{ not valid json")
+                .build();
+        ArgumentCaptor<Object[]> argsCap = ArgumentCaptor.forClass(Object[].class);
+        when(messageService.getMessage(eq("activity.product.created"), argsCap.capture()))
+                .thenReturn("rendered");
+        when(activityLogRepository.findWithFilters(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of(entry)));
+
+        Page<ActivityLogDTO> result = activityLogService.getActivityLogs(null, null, null, null, null,
+                PageRequest.of(0, 10));
+
+        assertThat(result.getContent().getFirst().getDescription()).isEqualTo("rendered");
+        // bad JSON deserializes to the NO_ARGS empty array
+        assertThat(argsCap.getValue()).isEmpty();
     }
 }
