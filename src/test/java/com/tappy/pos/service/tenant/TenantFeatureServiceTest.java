@@ -1,8 +1,12 @@
 package com.tappy.pos.service.tenant;
 
+import com.tappy.pos.model.entity.auth.Feature;
+import com.tappy.pos.model.entity.auth.Role;
+import com.tappy.pos.model.entity.auth.User;
 import com.tappy.pos.model.entity.tenant.Tenant;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.auth.RoleFeatureRepository;
+import com.tappy.pos.repository.auth.RoleRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -14,11 +18,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -28,6 +34,9 @@ class TenantFeatureServiceTest {
 
     @Mock
     private RoleFeatureRepository roleFeatureRepository;
+
+    @Mock
+    private RoleRepository roleRepository;
 
     @Mock
     private TenantContext tenantContext;
@@ -501,6 +510,127 @@ class TenantFeatureServiceTest {
 
         // Then
         assertThat(result).isEmpty();
+    }
+
+    // ============= getAccessibleFeaturesByUserAndTenant Tests =============
+
+    @Test
+    @DisplayName("Should use user-specific features intersected with tenant when override is set")
+    void testGetAccessibleFeaturesByUserAndTenant_UserOverride() {
+        // Given: user has explicit features DASHBOARD, ORDER, REPORT; tenant has DASHBOARD, ORDER, CUSTOMER
+        User user = User.builder()
+                .username("alice")
+                .userFeatures(Set.of(
+                        feature("DASHBOARD"), feature("ORDER"), feature("REPORT")))
+                .build();
+        when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
+
+        // When
+        List<String> result = tenantFeatureService.getAccessibleFeaturesByUserAndTenant(
+                user, List.of("SHOP_OWNER"));
+
+        // Then: intersection of user override and tenant = DASHBOARD, ORDER (REPORT not in tenant)
+        assertThat(result).containsExactlyInAnyOrder("DASHBOARD", "ORDER");
+        assertThat(result).doesNotContain("REPORT", "CUSTOMER");
+        // role-based path must NOT be consulted when override exists
+        verify(roleFeatureRepository, never())
+                .findActiveFeatureNamesByRoleNamesAndTenantId(eq(List.of("SHOP_OWNER")), anyString());
+    }
+
+    @Test
+    @DisplayName("Should return raw user features when override is set but no tenant context")
+    void testGetAccessibleFeaturesByUserAndTenant_UserOverrideNoTenant() {
+        // Given
+        User user = User.builder()
+                .username("bob")
+                .userFeatures(Set.of(feature("DASHBOARD"), feature("ORDER")))
+                .build();
+        when(tenantContext.getCurrentTenant()).thenReturn(null);
+
+        // When
+        List<String> result = tenantFeatureService.getAccessibleFeaturesByUserAndTenant(
+                user, List.of("SHOP_OWNER"));
+
+        // Then: returns the full user override unfiltered
+        assertThat(result).containsExactlyInAnyOrder("DASHBOARD", "ORDER");
+    }
+
+    @Test
+    @DisplayName("Should fall back to role-based resolution when user has no override features")
+    void testGetAccessibleFeaturesByUserAndTenant_FallbackToRole() {
+        // Given: user with empty userFeatures
+        User user = User.builder()
+                .username("carol")
+                .userFeatures(Collections.emptySet())
+                .build();
+        List<String> roleNames = List.of("MANAGER");
+        List<String> roleFeatures = Arrays.asList("DASHBOARD", "ORDER", "REPORT");
+
+        when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
+        when(roleFeatureRepository.findActiveFeatureNamesByRoleNamesAndTenantId(eq(roleNames), anyString()))
+                .thenReturn(roleFeatures);
+
+        // When
+        List<String> result = tenantFeatureService.getAccessibleFeaturesByUserAndTenant(user, roleNames);
+
+        // Then: tenant (DASHBOARD,ORDER,CUSTOMER) ∩ role (DASHBOARD,ORDER,REPORT) = DASHBOARD, ORDER
+        assertThat(result).containsExactlyInAnyOrder("DASHBOARD", "ORDER");
+    }
+
+    @Test
+    @DisplayName("Should fall back to role-based resolution when userFeatures is null")
+    void testGetAccessibleFeaturesByUserAndTenant_NullUserFeatures() {
+        // Given
+        User user = User.builder().username("dan").userFeatures(null).build();
+        List<String> roleNames = List.of("SHOP_OWNER");
+        List<String> roleFeatures = Arrays.asList("DASHBOARD", "ORDER", "CUSTOMER");
+
+        when(tenantContext.getCurrentTenant()).thenReturn(testTenant);
+        when(roleFeatureRepository.findActiveFeatureNamesByRoleNamesAndTenantId(eq(roleNames), anyString()))
+                .thenReturn(roleFeatures);
+
+        // When
+        List<String> result = tenantFeatureService.getAccessibleFeaturesByUserAndTenant(user, roleNames);
+
+        // Then
+        assertThat(result).containsExactlyInAnyOrder("DASHBOARD", "ORDER", "CUSTOMER");
+    }
+
+    // ============= getShopOwnerRoleNames Tests =============
+
+    @Test
+    @DisplayName("Should return persisted SHOP_OWNER role name when role exists")
+    void testGetShopOwnerRoleNames_RoleExists() {
+        // Given
+        Role role = new Role("SHOP_OWNER", "Shop Owner");
+        when(roleRepository.findByNameAndTenantId("SHOP_OWNER", "tenant-123"))
+                .thenReturn(Optional.of(role));
+
+        // When
+        List<String> result = tenantFeatureService.getShopOwnerRoleNames("tenant-123");
+
+        // Then
+        assertThat(result).containsExactly("SHOP_OWNER");
+    }
+
+    @Test
+    @DisplayName("Should fall back to default SHOP_OWNER when role row not yet persisted")
+    void testGetShopOwnerRoleNames_RoleMissingFallback() {
+        // Given
+        when(roleRepository.findByNameAndTenantId("SHOP_OWNER", "new-tenant"))
+                .thenReturn(Optional.empty());
+
+        // When
+        List<String> result = tenantFeatureService.getShopOwnerRoleNames("new-tenant");
+
+        // Then
+        assertThat(result).containsExactly("SHOP_OWNER");
+    }
+
+    // ============= Helper =============
+
+    private Feature feature(String name) {
+        return Feature.builder().name(name).active(true).build();
     }
 }
 

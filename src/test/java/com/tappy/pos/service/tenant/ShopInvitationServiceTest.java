@@ -29,6 +29,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -245,5 +246,36 @@ class ShopInvitationServiceTest {
 
         assertThatThrownBy(() -> service.join("ABC234", "newbie")).isInstanceOf(BadRequestException.class);
         verify(tenantContext).clear();
+    }
+
+    // ── JSON (de)serialization helpers ───────────────────────────────────────────────
+
+    @Test
+    @DisplayName("fromJson parses a stored feature list via the TypeReference")
+    void fromJson_parsesList() {
+        @SuppressWarnings("unchecked")
+        List<String> parsed = (List<String>) ReflectionTestUtils.invokeMethod(
+                service, "fromJson", "[\"POS\",\"ORDER\",\"CUSTOMER\"]");
+        assertThat(parsed).containsExactly("POS", "ORDER", "CUSTOMER");
+    }
+
+    @Test
+    @DisplayName("fromJson returns an empty list for malformed JSON")
+    void fromJson_malformedReturnsEmpty() {
+        @SuppressWarnings("unchecked")
+        List<String> parsed = (List<String>) ReflectionTestUtils.invokeMethod(
+                service, "fromJson", "not-json");
+        assertThat(parsed).isEmpty();
+    }
+
+    @Test
+    @DisplayName("toJson serializes a feature list and round-trips with fromJson")
+    void toJson_roundTrip() {
+        String json = ReflectionTestUtils.invokeMethod(service, "toJson", List.of("POS", "INVENTORY"));
+        assertThat(json).isEqualTo("[\"POS\",\"INVENTORY\"]");
+
+        @SuppressWarnings("unchecked")
+        List<String> parsed = (List<String>) ReflectionTestUtils.invokeMethod(service, "fromJson", json);
+        assertThat(parsed).containsExactly("POS", "INVENTORY");
     }
 }

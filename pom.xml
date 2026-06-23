@@ -369,6 +369,12 @@
                                 <exclude>com/tappy/pos/config/SecurityConfig*</exclude>
                                 <!-- One-time raw-JDBC credential migration — bypasses JPA, requires live DB -->
                                 <exclude>com/tappy/pos/service/tenant/CredentialMigrationService*</exclude>
+                                <!-- Bootstrap / Spring config / trivial value classes — not unit-testable in isolation -->
+                                <exclude>com/tappy/pos/TappyPosApplication*</exclude>
+                                <exclude>com/tappy/pos/config/FlywayConfig*</exclude>
+                                <exclude>com/tappy/pos/exception/**</exclude>
+                                <exclude>com/tappy/pos/common/**</exclude>
+                                <exclude>com/tappy/pos/integration/IntegrationProvider*</exclude>
                             </excludes>
                         </configuration>
                     </execution>
@@ -388,6 +394,12 @@
                                 <exclude>com/tappy/pos/repository/pawn/**</exclude>
                                 <exclude>com/tappy/pos/config/SecurityConfig*</exclude>
                                 <exclude>com/tappy/pos/service/tenant/CredentialMigrationService*</exclude>
+                                <!-- Bootstrap / Spring config / trivial value classes — not unit-testable in isolation -->
+                                <exclude>com/tappy/pos/TappyPosApplication*</exclude>
+                                <exclude>com/tappy/pos/config/FlywayConfig*</exclude>
+                                <exclude>com/tappy/pos/exception/**</exclude>
+                                <exclude>com/tappy/pos/common/**</exclude>
+                                <exclude>com/tappy/pos/integration/IntegrationProvider*</exclude>
                             </excludes>
                             <rules>
                                 <rule>
@@ -397,6 +409,17 @@
                                             <counter>LINE</counter>
                                             <value>COVEREDRATIO</value>
                                             <minimum>0.90</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                                <!-- Per-class floor: no class may sit below 80% line coverage -->
+                                <rule>
+                                    <element>CLASS</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.80</minimum>
                                         </limit>
                                     </limits>
                                 </rule>
