@@ -93,6 +93,14 @@
             <artifactId>postgresql</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Apache HttpClient 5: lets TestRestTemplate issue PATCH and handle 401/403 on
+             POST bodies cleanly in the full-stack integration sweeps (the default
+             SimpleClientHttpRequestFactory supports neither). Auto-detected by TestRestTemplate. -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+            <scope>test</scope>
+        </dependency>
 
         <!-- Lombok -->
         <dependency>
@@ -283,7 +291,7 @@
                 </configuration>
             </plugin>
 
-            <!-- Surefire Plugin for Tests -->
+            <!-- Surefire Plugin for unit tests (*Test.java / *Tests.java) -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
@@ -293,7 +301,37 @@
                         <include>**/*Test.java</include>
                         <include>**/*Tests.java</include>
                     </includes>
+                    <!-- Full-stack integration tests (*IT.java / *IntegrationTest.java) are handled
+                         by Failsafe in the verify phase, not here. -->
+                    <excludes>
+                        <exclude>**/*IT.java</exclude>
+                        <exclude>**/*IntegrationTest.java</exclude>
+                    </excludes>
                 </configuration>
+            </plugin>
+
+            <!-- Failsafe Plugin for integration tests (*IT.java) — runs in the verify phase -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>3.0.0-M9</version>
+                <configuration>
+                    <includes>
+                        <include>**/*IT.java</include>
+                        <include>**/*IntegrationTest.java</include>
+                    </includes>
+                    <!-- JaCoCo agent for integration tests (set by jacoco prepare-agent-integration) -->
+                    <argLine>@{jacoco.it.argLine}</argLine>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>integration-tests</id>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
 
 
@@ -303,7 +341,9 @@
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <version>0.8.10</version>
                 <executions>
+                    <!-- ── Unit coverage (Surefire) ─────────────────────────────── -->
                     <execution>
+                        <id>prepare-agent</id>
                         <goals>
                             <goal>prepare-agent</goal>
                         </goals>
@@ -314,6 +354,23 @@
                         <goals>
                             <goal>report</goal>
                         </goals>
+                        <configuration>
+                            <excludes>
+                                <!-- Exclude model classes from code coverage (DTOs, entities, enums) -->
+                                <exclude>com/tappy/pos/model/**</exclude>
+                                <exclude>com/tappy/pos/controller/**</exclude>
+                                <exclude>com/tappy/pos/util/**</exclude>
+                                <!-- External API integrations — cannot be unit-tested without live credentials -->
+                                <exclude>com/tappy/pos/integration/google/**</exclude>
+                                <exclude>com/tappy/pos/service/integration/**</exclude>
+                                <!-- Pawn repositories: Spring Data JPA proxies + complex native SQL queries -->
+                                <exclude>com/tappy/pos/repository/pawn/**</exclude>
+                                <!-- Spring Security DSL config — not unit-testable without Spring context -->
+                                <exclude>com/tappy/pos/config/SecurityConfig*</exclude>
+                                <!-- One-time raw-JDBC credential migration — bypasses JPA, requires live DB -->
+                                <exclude>com/tappy/pos/service/tenant/CredentialMigrationService*</exclude>
+                            </excludes>
+                        </configuration>
                     </execution>
                     <execution>
                         <id>check</id>
@@ -322,6 +379,16 @@
                             <goal>check</goal>
                         </goals>
                         <configuration>
+                            <excludes>
+                                <exclude>com/tappy/pos/model/**</exclude>
+                                <exclude>com/tappy/pos/controller/**</exclude>
+                                <exclude>com/tappy/pos/util/**</exclude>
+                                <exclude>com/tappy/pos/integration/google/**</exclude>
+                                <exclude>com/tappy/pos/service/integration/**</exclude>
+                                <exclude>com/tappy/pos/repository/pawn/**</exclude>
+                                <exclude>com/tappy/pos/config/SecurityConfig*</exclude>
+                                <exclude>com/tappy/pos/service/tenant/CredentialMigrationService*</exclude>
+                            </excludes>
                             <rules>
                                 <rule>
                                     <element>BUNDLE</element>
@@ -336,24 +403,76 @@
                             </rules>
                         </configuration>
                     </execution>
+
+                    <!-- ── Integration coverage (Failsafe) — controller/API layer ── -->
+                    <execution>
+                        <id>prepare-agent-integration</id>
+                        <goals>
+                            <goal>prepare-agent-integration</goal>
+                        </goals>
+                        <configuration>
+                            <propertyName>jacoco.it.argLine</propertyName>
+                            <destFile>${project.build.directory}/jacoco-it.exec</destFile>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>report-integration</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report-integration</goal>
+                        </goals>
+                        <configuration>
+                            <dataFile>${project.build.directory}/jacoco-it.exec</dataFile>
+                            <outputDirectory>${project.build.directory}/site/jacoco-it</outputDirectory>
+                            <includes>
+                                <include>com/tappy/pos/controller/**</include>
+                            </includes>
+                            <excludes>
+                                <!-- Controllers that depend on external services (Google Drive, Zalo,
+                                     third-party integrations, one-off ops) — not coverable in a
+                                     hermetic Testcontainers run. -->
+                                <exclude>com/tappy/pos/controller/DriveUploadController*</exclude>
+                                <exclude>com/tappy/pos/controller/IntegrationController*</exclude>
+                                <exclude>com/tappy/pos/controller/MigrationController*</exclude>
+                                <exclude>com/tappy/pos/controller/ZaloOaController*</exclude>
+                                <exclude>com/tappy/pos/controller/ZaloMessageTemplateController*</exclude>
+                            </excludes>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>check-integration</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <dataFile>${project.build.directory}/jacoco-it.exec</dataFile>
+                            <haltOnFailure>true</haltOnFailure>
+                            <includes>
+                                <include>com/tappy/pos/controller/**</include>
+                            </includes>
+                            <excludes>
+                                <exclude>com/tappy/pos/controller/DriveUploadController*</exclude>
+                                <exclude>com/tappy/pos/controller/IntegrationController*</exclude>
+                                <exclude>com/tappy/pos/controller/MigrationController*</exclude>
+                                <exclude>com/tappy/pos/controller/ZaloOaController*</exclude>
+                                <exclude>com/tappy/pos/controller/ZaloMessageTemplateController*</exclude>
+                            </excludes>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.60</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
+                    </execution>
                 </executions>
-                <configuration>
-                    <excludes>
-                        <!-- Exclude model classes from code coverage (DTOs, entities, enums) -->
-                        <exclude>com/tappy/pos/model/**</exclude>
-                        <exclude>com/tappy/pos/controller/**</exclude>
-                        <exclude>com/tappy/pos/util/**</exclude>
-                        <!-- External API integrations — cannot be unit-tested without live credentials -->
-                        <exclude>com/tappy/pos/integration/google/**</exclude>
-                        <exclude>com/tappy/pos/service/integration/**</exclude>
-                        <!-- Pawn repositories: Spring Data JPA proxies + complex native SQL queries -->
-                        <exclude>com/tappy/pos/repository/pawn/**</exclude>
-                        <!-- Spring Security DSL config — not unit-testable without Spring context -->
-                        <exclude>com/tappy/pos/config/SecurityConfig*</exclude>
-                        <!-- One-time raw-JDBC credential migration — bypasses JPA, requires live DB -->
-                        <exclude>com/tappy/pos/service/tenant/CredentialMigrationService*</exclude>
-                    </excludes>
-                </configuration>
             </plugin>
         </plugins>
     </build>

@@ -774,6 +774,7 @@ CREATE TABLE IF NOT EXISTS invoice_items (
     tenant_id                VARCHAR(100)   NOT NULL,
     invoice_id               BIGINT         NOT NULL,
     line_number              INT            DEFAULT NULL,
+    order_id                 BIGINT         DEFAULT NULL,
     order_item_id            BIGINT         DEFAULT NULL,
     service_name             VARCHAR(255)   DEFAULT NULL,
     service_code             VARCHAR(50)    DEFAULT NULL,

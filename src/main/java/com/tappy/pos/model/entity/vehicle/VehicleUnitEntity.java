@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 
 /**
  * One physical vehicle unit (chiếc xe) — the SERIAL_NUMBER_MODEL from
- * INVENTORY_IMPLEMENT_GUIDE.js made real. Each row is one titled asset with a unique
+ * INVENTORY_IMPLEMENT_GUIDE.md made real. Each row is one titled asset with a unique
  * số khung (frameNo) + số máy (engineNo), its own bảo hành clock and giấy tờ state,
  * linked to its catalog {@code Product}. Tenant-scoped via RLS. See VEHICLE_SHOP_SHOP_TYPE_PLAN §4b.
  */
