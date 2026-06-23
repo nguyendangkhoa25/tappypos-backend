@@ -1,7 +1,10 @@
 package com.tappy.pos.service.qrorder;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tappy.pos.exception.BadRequestException;
 import com.tappy.pos.exception.ResourceNotFoundException;
+import com.tappy.pos.model.dto.modifier.ChosenModifierDTO;
+import com.tappy.pos.model.dto.modifier.ModifierGroupDTO;
 import com.tappy.pos.model.dto.qrorder.PublicMenuDTO;
 import com.tappy.pos.model.dto.qrorder.PublicOrderRequest;
 import com.tappy.pos.model.dto.qrorder.PublicOrderResponse;
@@ -21,6 +24,7 @@ import com.tappy.pos.repository.order.OrderRepository;
 import com.tappy.pos.repository.product.ProductRepository;
 import com.tappy.pos.repository.table.TableRepository;
 import com.tappy.pos.service.MessageService;
+import com.tappy.pos.service.modifier.ModifierService;
 import com.tappy.pos.service.tenant.ShopConfigService;
 import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.service.notification.NotificationService;
@@ -43,6 +47,10 @@ public class PublicOrderServiceImpl implements PublicOrderService {
     private static final String QR_CUSTOMER = "qr-customer";
     private static final String FEATURE_TABLE_SERVICE = "TABLE_SERVICE";
 
+    /** Floor staff who should be alerted when a customer self-submits a QR order. */
+    private static final List<String> ORDER_NOTIFY_ROLES = List.of(
+            RoleEnum.SHOP_OWNER.getCode(), RoleEnum.CASHIER.getCode(), RoleEnum.SERVICE_STAFF.getCode());
+
     private final TenantContext tenantContext;
     private final TableRepository tableRepository;
     private final ProductRepository productRepository;
@@ -51,6 +59,8 @@ public class PublicOrderServiceImpl implements PublicOrderService {
     private final ShopConfigService shopConfigService;
     private final MessageService messageService;
     private final NotificationService notificationService;
+    private final ModifierService modifierService;
+    private final ObjectMapper objectMapper;
 
     @Override
     @Transactional(readOnly = true)
@@ -66,9 +76,21 @@ public class PublicOrderServiceImpl implements PublicOrderService {
 
     @Override
     @Transactional(readOnly = true)
+    public PublicTableDTO getShop() {
+        Tenant tenant = requireQrEnabled();
+        // Shop-wide QR (no table): only the shop name is needed for the page header.
+        return PublicTableDTO.builder().shopName(tenant.getName()).build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public PublicMenuDTO getMenu() {
         Tenant tenant = requireQrEnabled();
         List<Product> products = productRepository.findActiveWithCategories(Product.ProductStatus.ACTIVE);
+
+        // Modifier groups for all menu products in one pass (avoids N+1).
+        Map<Long, List<ModifierGroupDTO>> modsByProduct = modifierService.getGroupsForProducts(
+                products.stream().map(Product::getId).collect(Collectors.toList()));
 
         // Group by the product's first category; uncategorised items go in a trailing "Khác" bucket.
         Map<Long, PublicMenuDTO.MenuCategory.MenuCategoryBuilder> byCat = new LinkedHashMap<>();
@@ -83,6 +105,7 @@ public class PublicOrderServiceImpl implements PublicOrderService {
                     .price(p.getPrice())
                     .unit(p.getUnit())
                     .imageUrl(p.getImageUrl())
+                    .modifierGroups(modsByProduct.get(p.getId()))
                     .build();
             Category cat = (p.getCategories() == null || p.getCategories().isEmpty())
                     ? null : p.getCategories().iterator().next();
@@ -110,66 +133,15 @@ public class PublicOrderServiceImpl implements PublicOrderService {
     @Transactional
     public PublicOrderResponse submitOrder(String qrToken, PublicOrderRequest request) {
         Tenant tenant = requireQrEnabled();
-        String tenantId = tenant.getTenantId();
         ShopTable table = findTable(qrToken);
+        return createOrder(tenant, table, request);
+    }
 
-        Order order = new Order();
-        order.setTenantId(tenantId);
-        order.setOrderNumber(generateOrderNumber());
-        order.setStatus(Order.OrderStatus.SUBMITTED);
-        order.setOrderType(Order.OrderType.SELL);
-        order.setSource("QR");
-        order.setTableLabel(table.getTableNumber());
-        order.setTableId(table.getId());
-        order.setCreatedBy(QR_CUSTOMER);
-        order.setNotes(buildNotes(request.getCustomerName(), request.getNote()));
-        customerRepository.findByPhoneAndTenantId(WALK_IN_PHONE, tenantId).ifPresent(order::setCustomer);
-
-        List<OrderItem> items = new ArrayList<>();
-        BigDecimal subtotal = BigDecimal.ZERO;
-        for (PublicOrderRequest.Line line : request.getItems()) {
-            // Re-price from the catalog — client-sent prices are never trusted.
-            Product p = productRepository.findByIdAndDeletedFalse(line.getProductId())
-                    .filter(pr -> pr.getStatus() == Product.ProductStatus.ACTIVE)
-                    .orElseThrow(() -> new BadRequestException(messageService.getMessage("error.product.not.found")));
-            OrderItem oi = new OrderItem();
-            oi.setTenantId(tenantId);
-            oi.setOrder(order);
-            oi.setProductId(p.getId());
-            oi.setProductName(p.getName());
-            oi.setQuantity(line.getQuantity());
-            oi.setUnitPrice(p.getPrice());
-            oi.setUnitCost(p.getCostPrice() != null ? p.getCostPrice() : BigDecimal.ZERO);
-            oi.setItemType(OrderItem.ItemType.STANDARD);
-            oi.setStatus(OrderItem.ItemStatus.PENDING);
-            oi.setNote(line.getNotes());
-            items.add(oi);
-            subtotal = subtotal.add(p.getPrice().multiply(BigDecimal.valueOf(line.getQuantity())));
-        }
-
-        BigDecimal taxRate = BigDecimal.valueOf(shopConfigService.getDouble(ShopConfigKey.DEFAULT_TAX_RATE, 0.10));
-        BigDecimal taxAmount = subtotal.multiply(taxRate).setScale(2, RoundingMode.HALF_UP);
-        order.setTaxPercentage(taxRate.multiply(BigDecimal.valueOf(100)).setScale(2, RoundingMode.HALF_UP));
-        order.setTaxAmount(taxAmount);
-        order.setTotalAmount(subtotal.add(taxAmount));
-        order.setOrderItems(items);
-
-        Order saved = orderRepository.save(order);
-        log.info("QR customer order submitted: {} (table={})", saved.getOrderNumber(), table.getTableNumber());
-
-        try {
-            notificationService.pushToRolesAsync(
-                    Notification.NotificationType.ORDER,
-                    LocalizedText.of("notification.qr.order.title", table.getTableNumber()),
-                    LocalizedText.of("notification.qr.order.message", saved.getOrderNumber()),
-                    "ORDER", saved.getId(),
-                    List.of(RoleEnum.SHOP_OWNER.getCode()),
-                    tenantId);
-        } catch (Exception e) {
-            log.warn("Failed to push QR-order notification (order={}): {}", saved.getOrderNumber(), e.getMessage());
-        }
-
-        return toResponse(saved);
+    @Override
+    @Transactional
+    public PublicOrderResponse submitShopOrder(PublicOrderRequest request) {
+        Tenant tenant = requireQrEnabled();
+        return createOrder(tenant, null, request);
     }
 
     @Override
@@ -182,7 +154,145 @@ public class PublicOrderServiceImpl implements PublicOrderService {
         return toResponse(order);
     }
 
+    // ── order creation (shared by per-table and shop-wide flows) ───────────────
+
+    /** {@code table} is null for a shop-wide (no-table) QR order. */
+    private PublicOrderResponse createOrder(Tenant tenant, ShopTable table, PublicOrderRequest request) {
+        String tenantId = tenant.getTenantId();
+
+        Order order = new Order();
+        order.setTenantId(tenantId);
+        order.setOrderNumber(generateOrderNumber());
+        order.setStatus(Order.OrderStatus.SUBMITTED);
+        order.setOrderType(Order.OrderType.SELL);
+        order.setSource("QR");
+        if (table != null) {
+            order.setTableLabel(table.getTableNumber());
+            order.setTableId(table.getId());
+        }
+        order.setCreatedBy(QR_CUSTOMER);
+        order.setNotes(buildNotes(request.getCustomerName(), request.getNote()));
+        customerRepository.findByPhoneAndTenantId(WALK_IN_PHONE, tenantId).ifPresent(order::setCustomer);
+
+        List<OrderItem> items = new ArrayList<>();
+        BigDecimal subtotal = BigDecimal.ZERO;
+        for (PublicOrderRequest.Line line : request.getItems()) {
+            // Re-price from the catalog — client-sent prices are never trusted.
+            Product p = productRepository.findByIdAndDeletedFalse(line.getProductId())
+                    .filter(pr -> pr.getStatus() == Product.ProductStatus.ACTIVE)
+                    .orElseThrow(() -> new BadRequestException(messageService.getMessage("error.product.not.found")));
+
+            BigDecimal unitPrice = p.getPrice();
+            String modifiersJson = null;
+
+            List<Long> optionIds = line.getModifierOptionIds();
+            if (optionIds != null && !optionIds.isEmpty()) {
+                validateModifierSelection(p, optionIds);
+                List<ChosenModifierDTO> chosen = modifierService.resolveOptions(optionIds);
+                BigDecimal delta = chosen.stream()
+                        .map(ChosenModifierDTO::getPriceDelta)
+                        .filter(Objects::nonNull)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                unitPrice = unitPrice.add(delta);
+                modifiersJson = writeModifiers(chosen);
+            }
+
+            OrderItem oi = new OrderItem();
+            oi.setTenantId(tenantId);
+            oi.setOrder(order);
+            oi.setProductId(p.getId());
+            oi.setProductName(p.getName());
+            oi.setQuantity(line.getQuantity());
+            oi.setUnitPrice(unitPrice);
+            oi.setUnitCost(p.getCostPrice() != null ? p.getCostPrice() : BigDecimal.ZERO);
+            oi.setItemType(OrderItem.ItemType.STANDARD);
+            oi.setStatus(OrderItem.ItemStatus.PENDING);
+            oi.setNote(line.getNotes());
+            oi.setModifiers(modifiersJson);
+            items.add(oi);
+            subtotal = subtotal.add(unitPrice.multiply(BigDecimal.valueOf(line.getQuantity())));
+        }
+
+        BigDecimal taxRate = BigDecimal.valueOf(shopConfigService.getDouble(ShopConfigKey.DEFAULT_TAX_RATE, 0.10));
+        BigDecimal taxAmount = subtotal.multiply(taxRate).setScale(2, RoundingMode.HALF_UP);
+        order.setTaxPercentage(taxRate.multiply(BigDecimal.valueOf(100)).setScale(2, RoundingMode.HALF_UP));
+        order.setTaxAmount(taxAmount);
+        order.setTotalAmount(subtotal.add(taxAmount));
+        order.setOrderItems(items);
+
+        Order saved = orderRepository.save(order);
+        log.info("QR customer order submitted: {} (table={})", saved.getOrderNumber(),
+                table != null ? table.getTableNumber() : "—");
+
+        try {
+            LocalizedText title = table != null
+                    ? LocalizedText.of("notification.qr.order.title", table.getTableNumber())
+                    : LocalizedText.of("notification.qr.order.title.notable");
+            notificationService.pushToRolesAsync(
+                    Notification.NotificationType.ORDER,
+                    title,
+                    LocalizedText.of("notification.qr.order.message", saved.getOrderNumber()),
+                    "ORDER", saved.getId(),
+                    ORDER_NOTIFY_ROLES,
+                    tenantId);
+        } catch (Exception e) {
+            log.warn("Failed to push QR-order notification (order={}): {}", saved.getOrderNumber(), e.getMessage());
+        }
+
+        return toResponse(saved);
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
+
+    /**
+     * Validate the chosen options belong to this product's modifier groups and satisfy each group's
+     * required / min / max constraints. Throws {@link BadRequestException} with a Vietnamese message.
+     */
+    private void validateModifierSelection(Product product, List<Long> optionIds) {
+        List<ModifierGroupDTO> groups = modifierService.getGroupsForProduct(product.getId());
+
+        // option id -> the group it belongs to (only options on this product's groups are valid)
+        Map<Long, ModifierGroupDTO> groupByOption = new HashMap<>();
+        for (ModifierGroupDTO g : groups) {
+            if (g.getOptions() == null) continue;
+            for (ModifierGroupDTO.OptionDTO o : g.getOptions()) {
+                groupByOption.put(o.getId(), g);
+            }
+        }
+
+        Map<Long, Long> countByGroup = new HashMap<>(); // groupId -> chosen count
+        for (Long optId : optionIds) {
+            ModifierGroupDTO g = groupByOption.get(optId);
+            if (g == null) {
+                throw new BadRequestException(messageService.getMessage("error.modifier.invalid"));
+            }
+            countByGroup.merge(g.getId(), 1L, Long::sum);
+        }
+
+        for (ModifierGroupDTO g : groups) {
+            long count = countByGroup.getOrDefault(g.getId(), 0L);
+            int min = Boolean.TRUE.equals(g.getRequired())
+                    ? Math.max(1, g.getMinSelect() != null ? g.getMinSelect() : 0)
+                    : (g.getMinSelect() != null ? g.getMinSelect() : 0);
+            if (count < min) {
+                throw new BadRequestException(messageService.getMessage("error.modifier.required", g.getName()));
+            }
+            Integer max = g.getMaxSelect();
+            if (max != null && max > 0 && count > max) {
+                throw new BadRequestException(messageService.getMessage("error.modifier.max", g.getName(), max));
+            }
+        }
+    }
+
+    private String writeModifiers(List<ChosenModifierDTO> chosen) {
+        if (chosen == null || chosen.isEmpty()) return null;
+        try {
+            return objectMapper.writeValueAsString(chosen);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            log.warn("Failed to serialise modifiers: {}", e.getMessage());
+            return null;
+        }
+    }
 
     /** Verify there is a tenant context and the shop has QR ordering (TABLE_SERVICE) enabled. */
     private Tenant requireQrEnabled() {

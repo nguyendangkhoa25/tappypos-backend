@@ -36,5 +36,9 @@ public class PublicOrderRequest {
 
         @Size(max = 255)
         private String notes;
+
+        /** Chosen modifier option ids (F&B add-ons). Server re-prices and validates min/max/required. */
+        @Size(max = 30, message = "Quá nhiều tùy chọn cho một món")
+        private List<Long> modifierOptionIds;
     }
 }

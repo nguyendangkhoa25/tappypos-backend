@@ -51,6 +51,8 @@ class NotificationServiceTest {
     @Mock private com.tappy.pos.multitenant.TenantContext tenantContext;
     @Mock private MessageService messageService;
     @Mock private com.tappy.pos.config.FeatureContext featureContext;
+    @Mock private com.tappy.pos.repository.notification.DeviceTokenRepository deviceTokenRepository;
+    @Mock private com.tappy.pos.client.ExpoPushClient expoPushClient;
     @Spy private ObjectMapper objectMapper = new ObjectMapper();
 
     @InjectMocks

@@ -1,5 +1,6 @@
 package com.tappy.pos.model.dto.qrorder;
 
+import com.tappy.pos.model.dto.modifier.ModifierGroupDTO;
 import lombok.Builder;
 import lombok.Data;
 
@@ -30,5 +31,7 @@ public class PublicMenuDTO {
         private BigDecimal price;
         private String unit;
         private String imageUrl;
+        /** F&B add-on groups (size, sugar, ice, topping). Null/empty when the product has none. */
+        private List<ModifierGroupDTO> modifierGroups;
     }
 }

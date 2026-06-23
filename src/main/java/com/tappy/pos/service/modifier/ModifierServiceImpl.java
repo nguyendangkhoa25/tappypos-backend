@@ -111,6 +111,31 @@ public class ModifierServiceImpl implements ModifierService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public java.util.Map<Long, List<ModifierGroupDTO>> getGroupsForProducts(java.util.Collection<Long> productIds) {
+        if (productIds == null || productIds.isEmpty()) return java.util.Map.of();
+        List<ProductModifierGroup> links =
+                productModifierGroupRepository.findByProductIdInOrderByProductIdAscSortOrderAscIdAsc(productIds);
+        if (links.isEmpty()) return java.util.Map.of();
+
+        // Load every referenced group once, map to DTO, then fan out per product preserving link order.
+        java.util.Set<Long> groupIds = links.stream()
+                .map(ProductModifierGroup::getModifierGroupId).collect(Collectors.toSet());
+        java.util.Map<Long, ModifierGroupDTO> dtoById = modifierGroupRepository.findByIdInAndDeletedFalse(groupIds)
+                .stream().map(this::mapToDTO)
+                .collect(Collectors.toMap(ModifierGroupDTO::getId, g -> g, (a, b) -> a));
+
+        java.util.Map<Long, List<ModifierGroupDTO>> result = new java.util.LinkedHashMap<>();
+        for (ProductModifierGroup link : links) {
+            ModifierGroupDTO dto = dtoById.get(link.getModifierGroupId());
+            if (dto != null) {
+                result.computeIfAbsent(link.getProductId(), k -> new ArrayList<>()).add(dto);
+            }
+        }
+        return result;
+    }
+
+    @Override
     public void setProductGroups(Long productId, List<Long> groupIds) {
         productModifierGroupRepository.deleteByProductId(productId);
         if (groupIds == null) return;

@@ -13,6 +13,8 @@ public interface ProductModifierGroupRepository extends JpaRepository<ProductMod
 
     List<ProductModifierGroup> findByProductIdOrderBySortOrderAscIdAsc(Long productId);
 
+    List<ProductModifierGroup> findByProductIdInOrderByProductIdAscSortOrderAscIdAsc(Collection<Long> productIds);
+
     void deleteByProductId(Long productId);
 
     boolean existsByProductId(Long productId);

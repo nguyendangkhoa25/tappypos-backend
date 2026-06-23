@@ -50,6 +50,8 @@ class PublicOrderServiceImplTest {
     @Mock private ShopConfigService shopConfigService;
     @Mock private MessageService messageService;
     @Mock private NotificationService notificationService;
+    @Mock private com.tappy.pos.service.modifier.ModifierService modifierService;
+    @Mock private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     @InjectMocks private PublicOrderServiceImpl service;
 

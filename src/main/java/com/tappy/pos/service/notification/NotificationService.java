@@ -51,6 +51,11 @@ public class NotificationService {
     private final MessageService messageService;
     private final FeatureContext featureContext;
     private final ObjectMapper objectMapper;
+    private final com.tappy.pos.repository.notification.DeviceTokenRepository deviceTokenRepository;
+    private final com.tappy.pos.client.ExpoPushClient expoPushClient;
+
+    /** Push notification banners are rendered Vietnamese-first (primary audience); the in-app row stays per-locale. */
+    private static final java.util.Locale PUSH_LOCALE = java.util.Locale.forLanguageTag("vi");
 
     private static final Object[] NO_ARGS = new Object[0];
 
@@ -208,9 +213,11 @@ public class NotificationService {
             return;
         }
         Set<String> optedOut = optedOutUsers(targets, type, tenantId);
-        List<Notification> notifications = targets.stream()
+        List<String> delivered = targets.stream()
                 .filter(userId -> !optedOut.contains(userId))
                 .filter(userId -> excludeUsername == null || !excludeUsername.equals(userId))
+                .collect(Collectors.toList());
+        List<Notification> notifications = delivered.stream()
                 .map(userId -> Notification.builder()
                         .userId(userId)
                         .titleKey(title.key())
@@ -228,6 +235,60 @@ public class NotificationService {
         notificationRepository.saveAll(notifications);
         log.info("pushToRoles: {} notification(s) → roles={} ({} opted out, excluded={})",
                 notifications.size(), roleNames, optedOut.size(), excludeUsername);
+
+        // Best-effort real push (banner when the app is backgrounded). Tokens are resolved here, in
+        // tenant context, then handed to the async client — a push failure never affects the in-app row.
+        sendPush(delivered, type, title, message, referenceType, referenceId);
+    }
+
+    /** Resolve the delivered users' device tokens and fire an Expo push (fire-and-forget). */
+    private void sendPush(List<String> usernames, Notification.NotificationType type, LocalizedText title,
+                          LocalizedText message, String referenceType, Long referenceId) {
+        if (usernames.isEmpty()) return;
+        try {
+            List<String> tokens = deviceTokenRepository.findActiveTokensByUserIds(usernames);
+            if (tokens.isEmpty()) return;
+            String pushTitle = messageService.getMessage(title.key(), PUSH_LOCALE,
+                    title.args() != null ? title.args() : NO_ARGS);
+            String pushBody = messageService.getMessage(message.key(), PUSH_LOCALE,
+                    message.args() != null ? message.args() : NO_ARGS);
+            Map<String, Object> data = new java.util.HashMap<>();
+            data.put("type", type.name());
+            if (referenceType != null) data.put("referenceType", referenceType);
+            if (referenceId != null) data.put("referenceId", referenceId);
+            expoPushClient.sendAsync(tokens, pushTitle, pushBody, data);
+        } catch (Exception e) {
+            log.warn("Failed to dispatch push for type={}: {}", type, e.getMessage());
+        }
+    }
+
+    /** Register (upsert) the calling user's Expo push token. */
+    @Transactional
+    public void registerDeviceToken(String expoPushToken, String platform) {
+        String tenantId = tenantContext.getCurrentTenantId();
+        if (tenantId == null || expoPushToken == null || expoPushToken.isBlank()) return;
+        String username = currentUsername();
+        com.tappy.pos.model.entity.notification.DeviceToken token = deviceTokenRepository
+                .findByExpoPushTokenAndDeletedFalse(expoPushToken)
+                .orElseGet(() -> com.tappy.pos.model.entity.notification.DeviceToken.builder()
+                        .tenantId(tenantId)
+                        .expoPushToken(expoPushToken)
+                        .build());
+        token.setTenantId(tenantId);
+        token.setUserId(username);
+        token.setPlatform(platform);
+        token.setLastSeenAt(java.time.LocalDateTime.now());
+        token.setDeleted(false);
+        token.setDeletedAt(null);
+        deviceTokenRepository.save(token);
+    }
+
+    /** Remove a device token (called on logout). No-op if the token is unknown. */
+    @Transactional
+    public void removeDeviceToken(String expoPushToken) {
+        if (expoPushToken == null || expoPushToken.isBlank()) return;
+        deviceTokenRepository.findByExpoPushTokenAndDeletedFalse(expoPushToken)
+                .ifPresent(t -> { t.softDelete(); deviceTokenRepository.save(t); });
     }
 
     /**
