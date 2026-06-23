@@ -21,6 +21,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -324,5 +325,289 @@ class TenantProvisioningServiceTest {
         tenantProvisioningService.provision(tenant, "admin", "password", null, null, null);
 
         verify(shopConfigService).seedIfAbsent(ShopConfigKey.DEFAULT_TAX_RATE, 0.10);
+    }
+
+    @Test
+    @DisplayName("provision seeds shop-type widget and nav defaults from the shop type map")
+    void testProvision_SeedsWidgetAndNavDefaults() {
+        tenant.setShopType(ShopType.JEWELRY);
+
+        tenantProvisioningService.provision(tenant, "admin", "password", null, null, null);
+
+        verify(shopConfigService).seedIfAbsent(ShopConfigKey.DASHBOARD_WIDGETS,
+                "ORDERS,REVENUE,PAWN,EXPENSES,CUSTOMERS,EMPLOYEES");
+        verify(shopConfigService).seedIfAbsent(ShopConfigKey.NAV_CONFIG,
+                "home,pawn,pos,customers,orders,dashboard,users");
+    }
+
+    @Test
+    @DisplayName("provision with null shopType falls back to generic widget/nav defaults")
+    void testProvision_NullShopType_FallbackDefaults() {
+        tenant.setShopType(null);
+
+        tenantProvisioningService.provision(tenant, "admin", "password", null, null, null);
+
+        verify(shopConfigService).seedIfAbsent(ShopConfigKey.DASHBOARD_WIDGETS,
+                "ORDERS,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");
+        verify(shopConfigService).seedIfAbsent(ShopConfigKey.NAV_CONFIG,
+                "home,pos,orders,customers,dashboard,users");
+        // null shopType => not JEWELRY => 10% tax
+        verify(shopConfigService).seedIfAbsent(ShopConfigKey.DEFAULT_TAX_RATE, 0.10);
+    }
+
+    // ── provision: per-step failure isolation (catch paths) ────────────────────
+
+    @Test
+    @DisplayName("provision continues when seedShopInfo throws — admin user still created")
+    void testProvision_SeedShopInfoFails_StillCreatesAdmin() {
+        when(shopInfoRepository.save(any(ShopInfo.class))).thenThrow(new RuntimeException("db down"));
+
+        tenantProvisioningService.provision(tenant, "admin", "password", null, null, null);
+
+        verify(userRepository).save(any(User.class));
+    }
+
+    @Test
+    @DisplayName("provision continues when seedWalkInCustomer throws — admin user still created")
+    void testProvision_SeedWalkInFails_StillCreatesAdmin() {
+        when(customerRepository.save(any(Customer.class))).thenThrow(new RuntimeException("rls error"));
+
+        tenantProvisioningService.provision(tenant, "admin", "password", null, null, null);
+
+        verify(userRepository).save(any(User.class));
+    }
+
+    @Test
+    @DisplayName("provision continues when seedShopOwnerEmployee throws — does not fail provisioning")
+    void testProvision_SeedEmployeeFails_DoesNotPropagate() {
+        when(employeeRepository.save(any(Employee.class))).thenThrow(new RuntimeException("employee insert failed"));
+
+        tenantProvisioningService.provision(tenant, "admin", "password", null, null, null);
+
+        verify(userRepository).save(any(User.class));
+    }
+
+    @Test
+    @DisplayName("provision continues when applyInitialConfig throws")
+    void testProvision_ApplyInitialConfigFails_DoesNotPropagate() {
+        InitialShopConfigRequest cfg = InitialShopConfigRequest.builder().posMode("TABLE").build();
+        doThrow(new RuntimeException("config write failed"))
+                .when(shopConfigService).set(ShopConfigKey.POS_MODE, "TABLE");
+
+        tenantProvisioningService.provision(tenant, "admin", "password", null, null, cfg);
+
+        verify(userRepository).save(any(User.class));
+    }
+
+    @Test
+    @DisplayName("provision swallows exceptions from setRoleFeatures during mapping")
+    void testProvision_RoleFeatureMappingFails_DoesNotPropagate() {
+        doThrow(new RuntimeException("native query failed"))
+                .when(roleFeatureService).setRoleFeatures(anyString(), anyList());
+
+        tenantProvisioningService.provision(tenant, "admin", "password", null, null, null);
+
+        verify(userRepository).save(any(User.class));
+    }
+
+    // ── shop-type role/feature filtering (applyShopTypeFilters via provisionSelfRegistered) ──
+
+    @Test
+    @DisplayName("provisionSelfRegistered seeds roles via RoleFeatureService and promotes user")
+    void testProvisionSelfRegistered_FullRun() {
+        User preUser = User.builder().username("owner").build();
+        preUser.setId(50L);
+        when(userRepository.findByUsernameTenantScoped("owner")).thenReturn(Optional.empty());
+        when(userRepository.findByUsernameAndNullTenant("owner")).thenReturn(Optional.of(preUser));
+        when(roleRepository.nativeFindByNameAndTenant(RoleEnum.SHOP_OWNER.getCode(), "test-shop"))
+                .thenReturn(Optional.of(shopOwnerRole));
+
+        tenantProvisioningService.provisionSelfRegistered(tenant, "owner", "1 Đường ABC");
+
+        verify(roleFeatureService).seedRolesForTenant(anyList(), eq("test-shop"));
+        verify(userRepository).save(argThat(u -> "test-shop".equals(u.getTenantId())));
+        verify(employeeRepository).save(any(Employee.class));
+    }
+
+    @Test
+    @DisplayName("provisionSelfRegistered for PAWN_SHOP only seeds whitelisted roles (no WAREHOUSE_STAFF)")
+    void testProvisionSelfRegistered_PawnShop_RoleWhitelist() {
+        tenant.setShopType(ShopType.PAWN_SHOP);
+        User preUser = User.builder().username("owner").build();
+        preUser.setId(50L);
+        when(userRepository.findByUsernameTenantScoped("owner")).thenReturn(Optional.empty());
+        when(userRepository.findByUsernameAndNullTenant("owner")).thenReturn(Optional.of(preUser));
+
+        ArgumentCaptor<List<String>> rolesCaptor = ArgumentCaptor.forClass(List.class);
+
+        tenantProvisioningService.provisionSelfRegistered(tenant, "owner", null);
+
+        verify(roleFeatureService).seedRolesForTenant(rolesCaptor.capture(), eq("test-shop"));
+        List<String> roles = rolesCaptor.getValue();
+        assertThat(roles).contains(RoleEnum.SHOP_OWNER.getCode(), RoleEnum.CASHIER.getCode(),
+                RoleEnum.ACCOUNTANT.getCode());
+        assertThat(roles).doesNotContain(RoleEnum.WAREHOUSE_STAFF.getCode(), RoleEnum.SERVICE_STAFF.getCode());
+    }
+
+    @Test
+    @DisplayName("provisionSelfRegistered for PAWN_SHOP filters features to the PAWN profile (no INVENTORY)")
+    void testProvisionSelfRegistered_PawnShop_FeatureWhitelist() {
+        tenant.setShopType(ShopType.PAWN_SHOP);
+        User preUser = User.builder().username("owner").build();
+        preUser.setId(50L);
+        when(userRepository.findByUsernameTenantScoped("owner")).thenReturn(Optional.empty());
+        when(userRepository.findByUsernameAndNullTenant("owner")).thenReturn(Optional.of(preUser));
+
+        ArgumentCaptor<List<String>> featCaptor = ArgumentCaptor.forClass(List.class);
+
+        tenantProvisioningService.provisionSelfRegistered(tenant, "owner", null);
+
+        verify(roleFeatureService).setRoleFeatures(eq(RoleEnum.SHOP_OWNER.getCode()), featCaptor.capture());
+        List<String> shopOwnerFeats = featCaptor.getValue();
+        assertThat(shopOwnerFeats).contains("PAWN", "GOLD_PRICE");
+        // INVENTORY / STOCK_TAKE are not in the PAWN profile, so they are filtered out
+        assertThat(shopOwnerFeats).doesNotContain("INVENTORY", "STOCK_TAKE");
+    }
+
+    @Test
+    @DisplayName("provisionSelfRegistered for OTHER shop type keeps all roles and features (no filter)")
+    void testProvisionSelfRegistered_OtherShopType_NoFilter() {
+        tenant.setShopType(ShopType.OTHER);
+        User preUser = User.builder().username("owner").build();
+        preUser.setId(50L);
+        when(userRepository.findByUsernameTenantScoped("owner")).thenReturn(Optional.empty());
+        when(userRepository.findByUsernameAndNullTenant("owner")).thenReturn(Optional.of(preUser));
+
+        ArgumentCaptor<List<String>> rolesCaptor = ArgumentCaptor.forClass(List.class);
+
+        tenantProvisioningService.provisionSelfRegistered(tenant, "owner", null);
+
+        verify(roleFeatureService).seedRolesForTenant(rolesCaptor.capture(), eq("test-shop"));
+        // OTHER has no whitelist => all staff roles seeded
+        assertThat(rolesCaptor.getValue()).contains(RoleEnum.WAREHOUSE_STAFF.getCode(),
+                RoleEnum.SERVICE_STAFF.getCode(), RoleEnum.TECHNICIAN.getCode());
+    }
+
+    @Test
+    @DisplayName("provisionSelfRegistered is idempotent — returns already-scoped user without re-saving")
+    void testProvisionSelfRegistered_AlreadyPromoted_Idempotent() {
+        User scoped = User.builder().username("owner").build();
+        scoped.setTenantId("test-shop");
+        when(userRepository.findByUsernameTenantScoped("owner")).thenReturn(Optional.of(scoped));
+
+        tenantProvisioningService.provisionSelfRegistered(tenant, "owner", null);
+
+        // promoteUserToTenant returns early; the pre-provision lookup is never consulted
+        verify(userRepository, never()).findByUsernameAndNullTenant(anyString());
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    @DisplayName("provisionSelfRegistered throws when pre-provision user not found")
+    void testProvisionSelfRegistered_PreUserMissing_Throws() {
+        when(userRepository.findByUsernameTenantScoped("owner")).thenReturn(Optional.empty());
+        when(userRepository.findByUsernameAndNullTenant("owner")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                tenantProvisioningService.provisionSelfRegistered(tenant, "owner", null))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Pre-provision user not found");
+    }
+
+    @Test
+    @DisplayName("provisionSelfRegistered throws when SHOP_OWNER role missing after seeding")
+    void testProvisionSelfRegistered_ShopOwnerRoleMissing_Throws() {
+        User preUser = User.builder().username("owner").build();
+        preUser.setId(50L);
+        when(userRepository.findByUsernameTenantScoped("owner")).thenReturn(Optional.empty());
+        when(userRepository.findByUsernameAndNullTenant("owner")).thenReturn(Optional.of(preUser));
+        when(roleRepository.nativeFindByNameAndTenant(RoleEnum.SHOP_OWNER.getCode(), "test-shop"))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                tenantProvisioningService.provisionSelfRegistered(tenant, "owner", null))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("SHOP_OWNER");
+    }
+
+    @Test
+    @DisplayName("provisionSelfRegistered overwrites fullName/email from tenant contact info")
+    void testProvisionSelfRegistered_UpdatesUserContactInfo() {
+        User preUser = User.builder().username("owner").build();
+        preUser.setId(50L);
+        when(userRepository.findByUsernameTenantScoped("owner")).thenReturn(Optional.empty());
+        when(userRepository.findByUsernameAndNullTenant("owner")).thenReturn(Optional.of(preUser));
+
+        tenantProvisioningService.provisionSelfRegistered(tenant, "owner", null);
+
+        verify(userRepository).save(argThat(u ->
+                "Nguyễn Văn A".equals(u.getFullName()) && "abc@example.com".equals(u.getEmail())));
+    }
+
+    @Test
+    @DisplayName("provisionSelfRegistered continues when seedShopInfo throws")
+    void testProvisionSelfRegistered_SeedShopInfoFails_DoesNotPropagate() {
+        User preUser = User.builder().username("owner").build();
+        preUser.setId(50L);
+        when(userRepository.findByUsernameTenantScoped("owner")).thenReturn(Optional.empty());
+        when(userRepository.findByUsernameAndNullTenant("owner")).thenReturn(Optional.of(preUser));
+        when(shopInfoRepository.save(any(ShopInfo.class))).thenThrow(new RuntimeException("db down"));
+
+        tenantProvisioningService.provisionSelfRegistered(tenant, "owner", null);
+
+        verify(userRepository).save(any(User.class));
+    }
+
+    // ── seedJoinedStaffEmployee ────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("seedJoinedStaffEmployee creates an employee linked to the joining user")
+    void testSeedJoinedStaffEmployee_Creates() {
+        User user = User.builder().username("staff1").fullName("Trần Thị B")
+                .phone("0911111111").email("b@example.com").build();
+        user.setId(77L);
+        when(employeeRepository.existsByUserId(77L)).thenReturn(false);
+
+        tenantProvisioningService.seedJoinedStaffEmployee(user, "test-shop", "CASHIER");
+
+        verify(employeeRepository).save(argThat(e ->
+                "Trần Thị B".equals(e.getFullName()) &&
+                Long.valueOf(77L).equals(e.getUserId())));
+    }
+
+    @Test
+    @DisplayName("seedJoinedStaffEmployee skips when employee already exists for user")
+    void testSeedJoinedStaffEmployee_SkipsExisting() {
+        User user = User.builder().username("staff1").build();
+        user.setId(77L);
+        when(employeeRepository.existsByUserId(77L)).thenReturn(true);
+
+        tenantProvisioningService.seedJoinedStaffEmployee(user, "test-shop", "CASHIER");
+
+        verify(employeeRepository, never()).save(any(Employee.class));
+    }
+
+    @Test
+    @DisplayName("seedJoinedStaffEmployee falls back to nickname then username when fullName blank")
+    void testSeedJoinedStaffEmployee_NameFallback_Nickname() {
+        User user = User.builder().username("staff1").fullName("  ").nickname("Bé Ba").build();
+        user.setId(78L);
+        when(employeeRepository.existsByUserId(78L)).thenReturn(false);
+
+        tenantProvisioningService.seedJoinedStaffEmployee(user, "test-shop", "UNKNOWN_ROLE");
+
+        verify(employeeRepository).save(argThat(e -> "Bé Ba".equals(e.getFullName())));
+    }
+
+    @Test
+    @DisplayName("seedJoinedStaffEmployee uses username when fullName and nickname are blank")
+    void testSeedJoinedStaffEmployee_NameFallback_Username() {
+        User user = User.builder().username("staff1").fullName(null).nickname(null).build();
+        user.setId(79L);
+        when(employeeRepository.existsByUserId(79L)).thenReturn(false);
+
+        tenantProvisioningService.seedJoinedStaffEmployee(user, "test-shop", "CASHIER");
+
+        verify(employeeRepository).save(argThat(e -> "staff1".equals(e.getFullName())));
     }
 }

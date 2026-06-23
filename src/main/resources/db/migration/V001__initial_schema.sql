@@ -5721,3 +5721,32 @@ ALTER TABLE activity_log ALTER COLUMN description DROP NOT NULL;
 
 -- == V037 ==
 ALTER TABLE notifications ALTER COLUMN title DROP NOT NULL;
+
+-- == device_tokens (Expo push tokens per user/device) ==
+-- Tenant table backing real push notifications (banner when the mobile app is
+-- backgrounded). Uniqueness is (tenant_id, expo_push_token) so the same device can
+-- register under more than one shop; re-registration within a shop reactivates its row
+-- (NotificationService.registerDeviceToken). user_id holds the username (matches
+-- notifications.user_id).
+CREATE TABLE IF NOT EXISTS device_tokens (
+    id              BIGSERIAL    PRIMARY KEY,
+    tenant_id       VARCHAR(50)  NOT NULL,
+    user_id         VARCHAR(50)  NOT NULL,
+    expo_push_token VARCHAR(255) NOT NULL,
+    platform        VARCHAR(10)  DEFAULT NULL,
+    last_seen_at    TIMESTAMP    DEFAULT NULL,
+    legacy_id       VARCHAR(50)  DEFAULT NULL,
+    created_at      TIMESTAMP    NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP    DEFAULT NULL,
+    deleted         BOOLEAN      NOT NULL DEFAULT FALSE,
+    deleted_at      TIMESTAMP    DEFAULT NULL,
+    CONSTRAINT uq_device_tokens_tenant_token UNIQUE (tenant_id, expo_push_token)
+);
+CREATE INDEX IF NOT EXISTS idx_device_tokens_user
+    ON device_tokens (tenant_id, user_id) WHERE deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_device_tokens_legacy
+    ON device_tokens (tenant_id, legacy_id) WHERE legacy_id IS NOT NULL;
+ALTER TABLE device_tokens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE device_tokens FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON device_tokens
+    USING (tenant_id = current_setting('app.current_tenant', true));

@@ -1,11 +1,18 @@
 package com.tappy.pos.service.tenant;
 
 import com.tappy.pos.model.dto.pawn.PawnSetting;
+import com.tappy.pos.model.dto.tenant.MobileShopInfoDTO;
+import com.tappy.pos.model.dto.tenant.PosConfigDTO;
 import com.tappy.pos.model.dto.tenant.PublicShopInfoDTO;
 import com.tappy.pos.model.dto.tenant.ShopInfoDTO;
+import com.tappy.pos.model.dto.tenant.UpdateMobileShopConfigRequest;
 import com.tappy.pos.model.entity.tenant.ShopInfo;
 import com.tappy.pos.model.enums.ShopConfigKey;
+import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.tenant.ShopInfoRepository;
+import com.tappy.pos.service.MessageService;
+import com.tappy.pos.service.storage.R2CleanupService;
+import com.tappy.pos.service.storage.R2StorageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -15,16 +22,20 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -42,6 +53,18 @@ class ShopInfoServiceTest {
 
     @Spy
     private ObjectMapper objectMapper = new ObjectMapper();
+
+    @Mock
+    private R2StorageService r2StorageService;
+
+    @Mock
+    private R2CleanupService r2CleanupService;
+
+    @Mock
+    private TenantContext tenantContext;
+
+    @Mock
+    private MessageService messageService;
 
     @InjectMocks
     private ShopInfoService shopInfoService;
@@ -704,5 +727,266 @@ class ShopInfoServiceTest {
         shopInfoService.updateShopInfo(dto);
 
         verify(shopConfigService).set(eq(ShopConfigKey.TAX_RATE_BY_PRODUCT_TYPE), anyString());
+    }
+
+    // ============= getMobileShopConfig Tests =============
+
+    @Test
+    @DisplayName("getMobileShopConfig: maps shop info fields and POS mode")
+    void testGetMobileShopConfig_Success() {
+        testShopInfo.setDescription("Cửa hàng vàng bạc");
+        testShopInfo.setLogoUrl("https://cdn/logo.jpg");
+        when(shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc()).thenReturn(Optional.of(testShopInfo));
+        when(shopConfigService.getString(eq(ShopConfigKey.POS_MODE), eq("STANDARD"))).thenReturn("TABLE");
+
+        MobileShopInfoDTO result = shopInfoService.getMobileShopConfig("JEWELRY");
+
+        assertThat(result.getShopName()).isEqualTo("Test Shop");
+        assertThat(result.getAddress()).isEqualTo("123 Main St");
+        assertThat(result.getPhone()).isEqualTo("0123456789");
+        assertThat(result.getDescription()).isEqualTo("Cửa hàng vàng bạc");
+        assertThat(result.getLogoUrl()).isEqualTo("https://cdn/logo.jpg");
+        assertThat(result.getShopTypeCode()).isEqualTo("JEWELRY");
+        assertThat(result.getPosMode()).isEqualTo("TABLE");
+    }
+
+    @Test
+    @DisplayName("getMobileShopConfig: creates shop info when none exists")
+    void testGetMobileShopConfig_CreateNew() {
+        ShopInfo created = new ShopInfo();
+        created.setId(9L);
+        when(shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc()).thenReturn(Optional.empty());
+        when(shopInfoRepository.save(any(ShopInfo.class))).thenReturn(created);
+        when(shopConfigService.getString(eq(ShopConfigKey.POS_MODE), eq("STANDARD"))).thenReturn("STANDARD");
+
+        MobileShopInfoDTO result = shopInfoService.getMobileShopConfig("RETAIL");
+
+        assertThat(result).isNotNull();
+        assertThat(result.getPosMode()).isEqualTo("STANDARD");
+        verify(shopInfoRepository).save(any(ShopInfo.class));
+    }
+
+    // ============= updateMobileShopConfig Tests =============
+
+    @Test
+    @DisplayName("updateMobileShopConfig: updates provided fields and returns mobile config")
+    void testUpdateMobileShopConfig_UpdatesFields() {
+        UpdateMobileShopConfigRequest req = new UpdateMobileShopConfigRequest();
+        req.setShopName("Tiệm Mới");
+        req.setAddress("456 Đường Mới");
+        req.setPhone("0900000000");
+        req.setDescription("Mô tả mới");
+
+        when(shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc()).thenReturn(Optional.of(testShopInfo));
+        when(shopInfoRepository.save(any(ShopInfo.class))).thenReturn(testShopInfo);
+        when(shopConfigService.getString(eq(ShopConfigKey.POS_MODE), eq("STANDARD"))).thenReturn("STANDARD");
+
+        MobileShopInfoDTO result = shopInfoService.updateMobileShopConfig(req);
+
+        assertThat(result).isNotNull();
+        verify(shopInfoRepository).save(argThatShopName("Tiệm Mới"));
+    }
+
+    @Test
+    @DisplayName("updateMobileShopConfig: skips blank shop name but keeps other fields")
+    void testUpdateMobileShopConfig_BlankShopName() {
+        UpdateMobileShopConfigRequest req = new UpdateMobileShopConfigRequest();
+        req.setShopName("   ");
+        req.setAddress("Địa chỉ");
+
+        when(shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc()).thenReturn(Optional.of(testShopInfo));
+        when(shopInfoRepository.save(any(ShopInfo.class))).thenReturn(testShopInfo);
+        when(shopConfigService.getString(eq(ShopConfigKey.POS_MODE), eq("STANDARD"))).thenReturn("STANDARD");
+
+        shopInfoService.updateMobileShopConfig(req);
+
+        // shop name unchanged (blank ignored)
+        verify(shopInfoRepository).save(argThatShopName("Test Shop"));
+    }
+
+    @Test
+    @DisplayName("updateMobileShopConfig: all null fields leaves shop info unchanged")
+    void testUpdateMobileShopConfig_AllNull() {
+        UpdateMobileShopConfigRequest req = new UpdateMobileShopConfigRequest();
+
+        when(shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc()).thenReturn(Optional.of(testShopInfo));
+        when(shopInfoRepository.save(any(ShopInfo.class))).thenReturn(testShopInfo);
+        when(shopConfigService.getString(eq(ShopConfigKey.POS_MODE), eq("STANDARD"))).thenReturn("STANDARD");
+
+        shopInfoService.updateMobileShopConfig(req);
+
+        verify(shopInfoRepository).save(any(ShopInfo.class));
+    }
+
+    private static ShopInfo argThatShopName(String expected) {
+        return org.mockito.ArgumentMatchers.argThat(s -> expected.equals(s.getShopName()));
+    }
+
+    // ============= getPosConfig Tests =============
+
+    @Test
+    @DisplayName("getPosConfig: builds DTO from config values and parses quick phrases")
+    void testGetPosConfig_Success() {
+        when(shopConfigService.getString(eq(ShopConfigKey.POS_MODE), eq("STANDARD"))).thenReturn("TABLE");
+        when(shopConfigService.getBoolean(ShopConfigKey.AUTO_PRINT, false)).thenReturn(true);
+        when(shopConfigService.getBoolean(ShopConfigKey.VAT_ENABLED, false)).thenReturn(true);
+        when(shopConfigService.getString(ShopConfigKey.CASH_DENOMINATIONS)).thenReturn("500000,200000");
+        when(shopConfigService.getString(ShopConfigKey.QUICK_PHRASES)).thenReturn("Cảm ơn|| Hẹn gặp lại ||");
+
+        PosConfigDTO result = shopInfoService.getPosConfig();
+
+        assertThat(result.getPosMode()).isEqualTo("TABLE");
+        assertThat(result.getAutoPrint()).isTrue();
+        assertThat(result.getVatEnabled()).isTrue();
+        assertThat(result.getCashDenominations()).isEqualTo("500000,200000");
+        assertThat(result.getQuickPhrases()).containsExactly("Cảm ơn", "Hẹn gặp lại");
+    }
+
+    @Test
+    @DisplayName("getPosConfig: returns empty quick phrases when config blank")
+    void testGetPosConfig_BlankQuickPhrases() {
+        when(shopConfigService.getString(eq(ShopConfigKey.POS_MODE), eq("STANDARD"))).thenReturn("STANDARD");
+        when(shopConfigService.getBoolean(ShopConfigKey.AUTO_PRINT, false)).thenReturn(false);
+        when(shopConfigService.getBoolean(ShopConfigKey.VAT_ENABLED, false)).thenReturn(false);
+        when(shopConfigService.getString(ShopConfigKey.CASH_DENOMINATIONS)).thenReturn(null);
+        when(shopConfigService.getString(ShopConfigKey.QUICK_PHRASES)).thenReturn("   ");
+
+        PosConfigDTO result = shopInfoService.getPosConfig();
+
+        assertThat(result.getQuickPhrases()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("getPosConfig: returns empty quick phrases when config null")
+    void testGetPosConfig_NullQuickPhrases() {
+        when(shopConfigService.getString(eq(ShopConfigKey.POS_MODE), eq("STANDARD"))).thenReturn("STANDARD");
+        when(shopConfigService.getBoolean(ShopConfigKey.AUTO_PRINT, false)).thenReturn(false);
+        when(shopConfigService.getBoolean(ShopConfigKey.VAT_ENABLED, false)).thenReturn(false);
+        when(shopConfigService.getString(ShopConfigKey.CASH_DENOMINATIONS)).thenReturn(null);
+        when(shopConfigService.getString(ShopConfigKey.QUICK_PHRASES)).thenReturn(null);
+
+        PosConfigDTO result = shopInfoService.getPosConfig();
+
+        assertThat(result.getQuickPhrases()).isEmpty();
+    }
+
+    // ============= updatePosConfig Tests =============
+
+    @Test
+    @DisplayName("updatePosConfig: writes all provided fields and joins quick phrases")
+    void testUpdatePosConfig_AllFields() {
+        PosConfigDTO dto = PosConfigDTO.builder()
+                .posMode("TABLE")
+                .autoPrint(true)
+                .vatEnabled(true)
+                .cashDenominations("500000")
+                .quickPhrases(List.of("Cảm ơn", "Hẹn gặp lại"))
+                .build();
+
+        // re-read in getPosConfig at end
+        when(shopConfigService.getString(eq(ShopConfigKey.POS_MODE), eq("STANDARD"))).thenReturn("TABLE");
+        when(shopConfigService.getBoolean(ShopConfigKey.AUTO_PRINT, false)).thenReturn(true);
+        when(shopConfigService.getBoolean(ShopConfigKey.VAT_ENABLED, false)).thenReturn(true);
+        when(shopConfigService.getString(ShopConfigKey.CASH_DENOMINATIONS)).thenReturn("500000");
+        when(shopConfigService.getString(ShopConfigKey.QUICK_PHRASES)).thenReturn("Cảm ơn||Hẹn gặp lại");
+
+        PosConfigDTO result = shopInfoService.updatePosConfig(dto);
+
+        verify(shopConfigService).set(ShopConfigKey.POS_MODE, "TABLE");
+        verify(shopConfigService).set(ShopConfigKey.AUTO_PRINT, true);
+        verify(shopConfigService).set(ShopConfigKey.VAT_ENABLED, true);
+        verify(shopConfigService).set(ShopConfigKey.CASH_DENOMINATIONS, "500000");
+        verify(shopConfigService).set(ShopConfigKey.QUICK_PHRASES, "Cảm ơn||Hẹn gặp lại");
+        assertThat(result.getQuickPhrases()).containsExactly("Cảm ơn", "Hẹn gặp lại");
+    }
+
+    @Test
+    @DisplayName("updatePosConfig: skips null fields")
+    void testUpdatePosConfig_NullFields() {
+        PosConfigDTO dto = PosConfigDTO.builder().build();
+
+        when(shopConfigService.getString(eq(ShopConfigKey.POS_MODE), eq("STANDARD"))).thenReturn("STANDARD");
+        when(shopConfigService.getBoolean(ShopConfigKey.AUTO_PRINT, false)).thenReturn(false);
+        when(shopConfigService.getBoolean(ShopConfigKey.VAT_ENABLED, false)).thenReturn(false);
+        when(shopConfigService.getString(ShopConfigKey.CASH_DENOMINATIONS)).thenReturn(null);
+        when(shopConfigService.getString(ShopConfigKey.QUICK_PHRASES)).thenReturn(null);
+
+        shopInfoService.updatePosConfig(dto);
+
+        verify(shopConfigService, never()).set(eq(ShopConfigKey.POS_MODE), anyString());
+        verify(shopConfigService, never()).set(eq(ShopConfigKey.AUTO_PRINT), any(Boolean.class));
+        verify(shopConfigService, never()).set(eq(ShopConfigKey.QUICK_PHRASES), anyString());
+    }
+
+    // ============= updatePawnSetting: acceptedTypes branch =============
+
+    @Test
+    @DisplayName("updatePawnSetting: writes acceptedTypes when non-null")
+    void testUpdatePawnSetting_AcceptedTypes() {
+        PawnSetting setting = PawnSetting.builder()
+                .interestRate(null)
+                .interestType(0)
+                .dueDate(0)
+                .acceptedTypes("GOLD,ELECTRONICS")
+                .build();
+
+        shopInfoService.updatePawnSetting(setting);
+
+        verify(shopConfigService).set(ShopConfigKey.PAWN_ACCEPTED_TYPES, "GOLD,ELECTRONICS");
+    }
+
+    @Test
+    @DisplayName("getPawnSetting: includes acceptedTypes from config")
+    void testGetPawnSetting_AcceptedTypes() {
+        when(shopConfigService.getDecimal(ShopConfigKey.PAWN_INTEREST_RATE)).thenReturn(java.math.BigDecimal.ZERO);
+        when(shopConfigService.getInt(ShopConfigKey.PAWN_INTEREST_TYPE, 30)).thenReturn(30);
+        when(shopConfigService.getInt(ShopConfigKey.PAWN_DUE_DATE, 30)).thenReturn(30);
+        when(shopConfigService.getString(ShopConfigKey.PAWN_ACCEPTED_TYPES)).thenReturn("GOLD,WATCH");
+
+        PawnSetting result = shopInfoService.getPawnSetting();
+
+        assertThat(result.getAcceptedTypes()).isEqualTo("GOLD,WATCH");
+    }
+
+    // ============= uploadLogo Tests =============
+
+    @Test
+    @DisplayName("uploadLogo: throws on null content type")
+    void testUploadLogo_NullContentType() {
+        MultipartFile file = org.mockito.Mockito.mock(MultipartFile.class);
+        when(file.getContentType()).thenReturn(null);
+        when(messageService.getMessage("error.shop.logo.invalid.type")).thenReturn("Định dạng ảnh không hợp lệ");
+
+        assertThatThrownBy(() -> shopInfoService.uploadLogo("JEWELRY", file))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Định dạng");
+    }
+
+    @Test
+    @DisplayName("uploadLogo: throws on unsupported content type")
+    void testUploadLogo_UnsupportedContentType() {
+        MultipartFile file = org.mockito.Mockito.mock(MultipartFile.class);
+        when(file.getContentType()).thenReturn("application/pdf");
+        when(messageService.getMessage("error.shop.logo.invalid.type")).thenReturn("Định dạng ảnh không hợp lệ");
+
+        assertThatThrownBy(() -> shopInfoService.uploadLogo("JEWELRY", file))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verify(r2StorageService, never()).upload(anyString(), any(byte[].class), anyString());
+    }
+
+    @Test
+    @DisplayName("uploadLogo: wraps IO error from image processing in RuntimeException")
+    void testUploadLogo_ImageProcessingFailure() throws Exception {
+        MultipartFile file = org.mockito.Mockito.mock(MultipartFile.class);
+        when(file.getContentType()).thenReturn("image/png");
+        when(file.getInputStream()).thenThrow(new java.io.IOException("boom"));
+        when(shopInfoRepository.findFirstByDeletedAtIsNullOrderByIdAsc()).thenReturn(Optional.of(testShopInfo));
+        lenient().when(r2StorageService.keyFromUrl(any())).thenReturn(null);
+        when(messageService.getMessage("error.shop.logo.process.failed")).thenReturn("Xử lý ảnh thất bại");
+
+        assertThatThrownBy(() -> shopInfoService.uploadLogo("JEWELRY", file))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Xử lý ảnh");
     }
 }

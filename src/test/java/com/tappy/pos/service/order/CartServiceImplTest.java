@@ -2073,5 +2073,742 @@ class CartServiceImplTest {
         assertThat(response.getOrderNumber()).isEqualTo("ORD-BUY-001");
         assertThat(response.getTotal()).isEqualByComparingTo(new BigDecimal("5000000"));
     }
+
+    // ==================== Helpers for extended coverage ====================
+
+    private CartEntity emptyActiveCart(String cartId) {
+        return CartEntity.builder()
+                .id(1L).cartId(cartId).status(CartStatus.ACTIVE)
+                .items(new ArrayList<>()).appliedCoupons("[]").appliedPromotions("[]")
+                .subtotal(BigDecimal.ZERO).totalDiscount(BigDecimal.ZERO)
+                .totalTax(BigDecimal.ZERO).total(BigDecimal.ZERO)
+                .taxRate(BigDecimal.ZERO)
+                .build();
+    }
+
+    private void stubInventory(Long productId, long inStock) {
+        InventoryDTO inv = InventoryDTO.builder().id(1L).productId(productId)
+                .quantityInStock(inStock).build();
+        when(inventoryService.getInventoryByProductId(eq(productId), any(PageRequest.class)))
+                .thenReturn(new PageImpl<>(List.of(inv)));
+    }
+
+    // ==================== UNIQUE inventory-mode branches ====================
+
+    @Test
+    @DisplayName("addItemToCart: UNIQUE item already sold (status != ACTIVE) throws BadRequest")
+    void testAddItem_UniqueAlreadySold() {
+        String cartId = "c-uniq";
+        CartRequest request = CartRequest.builder().productId(1L).quantity(1).build();
+        ProductDTO product = ProductDTO.builder().id(1L).name("iPhone").sku("SKU")
+                .price(BigDecimal.TEN).inventoryMode("UNIQUE").status("INACTIVE").build();
+
+        when(cartRepository.findByCartId(cartId)).thenReturn(Optional.of(emptyActiveCart(cartId)));
+        when(productService.getProductById(1L)).thenReturn(product);
+        when(messageService.getMessage("product.already.sold")).thenReturn("Đã bán");
+
+        assertThatThrownBy(() -> cartService.addItemToCart(cartId, request))
+                .isInstanceOf(BadRequestException.class).hasMessageContaining("Đã bán");
+    }
+
+    @Test
+    @DisplayName("addItemToCart: UNIQUE item with quantity > 1 throws BadRequest")
+    void testAddItem_UniqueQtyTooHigh() {
+        String cartId = "c-uniq2";
+        CartRequest request = CartRequest.builder().productId(1L).quantity(2).build();
+        ProductDTO product = ProductDTO.builder().id(1L).name("Đồng hồ").sku("SKU")
+                .price(BigDecimal.TEN).inventoryMode("UNIQUE").status("ACTIVE").build();
+
+        when(cartRepository.findByCartId(cartId)).thenReturn(Optional.of(emptyActiveCart(cartId)));
+        when(productService.getProductById(1L)).thenReturn(product);
+        when(messageService.getMessage("product.unique.item.qty")).thenReturn("Chỉ 1 cái");
+
+        assertThatThrownBy(() -> cartService.addItemToCart(cartId, request))
+                .isInstanceOf(BadRequestException.class).hasMessageContaining("Chỉ 1 cái");
+    }
+
+    @Test
+    @DisplayName("addItemToCart: NO_INVENTORY mode skips stock check entirely")
+    void testAddItem_NoInventoryMode() throws Exception {
+        String cartId = "c-noinv";
+        CartRequest request = CartRequest.builder().productId(1L).quantity(3).build();
+        CartEntity cart = emptyActiveCart(cartId);
+        ProductDTO product = ProductDTO.builder().id(1L).name("Dịch vụ cắt tóc").sku("SVC")
+                .price(new BigDecimal("100000")).inventoryMode("NO_INVENTORY").status("ACTIVE")
+                .build();
+
+        when(cartRepository.findByCartId(cartId)).thenReturn(Optional.of(cart));
+        when(productService.getProductById(1L)).thenReturn(product);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CartResponse response = cartService.addItemToCart(cartId, request);
+
+        assertThat(response.getItems()).hasSize(1);
+        verify(inventoryService, never()).getInventoryByProductId(anyLong(), any());
+    }
+
+    // ==================== Quote line exceeds stock (báo giá) ====================
+
+    @Test
+    @DisplayName("addItemToCart: quote line is allowed to exceed available stock")
+    void testAddItem_QuoteExceedsStock() throws Exception {
+        String cartId = "c-quote";
+        CartRequest request = CartRequest.builder().productId(1L).quantity(100).quote(true).build();
+        CartEntity cart = emptyActiveCart(cartId);
+        ProductDTO product = ProductDTO.builder().id(1L).name("SP").sku("SKU")
+                .price(BigDecimal.TEN).build();
+
+        when(cartRepository.findByCartId(cartId)).thenReturn(Optional.of(cart));
+        when(productService.getProductById(1L)).thenReturn(product);
+        stubInventory(1L, 5L);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CartResponse response = cartService.addItemToCart(cartId, request);
+
+        assertThat(response.getItems()).hasSize(1);
+    }
+
+    // ==================== Alt-unit (bán theo đơn vị lớn) ====================
+
+    @Test
+    @DisplayName("addItemToCart: alt-unit with explicit altUnitPrice prices per alt unit")
+    void testAddItem_AltUnit_ExplicitPrice() throws Exception {
+        String cartId = "c-alt";
+        CartRequest request = CartRequest.builder()
+                .productId(1L).quantity(2).sellUnit("Thùng").build();
+        CartEntity cart = emptyActiveCart(cartId);
+        ProductDTO product = ProductDTO.builder().id(1L).name("Bia").sku("SKU")
+                .price(new BigDecimal("15000"))
+                .altUnit("Thùng").altUnitFactor(new BigDecimal("24"))
+                .altUnitPrice(new BigDecimal("330000"))
+                .build();
+
+        when(cartRepository.findByCartId(cartId)).thenReturn(Optional.of(cart));
+        when(productService.getProductById(1L)).thenReturn(product);
+        stubInventory(1L, 100L); // 2 cases × 24 = 48 base units needed, 100 available
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CartResponse response = cartService.addItemToCart(cartId, request);
+
+        CartItemResponse item = response.getItems().get(0);
+        assertThat(item.getUnitPrice()).isEqualByComparingTo("330000");
+        assertThat(item.getSellUnit()).isEqualTo("Thùng");
+        assertThat(item.getUnitFactor()).isEqualByComparingTo("24");
+    }
+
+    @Test
+    @DisplayName("addItemToCart: alt-unit without explicit price uses perBase × factor")
+    void testAddItem_AltUnit_ComputedPrice() throws Exception {
+        String cartId = "c-alt2";
+        CartRequest request = CartRequest.builder()
+                .productId(1L).quantity(1).sellUnit("Lốc").build();
+        CartEntity cart = emptyActiveCart(cartId);
+        ProductDTO product = ProductDTO.builder().id(1L).name("Sữa").sku("SKU")
+                .price(new BigDecimal("10000"))
+                .altUnit("Lốc").altUnitFactor(new BigDecimal("6"))
+                .build();
+
+        when(cartRepository.findByCartId(cartId)).thenReturn(Optional.of(cart));
+        when(productService.getProductById(1L)).thenReturn(product);
+        stubInventory(1L, 100L);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CartResponse response = cartService.addItemToCart(cartId, request);
+        // 10000 × 6 = 60000
+        assertThat(response.getItems().get(0).getUnitPrice()).isEqualByComparingTo("60000");
+    }
+
+    // ==================== Wholesale customer pricing ====================
+
+    @Test
+    @DisplayName("addItemToCart: wholesale customer gets wholesalePrice")
+    void testAddItem_WholesaleCustomer() throws Exception {
+        String cartId = "c-ws";
+        CartRequest request = CartRequest.builder().productId(1L).quantity(1).build();
+        CartEntity cart = emptyActiveCart(cartId);
+        cart.setCustomerId(50L);
+
+        ProductDTO product = ProductDTO.builder().id(1L).name("SP").sku("SKU")
+                .price(new BigDecimal("20000")).wholesalePrice(new BigDecimal("15000"))
+                .build();
+        Customer ws = Customer.builder().name("Đại lý").customerType("WHOLESALE").build();
+        ws.setId(50L);
+
+        when(cartRepository.findByCartId(cartId)).thenReturn(Optional.of(cart));
+        when(tenantContext.getCurrentTenantId()).thenReturn("t1");
+        when(customerRepository.findByIdActiveAndTenantId(50L, "t1")).thenReturn(Optional.of(ws));
+        when(productService.getProductById(1L)).thenReturn(product);
+        stubInventory(1L, 10L);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CartResponse response = cartService.addItemToCart(cartId, request);
+        assertThat(response.getItems().get(0).getUnitPrice()).isEqualByComparingTo("15000");
+    }
+
+    // ==================== Modifier delta folding ====================
+
+    @Test
+    @DisplayName("addItemToCart: modifier deltas fold into the unit price")
+    void testAddItem_ModifierDelta() throws Exception {
+        String cartId = "c-mod";
+        CartRequest request = CartRequest.builder()
+                .productId(1L).quantity(1).modifierOptionIds(List.of(7L, 8L)).build();
+        CartEntity cart = emptyActiveCart(cartId);
+        ProductDTO product = ProductDTO.builder().id(1L).name("Trà sữa").sku("SKU")
+                .price(new BigDecimal("30000")).inventoryMode("NO_INVENTORY").build();
+
+        when(cartRepository.findByCartId(cartId)).thenReturn(Optional.of(cart));
+        when(productService.getProductById(1L)).thenReturn(product);
+        when(modifierService.resolveOptions(List.of(7L, 8L))).thenReturn(List.of(
+                com.tappy.pos.model.dto.modifier.ChosenModifierDTO.builder()
+                        .groupName("Topping").optionName("Trân châu").priceDelta(new BigDecimal("5000")).build(),
+                com.tappy.pos.model.dto.modifier.ChosenModifierDTO.builder()
+                        .groupName("Size").optionName("L").priceDelta(new BigDecimal("3000")).build()));
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CartResponse response = cartService.addItemToCart(cartId, request);
+        // 30000 + 5000 + 3000 = 38000
+        assertThat(response.getItems().get(0).getUnitPrice()).isEqualByComparingTo("38000");
+        assertThat(response.getItems().get(0).getModifiers()).hasSize(2);
+    }
+
+    // ==================== Staff unit-price override ====================
+
+    @Test
+    @DisplayName("addItemToCart: explicit unitPrice override wins over catalogue price")
+    void testAddItem_UnitPriceOverride() throws Exception {
+        String cartId = "c-ovr";
+        CartRequest request = CartRequest.builder()
+                .productId(1L).quantity(1).unitPrice(new BigDecimal("99000")).build();
+        CartEntity cart = emptyActiveCart(cartId);
+        ProductDTO product = ProductDTO.builder().id(1L).name("SP").sku("SKU")
+                .price(new BigDecimal("50000")).build();
+
+        when(cartRepository.findByCartId(cartId)).thenReturn(Optional.of(cart));
+        when(productService.getProductById(1L)).thenReturn(product);
+        stubInventory(1L, 10L);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CartResponse response = cartService.addItemToCart(cartId, request);
+        assertThat(response.getItems().get(0).getUnitPrice()).isEqualByComparingTo("99000");
+    }
+
+    // ==================== Per-type tax rate resolution ====================
+
+    @Test
+    @DisplayName("addItemToCart: resolves per-product-type tax rate from shop info")
+    void testAddItem_PerTypeTaxRate() throws Exception {
+        String cartId = "c-tax";
+        CartRequest request = CartRequest.builder().productId(1L).quantity(1).build();
+        CartEntity cart = emptyActiveCart(cartId);
+        cart.setTaxRate(new BigDecimal("0.10"));
+        ProductDTO product = ProductDTO.builder().id(1L).name("SP").sku("SKU")
+                .price(new BigDecimal("10000")).productTypeCode("FOOD").build();
+
+        when(cartRepository.findByCartId(cartId)).thenReturn(Optional.of(cart));
+        when(productService.getProductById(1L)).thenReturn(product);
+        stubInventory(1L, 10L);
+        when(shopInfoService.parseTaxRateByProductType()).thenReturn(Map.of("FOOD", 8.0));
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CartResponse response = cartService.addItemToCart(cartId, request);
+        // 8% → itemTaxRate 0.08 → response exposes *100 = 8.0
+        assertThat(response.getItems().get(0).getItemTaxRate()).isEqualTo(8.0);
+    }
+
+    @Test
+    @DisplayName("addItemToCart: per-type tax lookup failure falls back to cart tax rate")
+    void testAddItem_PerTypeTaxRate_Failure() throws Exception {
+        String cartId = "c-tax2";
+        CartRequest request = CartRequest.builder().productId(1L).quantity(1).build();
+        CartEntity cart = emptyActiveCart(cartId);
+        cart.setTaxRate(new BigDecimal("0.10"));
+        ProductDTO product = ProductDTO.builder().id(1L).name("SP").sku("SKU")
+                .price(new BigDecimal("10000")).productTypeCode("FOOD").build();
+
+        when(cartRepository.findByCartId(cartId)).thenReturn(Optional.of(cart));
+        when(productService.getProductById(1L)).thenReturn(product);
+        stubInventory(1L, 10L);
+        when(shopInfoService.parseTaxRateByProductType()).thenThrow(new RuntimeException("boom"));
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CartResponse response = cartService.addItemToCart(cartId, request);
+        assertThat(response.getItems().get(0).getItemTaxRate()).isEqualTo(10.0);
+    }
+
+    // ==================== Employee assignment + commission ====================
+
+    @Test
+    @DisplayName("addItemToCart: assigns employee and computes commission when COMMISSION feature on")
+    void testAddItem_AssignEmployeeWithCommission() throws Exception {
+        String cartId = "c-comm";
+        CartRequest request = CartRequest.builder()
+                .productId(1L).quantity(1).assignedEmployeeId(9L).build();
+        CartEntity cart = emptyActiveCart(cartId);
+        ProductDTO product = ProductDTO.builder().id(1L).name("SP").sku("SKU")
+                .price(new BigDecimal("100000")).inventoryMode("NO_INVENTORY")
+                .commissionRate(new BigDecimal("10")).build();
+        Employee emp = Employee.builder().id(9L).fullName("NV B").build();
+
+        when(cartRepository.findByCartId(cartId)).thenReturn(Optional.of(cart));
+        when(productService.getProductById(1L)).thenReturn(product);
+        when(employeeRepository.findById(9L)).thenReturn(Optional.of(emp));
+        when(featureContext.hasFeature("COMMISSION")).thenReturn(true);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CartResponse response = cartService.addItemToCart(cartId, request);
+        CartItemResponse item = response.getItems().get(0);
+        assertThat(item.getAssignedEmployeeId()).isEqualTo(9L);
+        assertThat(item.getAssignedEmployeeName()).isEqualTo("NV B");
+        // 100000 × 10 / 100 = 10000
+        assertThat(item.getCommissionAmount()).isEqualByComparingTo("10000");
+    }
+
+    @Test
+    @DisplayName("addItemToCart: assigns employee without commission when feature off")
+    void testAddItem_AssignEmployeeNoCommission() throws Exception {
+        String cartId = "c-comm2";
+        CartRequest request = CartRequest.builder()
+                .productId(1L).quantity(1).assignedEmployeeId(9L).build();
+        CartEntity cart = emptyActiveCart(cartId);
+        ProductDTO product = ProductDTO.builder().id(1L).name("SP").sku("SKU")
+                .price(new BigDecimal("100000")).inventoryMode("NO_INVENTORY").build();
+        Employee emp = Employee.builder().id(9L).fullName("NV C").build();
+
+        when(cartRepository.findByCartId(cartId)).thenReturn(Optional.of(cart));
+        when(productService.getProductById(1L)).thenReturn(product);
+        when(employeeRepository.findById(9L)).thenReturn(Optional.of(emp));
+        when(featureContext.hasFeature("COMMISSION")).thenReturn(false);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CartResponse response = cartService.addItemToCart(cartId, request);
+        assertThat(response.getItems().get(0).getAssignedEmployeeId()).isEqualTo(9L);
+    }
+
+    // ==================== addComboToCart ====================
+
+    @Test
+    @DisplayName("addComboToCart: adds every combo item carrying the comboId")
+    void testAddComboToCart_Success() throws Exception {
+        String cartId = "c-combo";
+        CartEntity cart = emptyActiveCart(cartId);
+
+        com.tappy.pos.model.entity.order.ComboItem ci1 = new com.tappy.pos.model.entity.order.ComboItem();
+        ci1.setProductId(1L); ci1.setQuantity(1); ci1.setPrice(new BigDecimal("20000"));
+        com.tappy.pos.model.entity.order.Combo combo = new com.tappy.pos.model.entity.order.Combo();
+        combo.setId(5L); combo.setActive(true);
+        combo.setItems(new ArrayList<>(List.of(ci1)));
+
+        ProductDTO product = ProductDTO.builder().id(1L).name("Món combo").sku("SKU")
+                .price(new BigDecimal("25000")).inventoryMode("NO_INVENTORY").build();
+
+        when(comboRepository.findById(5L)).thenReturn(Optional.of(combo));
+        when(cartRepository.findByCartId(cartId)).thenReturn(Optional.of(cart));
+        when(productService.getProductById(1L)).thenReturn(product);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CartResponse response = cartService.addComboToCart(cartId, 5L);
+
+        assertThat(response.getItems()).hasSize(1);
+        // explicit combo item price (20000) wins as unitPrice override
+        assertThat(response.getItems().get(0).getUnitPrice()).isEqualByComparingTo("20000");
+    }
+
+    @Test
+    @DisplayName("addComboToCart: inactive combo throws BadRequest")
+    void testAddComboToCart_Inactive() {
+        com.tappy.pos.model.entity.order.Combo combo = new com.tappy.pos.model.entity.order.Combo();
+        combo.setId(6L); combo.setActive(false); combo.setItems(new ArrayList<>());
+        when(comboRepository.findById(6L)).thenReturn(Optional.of(combo));
+        when(messageService.getMessage("combo.inactive")).thenReturn("Combo ngừng bán");
+
+        assertThatThrownBy(() -> cartService.addComboToCart("c", 6L))
+                .isInstanceOf(BadRequestException.class).hasMessageContaining("Combo ngừng bán");
+    }
+
+    @Test
+    @DisplayName("addComboToCart: missing combo throws ResourceNotFound")
+    void testAddComboToCart_NotFound() {
+        when(comboRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> cartService.addComboToCart("c", 99L))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ==================== updateCartItemNote ====================
+
+    @Test
+    @DisplayName("updateCartItemNote: trims and sets note; blank clears it")
+    void testUpdateCartItemNote() {
+        CartItemEntity item = CartItemEntity.builder().id(1L).productId(1L).quantity(1)
+                .basePrice(BigDecimal.TEN).variants("{}").build();
+        CartEntity cart = CartEntity.builder().id(1L).cartId("c-note").status(CartStatus.ACTIVE)
+                .items(new ArrayList<>(List.of(item))).appliedCoupons("[]").appliedPromotions("[]")
+                .build();
+        when(cartRepository.findByCartId("c-note")).thenReturn(Optional.of(cart));
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        cartService.updateCartItemNote("c-note", 1L, "  Ít đá  ");
+        assertThat(item.getNotes()).isEqualTo("Ít đá");
+
+        cartService.updateCartItemNote("c-note", 1L, "   ");
+        assertThat(item.getNotes()).isNull();
+    }
+
+    @Test
+    @DisplayName("updateCartItemNote: missing item throws ResourceNotFound")
+    void testUpdateCartItemNote_ItemNotFound() {
+        CartEntity cart = emptyActiveCart("c-note2");
+        when(cartRepository.findByCartId("c-note2")).thenReturn(Optional.of(cart));
+        when(messageService.getMessage("cart.item.not.found")).thenReturn("Không thấy");
+
+        assertThatThrownBy(() -> cartService.updateCartItemNote("c-note2", 9L, "x"))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ==================== setCartCustomer wholesale re-pricing ====================
+
+    @Test
+    @DisplayName("setCartCustomer: re-prices STANDARD lines to wholesale for WHOLESALE customer")
+    void testSetCartCustomer_WholesaleRepricing() {
+        CartItemEntity item = CartItemEntity.builder().id(1L).productId(1L).productName("SP")
+                .sku("SKU").quantity(1)
+                .basePrice(new BigDecimal("20000")).unitPrice(new BigDecimal("20000"))
+                .lineSubtotal(new BigDecimal("20000")).lineTotal(new BigDecimal("20000"))
+                .lineGrandTotal(new BigDecimal("20000")).tax(BigDecimal.ZERO)
+                .discountType(DiscountType.NONE).discountValue(BigDecimal.ZERO)
+                .variants("{}").build();
+        CartEntity cart = CartEntity.builder().id(1L).cartId("c-tier").status(CartStatus.ACTIVE)
+                .items(new ArrayList<>(List.of(item))).appliedCoupons("[]").appliedPromotions("[]")
+                .subtotal(new BigDecimal("20000")).totalDiscount(BigDecimal.ZERO)
+                .totalTax(BigDecimal.ZERO).total(new BigDecimal("20000")).taxRate(BigDecimal.ZERO)
+                .build();
+        Customer ws = Customer.builder().name("Đại lý").customerType("WHOLESALE").build();
+        ws.setId(50L);
+        ProductDTO product = ProductDTO.builder().id(1L).price(new BigDecimal("20000"))
+                .wholesalePrice(new BigDecimal("15000")).build();
+
+        when(cartRepository.findByCartId("c-tier")).thenReturn(Optional.of(cart));
+        when(tenantContext.getCurrentTenantId()).thenReturn("t1");
+        when(customerRepository.findByIdActiveAndTenantId(50L, "t1")).thenReturn(Optional.of(ws));
+        when(productService.getProductById(1L)).thenReturn(product);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        cartService.setCartCustomer("c-tier", 50L);
+
+        assertThat(item.getUnitPrice()).isEqualByComparingTo("15000");
+    }
+
+    // ==================== sendToKitchen occupies table ====================
+
+    @Test
+    @DisplayName("sendToKitchen: occupies table when tableId is provided")
+    void testSendToKitchen_OccupyTable() {
+        mockSecurityContext("waiter01");
+        CartEntity cart = buildActiveCartWithItem();
+        SendToKitchenRequest request = new SendToKitchenRequest();
+        request.setTableId(77L);
+
+        Order savedOrder = new Order();
+        savedOrder.setId(900L);
+        savedOrder.setOrderNumber("KITCHEN-TBL");
+        savedOrder.setStatus(Order.OrderStatus.PENDING);
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+
+        cartService.sendToKitchen("cart-001", request);
+
+        verify(tableService).occupyTable(77L, 900L);
+    }
+
+    // ==================== checkout — preorder ====================
+
+    @Test
+    @DisplayName("checkout: preorder creates PENDING order with deposit, defers stock")
+    void testCheckout_Preorder() {
+        mockSecurityContext("cashier01");
+        CartEntity cart = buildActiveCartWithItem();
+
+        CheckoutRequest request = new CheckoutRequest();
+        request.setPreorder(true);
+        request.setDepositAmount(new BigDecimal("10000"));
+
+        Order savedOrder = new Order();
+        savedOrder.setId(1000L);
+        savedOrder.setOrderNumber("ORD-PRE");
+        savedOrder.setStatus(Order.OrderStatus.PENDING);
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CheckoutResponse response = cartService.checkout("cart-001", request);
+
+        assertThat(response.getOrderNumber()).isEqualTo("ORD-PRE");
+        // No inventory deduction on preorder
+        verify(inventoryService, never()).removeStock(anyLong(), anyLong());
+        verify(activityLogService).logAsync(any(), eq("cashier01"), any(),
+                eq(com.tappy.pos.model.enums.ActivityAction.PREORDER_CREATED), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("checkout: preorder deposit exceeding total throws BadRequest")
+    void testCheckout_PreorderDepositExceedsTotal() {
+        CartEntity cart = buildActiveCartWithItem();
+
+        CheckoutRequest request = new CheckoutRequest();
+        request.setPreorder(true);
+        request.setDepositAmount(new BigDecimal("9999999999"));
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(messageService.getMessage("error.preorder.deposit.exceeds.total"))
+                .thenReturn("Cọc vượt tổng");
+
+        assertThatThrownBy(() -> cartService.checkout("cart-001", request))
+                .isInstanceOf(BadRequestException.class).hasMessageContaining("Cọc vượt tổng");
+    }
+
+    // ==================== checkout — quote ====================
+
+    @Test
+    @DisplayName("checkout: quote stays PENDING and skips stock deduction")
+    void testCheckout_Quote() {
+        mockSecurityContext("cashier01");
+        CartEntity cart = buildActiveCartWithItem();
+
+        CheckoutRequest request = new CheckoutRequest();
+        request.setQuote(true);
+
+        Order savedOrder = new Order();
+        savedOrder.setId(1100L);
+        savedOrder.setOrderNumber("ORD-QUOTE");
+        savedOrder.setStatus(Order.OrderStatus.PENDING);
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CheckoutResponse response = cartService.checkout("cart-001", request);
+
+        assertThat(response.getOrderNumber()).isEqualTo("ORD-QUOTE");
+        verify(inventoryService, never()).removeStock(anyLong(), anyLong());
+    }
+
+    // ==================== checkout — in-progress ====================
+
+    @Test
+    @DisplayName("checkout: createAsInProgress builds IN_PROGRESS order with zero amount paid")
+    void testCheckout_InProgress() {
+        mockSecurityContext("cashier01");
+        CartEntity cart = buildActiveCartWithItem();
+
+        CheckoutRequest request = new CheckoutRequest();
+        request.setCreateAsInProgress(true);
+
+        Order savedOrder = new Order();
+        savedOrder.setId(1200L);
+        savedOrder.setOrderNumber("ORD-INPROG");
+        savedOrder.setStatus(Order.OrderStatus.IN_PROGRESS);
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        ArgumentCaptor<Order> captor = ArgumentCaptor.forClass(Order.class);
+        cartService.checkout("cart-001", request);
+
+        verify(orderRepository).save(captor.capture());
+        assertThat(captor.getValue().getAmountPaid()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    // ==================== checkout — service charge + tip + delivery fee ====================
+
+    @Test
+    @DisplayName("checkout: applies service charge, tip and delivery fee on a SELL order")
+    void testCheckout_ServiceChargeTipDelivery() {
+        mockSecurityContext("cashier01");
+        CartEntity cart = buildActiveCartWithItem();
+
+        CheckoutRequest request = new CheckoutRequest();
+        request.setServiceChargeRate(new BigDecimal("5"));
+        request.setTip(new BigDecimal("2000"));
+        request.setOrderChannel(Order.OrderChannel.DELIVERY);
+        request.setDeliveryFee(new BigDecimal("15000"));
+
+        Order savedOrder = new Order();
+        savedOrder.setId(1300L);
+        savedOrder.setOrderNumber("ORD-SC");
+        savedOrder.setStatus(Order.OrderStatus.COMPLETED);
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        ArgumentCaptor<Order> captor = ArgumentCaptor.forClass(Order.class);
+        cartService.checkout("cart-001", request);
+
+        verify(orderRepository).save(captor.capture());
+        Order o = captor.getValue();
+        assertThat(o.getServiceChargeRate()).isEqualByComparingTo("5.00");
+        assertThat(o.getServiceChargeAmount()).isPositive();
+        assertThat(o.getTipAmount()).isEqualByComparingTo("2000.00");
+        assertThat(o.getDeliveryFee()).isEqualByComparingTo("15000.00");
+        assertThat(o.getOrderChannel()).isEqualTo(Order.OrderChannel.DELIVERY);
+    }
+
+    // ==================== checkout — TRACKED stock deduction ====================
+
+    @Test
+    @DisplayName("checkout: deducts stock for TRACKED standard items")
+    void testCheckout_DeductsTrackedStock() {
+        mockSecurityContext("cashier01");
+        CartEntity cart = buildActiveCartWithItem();
+
+        CheckoutRequest request = new CheckoutRequest();
+
+        Order savedOrder = new Order();
+        savedOrder.setId(1400L);
+        savedOrder.setOrderNumber("ORD-DEDUCT");
+        savedOrder.setStatus(Order.OrderStatus.COMPLETED);
+
+        ProductDTO sold = ProductDTO.builder().id(1L).name("Coca Cola")
+                .inventoryMode("TRACKED").build();
+        InventoryDTO inv = InventoryDTO.builder().id(77L).productId(1L).quantityInStock(50L).build();
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+        when(productService.getProductById(1L)).thenReturn(sold);
+        when(inventoryService.getInventoryByProductId(eq(1L), any(PageRequest.class)))
+                .thenReturn(new PageImpl<>(List.of(inv)));
+
+        cartService.checkout("cart-001", request);
+
+        verify(inventoryService).removeStock(eq(77L), anyLong());
+    }
+
+    @Test
+    @DisplayName("checkout: marks UNIQUE standard item as sold")
+    void testCheckout_MarksUniqueSold() {
+        mockSecurityContext("cashier01");
+        CartEntity cart = buildActiveCartWithItem();
+
+        Order savedOrder = new Order();
+        savedOrder.setId(1500L);
+        savedOrder.setOrderNumber("ORD-UNIQ");
+        savedOrder.setStatus(Order.OrderStatus.COMPLETED);
+
+        ProductDTO sold = ProductDTO.builder().id(1L).name("Nhẫn").productTypeCode("JEWELRY")
+                .inventoryMode("UNIQUE").build();
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrder);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+        when(productService.getProductById(1L)).thenReturn(sold);
+
+        cartService.checkout("cart-001", new CheckoutRequest());
+
+        verify(productService).markAsSold(1L);
+    }
+
+    // ==================== checkout — loyalty failure rethrows ====================
+
+    @Test
+    @DisplayName("checkout: loyalty redemption failure propagates the exception")
+    void testCheckout_LoyaltyFailureRethrows() {
+        CartEntity cart = buildActiveCartWithItem();
+        cart.setCustomerId(10L);
+        Customer customer = Customer.builder().name("Loyal").phone("0900000001").build();
+        customer.setId(10L);
+
+        CheckoutRequest request = new CheckoutRequest();
+        request.setLoyaltyPointsToRedeem(100);
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(customerRepository.findByIdActive(10L)).thenReturn(Optional.of(customer));
+        when(loyaltyService.redeemPoints(eq(10L), eq(100), isNull()))
+                .thenThrow(new BadRequestException("Không đủ điểm"));
+
+        assertThatThrownBy(() -> cartService.checkout("cart-001", request))
+                .isInstanceOf(BadRequestException.class).hasMessageContaining("Không đủ điểm");
+    }
+
+    // ==================== checkout — promotion failure rethrows ====================
+
+    @Test
+    @DisplayName("checkout: promotion code rejection propagates the exception")
+    void testCheckout_PromotionFailureRethrows() {
+        CartEntity cart = buildActiveCartWithItem();
+
+        CheckoutRequest request = new CheckoutRequest();
+        request.setPromotionCode("BADCODE");
+
+        when(cartRepository.findByCartId("cart-001")).thenReturn(Optional.of(cart));
+        when(promotionService.applyAtCheckout(eq("BADCODE"), any()))
+                .thenThrow(new BadRequestException("Mã không hợp lệ"));
+
+        assertThatThrownBy(() -> cartService.checkout("cart-001", request))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    // ==================== mapItemToResponse — modifiers JSON parse ====================
+
+    @Test
+    @DisplayName("getCart: parses stored modifier JSON on a cart item into DTOs")
+    void testGetCart_ParsesModifiers() throws Exception {
+        String modifiersJson = objectMapper.writeValueAsString(List.of(
+                com.tappy.pos.model.dto.modifier.ChosenModifierDTO.builder()
+                        .groupName("Size").optionName("L").priceDelta(new BigDecimal("3000")).build()));
+        CartItemEntity item = CartItemEntity.builder().id(1L).productId(1L).productName("Trà")
+                .sku("SKU").quantity(1).basePrice(BigDecimal.TEN).unitPrice(BigDecimal.TEN)
+                .lineSubtotal(BigDecimal.TEN).lineTotal(BigDecimal.TEN).lineGrandTotal(BigDecimal.TEN)
+                .tax(BigDecimal.ZERO).discountType(DiscountType.NONE).discountValue(BigDecimal.ZERO)
+                .variants("{}").modifiers(modifiersJson).build();
+        CartEntity cart = CartEntity.builder().id(1L).cartId("c-getmod").status(CartStatus.ACTIVE)
+                .items(new ArrayList<>(List.of(item))).appliedCoupons("[]").appliedPromotions("[]")
+                .subtotal(BigDecimal.TEN).total(BigDecimal.TEN).build();
+
+        when(cartRepository.findByCartId("c-getmod")).thenReturn(Optional.of(cart));
+
+        CartResponse response = cartService.getCart("c-getmod");
+        assertThat(response.getItems().get(0).getModifiers()).hasSize(1);
+        assertThat(response.getItems().get(0).getModifiers().get(0).getOptionName()).isEqualTo("L");
+    }
+
+    // ==================== SILVER dynamic price ====================
+
+    @Test
+    @DisplayName("addItemToCart: SILVER dynamic product prices via getPriceByCode using purity attribute")
+    void testAddItem_SilverDynamicPrice() throws Exception {
+        // Only exercise the SILVER branch when SILVER is actually a dynamic-price type.
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                DynamicPriceProductTypes.isDynamicPrice("SILVER"),
+                "SILVER not configured as a dynamic-price type");
+
+        String cartId = "c-silver";
+        CartRequest request = CartRequest.builder().productId(1L).quantity(1).build();
+        CartEntity cart = emptyActiveCart(cartId);
+
+        Map<String, Object> attrs = new HashMap<>();
+        attrs.put("purity", "B925");
+        attrs.put("gold_weight", "10");
+        attrs.put("sell_proc_price", "0");
+
+        ProductDTO product = ProductDTO.builder().id(1L).name("Lắc bạc").sku("SKU")
+                .price(BigDecimal.ZERO).status("ACTIVE").productTypeCode("SILVER")
+                .inventoryMode("NO_INVENTORY").attributes(attrs).build();
+
+        GoldPriceDTO silverPrice = GoldPriceDTO.builder().sell(new BigDecimal("1200000")).build();
+
+        when(cartRepository.findByCartId(cartId)).thenReturn(Optional.of(cart));
+        when(productService.getProductById(1L)).thenReturn(product);
+        when(goldPriceService.getPriceByCode("B925")).thenReturn(silverPrice);
+        when(cartRepository.save(any(CartEntity.class))).thenReturn(cart);
+
+        CartResponse response = cartService.addItemToCart(cartId, request);
+        // 10 × 1,200,000 + 0 = 12,000,000
+        assertThat(response.getItems().get(0).getUnitPrice()).isEqualByComparingTo("12000000");
+    }
 }
 

@@ -37,9 +37,23 @@ import org.springframework.data.domain.PageRequest;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.repository.order.OrderItemRepository;
+import com.tappy.pos.repository.order.OrderRepository;
+import com.tappy.pos.service.storage.R2CleanupService;
+import com.tappy.pos.service.storage.R2StorageService;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.time.LocalDateTime;
+import java.util.Map;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("EmployeeServiceImpl Unit Tests")
@@ -48,8 +62,12 @@ class EmployeeServiceImplTest {
     @Mock private TenantContext tenantContext;
     @Mock private EmployeeRepository employeeRepository;
     @Mock private UserRepository userRepository;
+    @Mock private OrderRepository orderRepository;
+    @Mock private OrderItemRepository orderItemRepository;
     @Mock private MessageService messageService;
     @Mock private ActivityLogService activityLogService;
+    @Mock private R2StorageService r2StorageService;
+    @Mock private R2CleanupService r2CleanupService;
 
     @InjectMocks
     private EmployeeServiceImpl employeeService;
@@ -506,5 +524,230 @@ class EmployeeServiceImplTest {
         employeeService.update(1L, req);
 
         verify(employeeRepository).save(argThat(e -> Long.valueOf(9L).equals(e.getUserId())));
+    }
+
+    // ── create: position null path ────────────────────────────────────────────
+
+    @Test
+    @DisplayName("create: null position stays null on saved employee")
+    void create_nullPosition() {
+        CreateEmployeeRequest req = new CreateEmployeeRequest();
+        req.setFullName("No Position");
+        req.setPhone("0900000123");
+        req.setPosition(null);
+        when(employeeRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        EmployeeDTO dto = employeeService.create(req);
+
+        assertThat(dto.getPosition()).isNull();
+    }
+
+    // ── uploadAvatar ──────────────────────────────────────────────────────────
+
+    private MultipartFile validImageFile() throws IOException {
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(
+                10, 10, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(img, "png", baos);
+        return new MockMultipartFile("file", "a.png", "image/png", baos.toByteArray());
+    }
+
+    @Test
+    @DisplayName("uploadAvatar: rejects unsupported content type")
+    void uploadAvatar_invalidContentType() {
+        MultipartFile file = new MockMultipartFile("file", "a.txt", "text/plain", new byte[]{1});
+
+        assertThatThrownBy(() -> employeeService.uploadAvatar(1L, file))
+                .isInstanceOf(BadRequestException.class);
+        verify(employeeRepository, never()).findById(anyLong());
+    }
+
+    @Test
+    @DisplayName("uploadAvatar: null content type rejected")
+    void uploadAvatar_nullContentType() {
+        MultipartFile file = new MockMultipartFile("file", "a", null, new byte[]{1});
+
+        assertThatThrownBy(() -> employeeService.uploadAvatar(1L, file))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("uploadAvatar: employee not found throws ResourceNotFoundException")
+    void uploadAvatar_notFound() throws IOException {
+        when(employeeRepository.findById(99L)).thenReturn(Optional.empty());
+        MultipartFile file = validImageFile();
+
+        assertThatThrownBy(() -> employeeService.uploadAvatar(99L, file))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("uploadAvatar: compresses, stores, saves, cleans old key")
+    void uploadAvatar_success() throws IOException {
+        employee.setAvatarUrl("https://cdn/old.jpg");
+        when(employeeRepository.findById(1L)).thenReturn(Optional.of(employee));
+        when(employeeRepository.save(any(Employee.class))).thenAnswer(i -> i.getArgument(0));
+        when(tenantContext.getCurrentTenantId()).thenReturn("shop1");
+        when(r2StorageService.keyFromUrl("https://cdn/old.jpg")).thenReturn("employees/shop1/1.jpg");
+        when(r2StorageService.upload(anyString(), any(byte[].class), eq("image/jpeg")))
+                .thenReturn("https://cdn/employees/shop1/1.jpg");
+
+        EmployeeDTO dto = employeeService.uploadAvatar(1L, validImageFile());
+
+        assertThat(dto.getAvatarUrl()).startsWith("https://cdn/employees/shop1/1.jpg?v=");
+        verify(r2CleanupService).deleteAsync("employees/shop1/1.jpg");
+        verify(r2StorageService).upload(eq("employees/shop1/1.jpg"), any(byte[].class), eq("image/jpeg"));
+    }
+
+    @Test
+    @DisplayName("uploadAvatar: blank upload url stored as null avatar")
+    void uploadAvatar_blankUrl() throws IOException {
+        when(employeeRepository.findById(1L)).thenReturn(Optional.of(employee));
+        when(employeeRepository.save(any(Employee.class))).thenAnswer(i -> i.getArgument(0));
+        when(tenantContext.getCurrentTenantId()).thenReturn("shop1");
+        when(r2StorageService.upload(anyString(), any(byte[].class), eq("image/jpeg"))).thenReturn("");
+
+        EmployeeDTO dto = employeeService.uploadAvatar(1L, validImageFile());
+
+        assertThat(dto.getAvatarUrl()).isNull();
+    }
+
+    @Test
+    @DisplayName("uploadAvatar: corrupt image bytes throw BadRequestException")
+    void uploadAvatar_processFailure() {
+        when(employeeRepository.findById(1L)).thenReturn(Optional.of(employee));
+        MultipartFile bad = new MockMultipartFile("file", "a.jpg", "image/jpeg", new byte[]{0, 1, 2, 3});
+
+        assertThatThrownBy(() -> employeeService.uploadAvatar(1L, bad))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    // ── deleteAvatar ──────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("deleteAvatar: clears url, saves, cleans old key")
+    void deleteAvatar_success() {
+        employee.setAvatarUrl("https://cdn/old.jpg");
+        when(employeeRepository.findById(1L)).thenReturn(Optional.of(employee));
+        when(employeeRepository.save(any(Employee.class))).thenAnswer(i -> i.getArgument(0));
+        when(r2StorageService.keyFromUrl("https://cdn/old.jpg")).thenReturn("employees/shop1/1.jpg");
+
+        EmployeeDTO dto = employeeService.deleteAvatar(1L);
+
+        assertThat(dto.getAvatarUrl()).isNull();
+        verify(r2CleanupService).deleteAsync("employees/shop1/1.jpg");
+    }
+
+    @Test
+    @DisplayName("deleteAvatar: employee not found throws ResourceNotFoundException")
+    void deleteAvatar_notFound() {
+        when(employeeRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> employeeService.deleteAvatar(99L))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── getAnalytics ──────────────────────────────────────────────────────────
+
+    private void stubAnalyticsCommon() {
+        LocalDateTime from = LocalDateTime.of(2025, 1, 1, 0, 0);
+        LocalDateTime to = LocalDateTime.of(2025, 1, 31, 23, 59);
+        when(orderRepository.sumRevenueByDateRange(any(), any())).thenReturn(new BigDecimal("1000"));
+        when(orderItemRepository.sumTeamCommissionByDateRange(any(), any())).thenReturn(new BigDecimal("100"));
+        when(orderRepository.countActiveEmployees(any(), any())).thenReturn(2L);
+        when(orderRepository.getEmployeeRevenueRankingByDateRange(any(), any(), anyInt()))
+                .thenReturn(java.util.List.<Object[]>of(new Object[]{"Emp A", "11", 3L, new BigDecimal("600")}));
+        when(orderItemRepository.getEmployeeCommissionRankingByDateRange(any(), any(), anyInt()))
+                .thenReturn(java.util.List.<Object[]>of(new Object[]{"21", "Emp A", new BigDecimal("60"), 3L, new BigDecimal("600")}));
+    }
+
+    @Test
+    @DisplayName("getAnalytics: day granularity merges revenue + commission trend by label")
+    void getAnalytics_dayGranularity() {
+        stubAnalyticsCommon();
+        when(orderRepository.getEmployeeRevenueTrendByDay(any(), any()))
+                .thenReturn(java.util.List.<Object[]>of(new Object[]{"2025-01-01", new BigDecimal("600")}));
+        when(orderItemRepository.getTeamCommissionTrendByDay(any(), any()))
+                .thenReturn(java.util.List.<Object[]>of(new Object[]{"2025-01-01", new BigDecimal("60")}));
+
+        Map<String, Object> result = employeeService.getAnalytics(
+                LocalDateTime.of(2025, 1, 1, 0, 0), LocalDateTime.of(2025, 1, 31, 23, 59), "day", 5);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> summary = (Map<String, Object>) result.get("summary");
+        assertThat((double) summary.get("totalRevenue")).isEqualTo(1000.0);
+        assertThat((double) summary.get("totalCommission")).isEqualTo(100.0);
+        assertThat(summary.get("activeEmployeeCount")).isEqualTo(2L);
+        assertThat((double) summary.get("avgRevenuePerEmployee")).isEqualTo(500.0);
+
+        @SuppressWarnings("unchecked")
+        java.util.List<Map<String, Object>> trend =
+                (java.util.List<Map<String, Object>>) result.get("trend");
+        assertThat(trend).hasSize(1);
+        assertThat(trend.getFirst().get("label")).isEqualTo("2025-01-01");
+        assertThat((double) trend.getFirst().get("revenue")).isEqualTo(600.0);
+        assertThat((double) trend.getFirst().get("commission")).isEqualTo(60.0);
+    }
+
+    @Test
+    @DisplayName("getAnalytics: week granularity uses week trend queries")
+    void getAnalytics_weekGranularity() {
+        stubAnalyticsCommon();
+        when(orderRepository.getEmployeeRevenueTrendByWeek(any(), any()))
+                .thenReturn(java.util.List.<Object[]>of(new Object[]{"2025-W01", new BigDecimal("700")}));
+        when(orderItemRepository.getTeamCommissionTrendByWeek(any(), any()))
+                .thenReturn(java.util.List.of());
+
+        Map<String, Object> result = employeeService.getAnalytics(
+                LocalDateTime.of(2025, 1, 1, 0, 0), LocalDateTime.of(2025, 1, 31, 23, 59), "week", 5);
+
+        verify(orderRepository).getEmployeeRevenueTrendByWeek(any(), any());
+        verify(orderItemRepository).getTeamCommissionTrendByWeek(any(), any());
+        assertThat(result).containsKey("rankingRevenue");
+    }
+
+    @Test
+    @DisplayName("getAnalytics: month granularity uses month trend queries")
+    void getAnalytics_monthGranularity() {
+        stubAnalyticsCommon();
+        when(orderRepository.getEmployeeRevenueTrendByMonth(any(), any()))
+                .thenReturn(java.util.List.<Object[]>of(new Object[]{"2025-01", new BigDecimal("800")}));
+        when(orderItemRepository.getTeamCommissionTrendByMonth(any(), any()))
+                .thenReturn(java.util.List.<Object[]>of(new Object[]{"2025-01", new BigDecimal("80")}));
+
+        employeeService.getAnalytics(
+                LocalDateTime.of(2025, 1, 1, 0, 0), LocalDateTime.of(2025, 12, 31, 23, 59), "month", 5);
+
+        verify(orderRepository).getEmployeeRevenueTrendByMonth(any(), any());
+        verify(orderItemRepository).getTeamCommissionTrendByMonth(any(), any());
+    }
+
+    @Test
+    @DisplayName("getAnalytics: null revenue/commission default to zero; zero active -> zero avg")
+    void getAnalytics_nullsAndZeroActive() {
+        when(orderRepository.sumRevenueByDateRange(any(), any())).thenReturn(null);
+        when(orderItemRepository.sumTeamCommissionByDateRange(any(), any())).thenReturn(null);
+        when(orderRepository.countActiveEmployees(any(), any())).thenReturn(0L);
+        when(orderRepository.getEmployeeRevenueRankingByDateRange(any(), any(), anyInt()))
+                .thenReturn(java.util.List.<Object[]>of(new Object[]{null, null, null, null}));
+        when(orderItemRepository.getEmployeeCommissionRankingByDateRange(any(), any(), anyInt()))
+                .thenReturn(java.util.List.<Object[]>of(new Object[]{null, null, null, null, null}));
+        when(orderRepository.getEmployeeRevenueTrendByDay(any(), any())).thenReturn(java.util.List.<Object[]>of(
+                new Object[]{null, null}));
+        when(orderItemRepository.getTeamCommissionTrendByDay(any(), any())).thenReturn(java.util.List.of());
+
+        Map<String, Object> result = employeeService.getAnalytics(
+                LocalDateTime.of(2025, 1, 1, 0, 0), LocalDateTime.of(2025, 1, 31, 23, 59), "day", 0);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> summary = (Map<String, Object>) result.get("summary");
+        assertThat((double) summary.get("totalRevenue")).isZero();
+        assertThat((double) summary.get("avgRevenuePerEmployee")).isZero();
+
+        @SuppressWarnings("unchecked")
+        java.util.List<Map<String, Object>> rankRevenue =
+                (java.util.List<Map<String, Object>>) result.get("rankingRevenue");
+        assertThat(rankRevenue.getFirst().get("employeeName")).isEqualTo("");
+        assertThat(rankRevenue.getFirst().get("userId")).isNull();
     }
 }

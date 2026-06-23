@@ -268,8 +268,10 @@ public class NotificationService {
         String tenantId = tenantContext.getCurrentTenantId();
         if (tenantId == null || expoPushToken == null || expoPushToken.isBlank()) return;
         String username = currentUsername();
+        // Look up regardless of soft-delete so a re-login reactivates the existing row
+        // instead of inserting a duplicate (which would violate the per-tenant unique key).
         com.tappy.pos.model.entity.notification.DeviceToken token = deviceTokenRepository
-                .findByExpoPushTokenAndDeletedFalse(expoPushToken)
+                .findByExpoPushToken(expoPushToken)
                 .orElseGet(() -> com.tappy.pos.model.entity.notification.DeviceToken.builder()
                         .tenantId(tenantId)
                         .expoPushToken(expoPushToken)

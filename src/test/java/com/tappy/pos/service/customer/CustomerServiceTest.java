@@ -35,6 +35,20 @@ import static org.mockito.Mockito.*;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.audit.ActivityLogService;
+import com.tappy.pos.exception.BadRequestException;
+import com.tappy.pos.repository.order.OrderRepository;
+import com.tappy.pos.service.storage.R2CleanupService;
+import com.tappy.pos.service.storage.R2StorageService;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("CustomerService Unit Tests")
@@ -44,6 +58,12 @@ class CustomerServiceTest {
     private CustomerRepository customerRepository;
 
     @Mock
+    private OrderRepository orderRepository;
+
+    @Mock
+    private EntityManager entityManager;
+
+    @Mock
     private MessageService messageService;
 
     @Mock
@@ -51,6 +71,12 @@ class CustomerServiceTest {
 
     @Mock
     private TenantContext tenantContext;
+
+    @Mock
+    private R2StorageService r2StorageService;
+
+    @Mock
+    private R2CleanupService r2CleanupService;
 
     @InjectMocks
     private CustomerService customerService;
@@ -1279,6 +1305,339 @@ class CustomerServiceTest {
         CustomerDTO dto = customerService.findCustomerByPhone("0000000001");
 
         assertThat(dto).isNull();
+    }
+
+    // ── normalizeCustomerType (via createCustomer) ────────────────────────────
+
+    @Test
+    @DisplayName("createCustomer: blank customerType defaults to RETAIL")
+    void testCreateCustomer_BlankTypeDefaultsRetail() {
+        CreateCustomerRequest req = CreateCustomerRequest.builder()
+                .name("X").phone("111").customerType("  ").build();
+        when(customerRepository.save(any(Customer.class))).thenAnswer(i -> i.getArgument(0));
+
+        customerService.createCustomer(req);
+
+        verify(customerRepository).save(argThat(c -> "RETAIL".equals(c.getCustomerType())));
+    }
+
+    @Test
+    @DisplayName("createCustomer: wholesale type normalized to uppercase WHOLESALE")
+    void testCreateCustomer_WholesaleType() {
+        CreateCustomerRequest req = CreateCustomerRequest.builder()
+                .name("X").phone("111").customerType("wholesale").build();
+        when(customerRepository.save(any(Customer.class))).thenAnswer(i -> i.getArgument(0));
+
+        customerService.createCustomer(req);
+
+        verify(customerRepository).save(argThat(c -> "WHOLESALE".equals(c.getCustomerType())));
+    }
+
+    @Test
+    @DisplayName("createCustomer: invalid customerType throws BadRequestException")
+    void testCreateCustomer_InvalidType() {
+        CreateCustomerRequest req = CreateCustomerRequest.builder()
+                .name("X").phone("111").customerType("PLATINUM").build();
+        when(messageService.getMessage("error.customer.invalid.type")).thenReturn("Invalid type");
+
+        assertThatThrownBy(() -> customerService.createCustomer(req))
+                .isInstanceOf(BadRequestException.class);
+        verify(customerRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("updateCustomer: invalid customerType throws BadRequestException")
+    void testUpdateCustomer_InvalidType() {
+        UpdateCustomerRequest req = UpdateCustomerRequest.builder().customerType("GOLD").build();
+        when(customerRepository.findByIdActive(1L)).thenReturn(Optional.of(customer));
+        when(messageService.getMessage("error.customer.invalid.type")).thenReturn("Invalid type");
+
+        assertThatThrownBy(() -> customerService.updateCustomer(1L, req))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    // ── getRecentCustomers ────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getRecentCustomers: maps repository list to DTOs")
+    void testGetRecentCustomers() {
+        when(customerRepository.findTop(any(Pageable.class)))
+                .thenReturn(java.util.List.of(customer));
+
+        List<CustomerDTO> result = customerService.getRecentCustomers(5);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().getName()).isEqualTo("John Doe");
+    }
+
+    // ── getCustomersByBirthdayMonth ───────────────────────────────────────────
+
+    @Test
+    @DisplayName("getCustomersByBirthdayMonth: maps repository list to DTOs")
+    void testGetCustomersByBirthdayMonth() {
+        when(customerRepository.findByBirthdayMonth(3))
+                .thenReturn(java.util.List.of(customer));
+
+        List<CustomerDTO> result = customerService.getCustomersByBirthdayMonth(3);
+
+        assertThat(result).hasSize(1);
+        verify(customerRepository).findByBirthdayMonth(3);
+    }
+
+    // ── uploadAvatar ──────────────────────────────────────────────────────────
+
+    private MultipartFile validImageFile() throws IOException {
+        java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(
+                10, 10, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(img, "png", baos);
+        return new MockMultipartFile("file", "a.png", "image/png", baos.toByteArray());
+    }
+
+    @Test
+    @DisplayName("uploadAvatar: rejects unsupported content type")
+    void testUploadAvatar_InvalidContentType() {
+        MultipartFile file = new MockMultipartFile("file", "a.txt", "text/plain", new byte[]{1});
+        when(messageService.getMessage("error.user.avatar.invalid.type")).thenReturn("Bad type");
+
+        assertThatThrownBy(() -> customerService.uploadAvatar(1L, file))
+                .isInstanceOf(BadRequestException.class);
+        verify(customerRepository, never()).findByIdActive(anyLong());
+    }
+
+    @Test
+    @DisplayName("uploadAvatar: null content type rejected")
+    void testUploadAvatar_NullContentType() {
+        MultipartFile file = new MockMultipartFile("file", "a", null, new byte[]{1});
+        when(messageService.getMessage("error.user.avatar.invalid.type")).thenReturn("Bad type");
+
+        assertThatThrownBy(() -> customerService.uploadAvatar(1L, file))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("uploadAvatar: customer not found throws ResourceNotFoundException")
+    void testUploadAvatar_CustomerNotFound() throws IOException {
+        when(customerRepository.findByIdActive(999L)).thenReturn(Optional.empty());
+        when(messageService.getMessage("error.customer.not.found", 999L)).thenReturn("Not found");
+
+        MultipartFile file = validImageFile();
+        assertThatThrownBy(() -> customerService.uploadAvatar(999L, file))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("uploadAvatar: compresses, stores, saves and cleans old key")
+    void testUploadAvatar_Success() throws IOException {
+        customer.setAvatarUrl("https://cdn/old.jpg");
+        when(customerRepository.findByIdActive(1L)).thenReturn(Optional.of(customer));
+        when(customerRepository.save(any(Customer.class))).thenAnswer(i -> i.getArgument(0));
+        when(tenantContext.getCurrentTenantId()).thenReturn("shop1");
+        when(r2StorageService.keyFromUrl("https://cdn/old.jpg")).thenReturn("customers/shop1/1.jpg");
+        when(r2StorageService.upload(anyString(), any(byte[].class), eq("image/jpeg")))
+                .thenReturn("https://cdn/customers/shop1/1.jpg");
+
+        CustomerDTO dto = customerService.uploadAvatar(1L, validImageFile());
+
+        assertThat(dto.getAvatarUrl()).startsWith("https://cdn/customers/shop1/1.jpg?v=");
+        verify(r2CleanupService).deleteAsync("customers/shop1/1.jpg");
+        verify(r2StorageService).upload(eq("customers/shop1/1.jpg"), any(byte[].class), eq("image/jpeg"));
+    }
+
+    @Test
+    @DisplayName("uploadAvatar: blank upload url stored as null avatar")
+    void testUploadAvatar_BlankUrl() throws IOException {
+        when(customerRepository.findByIdActive(1L)).thenReturn(Optional.of(customer));
+        when(customerRepository.save(any(Customer.class))).thenAnswer(i -> i.getArgument(0));
+        when(tenantContext.getCurrentTenantId()).thenReturn("shop1");
+        when(r2StorageService.upload(anyString(), any(byte[].class), eq("image/jpeg"))).thenReturn("");
+
+        CustomerDTO dto = customerService.uploadAvatar(1L, validImageFile());
+
+        assertThat(dto.getAvatarUrl()).isNull();
+    }
+
+    @Test
+    @DisplayName("uploadAvatar: corrupt image bytes throw BadRequestException")
+    void testUploadAvatar_ProcessFailure() {
+        when(customerRepository.findByIdActive(1L)).thenReturn(Optional.of(customer));
+        when(messageService.getMessage("error.user.avatar.process.failed")).thenReturn("Process failed");
+        MultipartFile bad = new MockMultipartFile("file", "a.jpg", "image/jpeg", new byte[]{0, 1, 2, 3});
+
+        assertThatThrownBy(() -> customerService.uploadAvatar(1L, bad))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    // ── deleteAvatar ──────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("deleteAvatar: clears url, saves, cleans old key")
+    void testDeleteAvatar_Success() {
+        customer.setAvatarUrl("https://cdn/old.jpg");
+        when(customerRepository.findByIdActive(1L)).thenReturn(Optional.of(customer));
+        when(customerRepository.save(any(Customer.class))).thenAnswer(i -> i.getArgument(0));
+        when(r2StorageService.keyFromUrl("https://cdn/old.jpg")).thenReturn("customers/shop1/1.jpg");
+
+        CustomerDTO dto = customerService.deleteAvatar(1L);
+
+        assertThat(dto.getAvatarUrl()).isNull();
+        verify(r2CleanupService).deleteAsync("customers/shop1/1.jpg");
+    }
+
+    @Test
+    @DisplayName("deleteAvatar: customer not found throws ResourceNotFoundException")
+    void testDeleteAvatar_NotFound() {
+        when(customerRepository.findByIdActive(999L)).thenReturn(Optional.empty());
+        when(messageService.getMessage("error.customer.not.found", 999L)).thenReturn("Not found");
+
+        assertThatThrownBy(() -> customerService.deleteAvatar(999L))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── getAnalyticsSummary ───────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getAnalyticsSummary: computes avg spend over active customers")
+    void testGetAnalyticsSummary() {
+        LocalDate from = LocalDate.of(2025, 1, 1);
+        LocalDate to = LocalDate.of(2025, 1, 31);
+        when(customerRepository.countAllActive()).thenReturn(10L);
+        when(orderRepository.countActiveCustomers(any(), any())).thenReturn(4L);
+        when(customerRepository.countNewInPeriod(any(), any())).thenReturn(2L);
+        when(orderRepository.getTotalRevenueFromNamedCustomers(any(), any()))
+                .thenReturn(new BigDecimal("400"));
+
+        Map<String, Object> result = customerService.getAnalyticsSummary(from, to);
+
+        assertThat(result.get("totalCustomers")).isEqualTo(10L);
+        assertThat(result.get("activeCustomers")).isEqualTo(4L);
+        assertThat(result.get("newCustomers")).isEqualTo(2L);
+        assertThat(result.get("totalRevenue")).isEqualTo(new BigDecimal("400"));
+        assertThat((double) result.get("avgSpend")).isEqualTo(100.0);
+    }
+
+    @Test
+    @DisplayName("getAnalyticsSummary: null revenue and zero active customers -> zero avg")
+    void testGetAnalyticsSummary_NullRevenueZeroActive() {
+        LocalDate from = LocalDate.of(2025, 1, 1);
+        LocalDate to = LocalDate.of(2025, 1, 31);
+        when(customerRepository.countAllActive()).thenReturn(0L);
+        when(orderRepository.countActiveCustomers(any(), any())).thenReturn(0L);
+        when(customerRepository.countNewInPeriod(any(), any())).thenReturn(0L);
+        when(orderRepository.getTotalRevenueFromNamedCustomers(any(), any())).thenReturn(null);
+
+        Map<String, Object> result = customerService.getAnalyticsSummary(from, to);
+
+        assertThat(result.get("totalRevenue")).isEqualTo(BigDecimal.ZERO);
+        assertThat((double) result.get("avgSpend")).isZero();
+    }
+
+    // ── getAnalyticsTrend ─────────────────────────────────────────────────────
+
+    private Query mockTrendQuery() {
+        Query q = mock(Query.class);
+        when(entityManager.createNativeQuery(anyString())).thenReturn(q);
+        when(q.setParameter(eq("from"), any())).thenReturn(q);
+        when(q.setParameter(eq("to"), any())).thenReturn(q);
+        when(q.getResultList()).thenReturn(java.util.List.<Object[]>of(
+                new Object[]{"2025-01-01", 5L}));
+        return q;
+    }
+
+    @Test
+    @DisplayName("getAnalyticsTrend: default (revenue/day) maps rows to label+value")
+    void testGetAnalyticsTrend_DefaultRevenueDay() {
+        mockTrendQuery();
+        List<Map<String, Object>> result = customerService.getAnalyticsTrend(
+                LocalDate.of(2025, 1, 1), LocalDate.of(2025, 1, 31), null, null);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().get("label")).isEqualTo("2025-01-01");
+        assertThat(result.getFirst().get("value")).isEqualTo(5L);
+    }
+
+    @Test
+    @DisplayName("getAnalyticsTrend: visits metric, week granularity")
+    void testGetAnalyticsTrend_VisitsWeek() {
+        mockTrendQuery();
+        List<Map<String, Object>> result = customerService.getAnalyticsTrend(
+                LocalDate.of(2025, 1, 1), LocalDate.of(2025, 1, 31), "week", "visits");
+        assertThat(result).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("getAnalyticsTrend: new metric, month granularity")
+    void testGetAnalyticsTrend_NewMonth() {
+        mockTrendQuery();
+        List<Map<String, Object>> result = customerService.getAnalyticsTrend(
+                LocalDate.of(2025, 1, 1), LocalDate.of(2025, 12, 31), "month", "new");
+        assertThat(result).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("getAnalyticsTrend: revenue metric, year granularity")
+    void testGetAnalyticsTrend_RevenueYear() {
+        mockTrendQuery();
+        List<Map<String, Object>> result = customerService.getAnalyticsTrend(
+                LocalDate.of(2024, 1, 1), LocalDate.of(2025, 12, 31), "year", "revenue");
+        assertThat(result).hasSize(1);
+    }
+
+    // ── getTopCustomersRanking ────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("getTopCustomersRanking: all-time by spend")
+    void testGetTopCustomersRanking_AllTimeBySpend() {
+        when(orderRepository.getTopCustomersAllTime(any(Pageable.class)))
+                .thenReturn(java.util.List.<Object[]>of(new Object[]{"John", 3L, new BigDecimal("999"), "42"}));
+
+        List<Map<String, Object>> result = customerService.getTopCustomersRanking(
+                5, true, null, null, "spend");
+
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().get("name")).isEqualTo("John");
+        assertThat(result.getFirst().get("orderCount")).isEqualTo(3L);
+        assertThat(result.getFirst().get("customerId")).isEqualTo("42");
+    }
+
+    @Test
+    @DisplayName("getTopCustomersRanking: all-time by frequency")
+    void testGetTopCustomersRanking_AllTimeByFrequency() {
+        when(orderRepository.getTopCustomersAllTimeByFrequency(any(Pageable.class)))
+                .thenReturn(java.util.List.<Object[]>of(new Object[]{null, 7L, new BigDecimal("10"), null}));
+
+        List<Map<String, Object>> result = customerService.getTopCustomersRanking(
+                5, true, null, null, "count");
+
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().get("name")).isEqualTo("");
+        assertThat(result.getFirst().get("customerId")).isNull();
+    }
+
+    @Test
+    @DisplayName("getTopCustomersRanking: range by spend")
+    void testGetTopCustomersRanking_RangeBySpend() {
+        when(orderRepository.getTopCustomersByRange(any(), any(), any(Pageable.class)))
+                .thenReturn(java.util.List.<Object[]>of(new Object[]{"Jane", 1L, new BigDecimal("50"), "9"}));
+
+        List<Map<String, Object>> result = customerService.getTopCustomersRanking(
+                3, false, LocalDate.of(2025, 1, 1), LocalDate.of(2025, 1, 31), "spend");
+
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().get("name")).isEqualTo("Jane");
+    }
+
+    @Test
+    @DisplayName("getTopCustomersRanking: range by frequency")
+    void testGetTopCustomersRanking_RangeByFrequency() {
+        when(orderRepository.getTopCustomersByFrequency(any(), any(), any(Pageable.class)))
+                .thenReturn(java.util.List.<Object[]>of(new Object[]{"Bob", 4L, new BigDecimal("80"), "12"}));
+
+        List<Map<String, Object>> result = customerService.getTopCustomersRanking(
+                3, false, LocalDate.of(2025, 1, 1), LocalDate.of(2025, 1, 31), "count");
+
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().get("orderCount")).isEqualTo(4L);
     }
 
 }
