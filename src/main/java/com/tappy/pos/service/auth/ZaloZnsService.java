@@ -46,6 +46,17 @@ public class ZaloZnsService {
     private boolean enabled;
 
     private final RestTemplate restTemplate;
+    private final PlatformZaloTokenService platformZaloTokenService;
+
+    /**
+     * Resolves the access token for the platform OTP path: prefer the auto-refreshing
+     * platform OA token, falling back to the static {@code zalo.zns.access-token} env var
+     * (used in dev or before the platform credential is bootstrapped).
+     */
+    private String resolveOtpToken() {
+        String fresh = platformZaloTokenService.getAccessToken();
+        return (fresh != null && !fresh.isBlank()) ? fresh : accessToken;
+    }
 
     /**
      * Send OTP message via Zalo ZNS. Fire-and-forget (@Async).
@@ -63,7 +74,8 @@ public class ZaloZnsService {
             return;
         }
 
-        if (accessToken.isBlank() || templateId.isBlank()) {
+        String otpToken = resolveOtpToken();
+        if (otpToken.isBlank() || templateId.isBlank()) {
             log.error("[ZNS] accessToken or templateId not configured — OTP NOT sent (rowId={})", otpId);
             return;
         }
@@ -72,7 +84,7 @@ public class ZaloZnsService {
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("access_token", accessToken);
+            headers.set("access_token", otpToken);
 
             Map<String, Object> body = Map.of(
                     "phone", intlPhone,
@@ -123,7 +135,8 @@ public class ZaloZnsService {
             return;
         }
 
-        if (accessToken.isBlank() || templateId.isBlank()) {
+        String otpToken = resolveOtpToken();
+        if (otpToken.isBlank() || templateId.isBlank()) {
             log.error("[ZNS] accessToken or templateId not configured — OTP NOT sent (rowId={})", otpId);
             throw new ZaloSendException("Zalo ZNS not configured");
         }
@@ -133,7 +146,7 @@ public class ZaloZnsService {
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("access_token", accessToken);
+            headers.set("access_token", otpToken);
 
             Map<String, Object> body = Map.of(
                     "phone", intlPhone,
