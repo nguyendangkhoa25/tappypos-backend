@@ -9,6 +9,7 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -74,7 +75,12 @@ public class PlatformZaloTokenService {
      * @return a usable access token, or {@code null} when the platform OA is not configured
      *         or a refresh failed — the caller should then fall back (e.g. dev/disabled mode).
      */
-    @Transactional
+    // REQUIRES_NEW: a Zalo refresh rotates the single-use refresh token server-side — an
+    // irreversible side effect. Committing in our own transaction guarantees the rotated token is
+    // persisted even if the surrounding request (e.g. the OTP send) later fails and rolls back;
+    // otherwise a transient send error would discard the new token and permanently brick refresh.
+    // Safe here: zalo_zns_credential is a master table with no RLS and this flow has no tenant context.
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public String getAccessToken() {
         ZaloZnsCredential cred = repository.findFirstByDeletedFalseOrderByIdAsc().orElse(null);
         if (cred == null) {
