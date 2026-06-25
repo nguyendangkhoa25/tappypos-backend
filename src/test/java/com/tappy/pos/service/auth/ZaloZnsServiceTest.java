@@ -32,12 +32,13 @@ import static org.mockito.Mockito.when;
 class ZaloZnsServiceTest {
 
     @Mock private RestTemplate restTemplate;
+    @Mock private PlatformZaloTokenService platformZaloTokenService;
 
     private ZaloZnsService service;
 
     @BeforeEach
     void setUp() {
-        service = new ZaloZnsService(restTemplate);
+        service = new ZaloZnsService(restTemplate, platformZaloTokenService);
         ReflectionTestUtils.setField(service, "accessToken", "tok");
         ReflectionTestUtils.setField(service, "templateId", "tmpl");
         ReflectionTestUtils.setField(service, "enabled", true);
@@ -195,6 +196,34 @@ class ZaloZnsServiceTest {
         verify(restTemplate).postForObject(anyUrl(), any(HttpEntity.class), eq(Map.class));
     }
 
+    @Test
+    @DisplayName("OTP prefers the auto-refreshing platform token over the static env token")
+    void sendOtp_usesPlatformToken() {
+        when(platformZaloTokenService.getAccessToken()).thenReturn("fresh-platform-tok");
+        when(restTemplate.postForObject(anyUrl(), any(HttpEntity.class), eq(Map.class)))
+                .thenReturn(Map.of("error", 0, "data", Map.of("message_id", "m1")));
+
+        service.sendOtpAsync("0912345678", "123456", 9L);
+
+        ArgumentCaptor<HttpEntity> captor = ArgumentCaptor.forClass(HttpEntity.class);
+        verify(restTemplate).postForObject(anyUrl(), captor.capture(), eq(Map.class));
+        assertThat(captor.getValue().getHeaders().getFirst("access_token")).isEqualTo("fresh-platform-tok");
+    }
+
+    @Test
+    @DisplayName("OTP falls back to the static env token when the platform token is unavailable")
+    void sendOtp_fallsBackToStaticToken() {
+        when(platformZaloTokenService.getAccessToken()).thenReturn(null);
+        when(restTemplate.postForObject(anyUrl(), any(HttpEntity.class), eq(Map.class)))
+                .thenReturn(Map.of("error", 0, "data", Map.of("message_id", "m1")));
+
+        service.sendOtpSync("0912345678", "123456", 7L);
+
+        ArgumentCaptor<HttpEntity> captor = ArgumentCaptor.forClass(HttpEntity.class);
+        verify(restTemplate).postForObject(anyUrl(), captor.capture(), eq(Map.class));
+        assertThat(captor.getValue().getHeaders().getFirst("access_token")).isEqualTo("tok");
+    }
+
     // ── sendOtpSync ──────────────────────────────────────────────────────────────
 
     @Test
@@ -249,7 +278,7 @@ class ZaloZnsServiceTest {
     void sendOtpSync_userNotReachable() {
         for (int code : new int[]{-124, -118, -134}) {
             RestTemplate rt = org.mockito.Mockito.mock(RestTemplate.class);
-            ZaloZnsService svc = new ZaloZnsService(rt);
+            ZaloZnsService svc = new ZaloZnsService(rt, platformZaloTokenService);
             ReflectionTestUtils.setField(svc, "accessToken", "tok");
             ReflectionTestUtils.setField(svc, "templateId", "tmpl");
             ReflectionTestUtils.setField(svc, "enabled", true);
