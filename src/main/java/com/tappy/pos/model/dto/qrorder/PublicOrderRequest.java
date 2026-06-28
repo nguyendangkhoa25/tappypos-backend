@@ -26,8 +26,11 @@ public class PublicOrderRequest {
 
     @Data
     public static class Line {
-        @NotNull
+        /** A standalone product line. Exactly one of {@code productId} / {@code comboId} must be set. */
         private Long productId;
+
+        /** A combo (fixed bundle) line. Mutually exclusive with {@code productId}. */
+        private Long comboId;
 
         @NotNull
         @Positive

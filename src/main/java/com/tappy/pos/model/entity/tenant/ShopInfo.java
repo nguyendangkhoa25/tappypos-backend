@@ -1,8 +1,11 @@
 package com.tappy.pos.model.entity.tenant;
 
 import com.tappy.pos.model.entity.TenantAwareEntity;
+import com.tappy.pos.model.enums.BusinessType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
@@ -44,4 +47,13 @@ public class ShopInfo extends TenantAwareEntity {
 
     @Column(name = "logo_url", length = 500)
     private String logoUrl;
+
+    /** Loại hình kinh doanh — dùng cho module Khai báo thuế. Null = chưa thiết lập. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "business_type", length = 20)
+    private BusinessType businessType;
+
+    /** Các nhóm ngành thuế mặc định (CSV mã catalog), pre-điền khi tạo tờ khai. */
+    @Column(name = "tax_industry_groups", length = 255)
+    private String taxIndustryGroups;
 }

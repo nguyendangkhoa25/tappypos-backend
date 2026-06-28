@@ -27,8 +27,35 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
            "(LOWER(p.name) LIKE %:searchTerm% OR LOWER(p.sku) LIKE %:searchTerm%)")
     Page<Product> searchByKeyword(@Param("searchTerm") String searchTerm, Pageable pageable);
 
+    @Query("SELECT p FROM Product p JOIN p.categories c WHERE p.deleted = false AND c.id = :categoryId AND " +
+           "(LOWER(p.name) LIKE %:searchTerm% OR LOWER(p.sku) LIKE %:searchTerm%)")
+    Page<Product> searchByKeywordAndCategoryId(@Param("searchTerm") String searchTerm,
+                                               @Param("categoryId") Long categoryId,
+                                               Pageable pageable);
+
+    /**
+     * Keyword search with optional category, product-type, and pawn-origin filters.
+     * Powers the POS search box when a pawn shop has a product-type chip and/or the
+     * "pawn items only" toggle active. Each filter is skipped when its argument is null/false.
+     */
+    @Query("SELECT p FROM Product p WHERE p.deleted = false " +
+           "AND (LOWER(p.name) LIKE %:searchTerm% OR LOWER(p.sku) LIKE %:searchTerm%) " +
+           "AND (:productTypeId IS NULL OR p.productType.id = :productTypeId) " +
+           "AND (:pawnOriginOnly = FALSE OR p.sourcePawnId IS NOT NULL) " +
+           "AND (:categoryId IS NULL OR EXISTS (SELECT 1 FROM p.categories c WHERE c.id = :categoryId))")
+    Page<Product> searchByKeywordFiltered(@Param("searchTerm") String searchTerm,
+                                          @Param("categoryId") Long categoryId,
+                                          @Param("productTypeId") Long productTypeId,
+                                          @Param("pawnOriginOnly") boolean pawnOriginOnly,
+                                          Pageable pageable);
+
     @Query("SELECT p.sku FROM Product p WHERE p.deleted = false AND p.sku LIKE :prefix%")
     List<String> findSkusByPrefix(@Param("prefix") String prefix);
+
+    /** Every existing barcode that starts with the given numeric prefix (tenant-scoped via RLS).
+     *  Used to derive the next sequence for auto-generated internal EAN-13 barcodes. */
+    @Query("SELECT p.barcode FROM Product p WHERE p.barcode LIKE :prefix%")
+    List<String> findBarcodesByPrefix(@Param("prefix") String prefix);
 
     @Query("SELECT p FROM Product p JOIN p.categories c WHERE p.deleted = false AND p.status = :status AND c.id = :categoryId ORDER BY p.createdAt DESC")
     Page<Product> findByStatusAndCategoryId(@Param("status") Product.ProductStatus status, @Param("categoryId") Long categoryId, Pageable pageable);

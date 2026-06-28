@@ -8,6 +8,7 @@ import com.tappy.pos.model.entity.notification.Notification;
 import com.tappy.pos.model.entity.tenant.Tenant;
 import com.tappy.pos.model.enums.ExpenseCategory;
 import com.tappy.pos.model.enums.ShopType;
+import com.tappy.pos.model.enums.SubscriptionPlan;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.model.dto.finance.DefaultExpenseRequest;
 import com.tappy.pos.service.MessageService;
@@ -329,7 +330,11 @@ public class OnboardingController {
                 .features(tenantFeatures)
                 .adminUsername(username)
                 .adminPassword("placeholder")
-                .expirationDate(LocalDate.now().plusYears(1))
+                // Every new shop starts on the default plan (BASIC), free for 6 months from
+                // registration regardless of shop type; after that it goes read-only until paid.
+                .subscriptionType(SubscriptionPlan.DEFAULT_PLAN)
+                .maxUsers(SubscriptionPlan.of(SubscriptionPlan.DEFAULT_PLAN).maxUsers())
+                .expirationDate(LocalDate.now().plusMonths(SubscriptionPlan.FREE_TRIAL_MONTHS))
                 .build();
 
         tenantService.createTenant(createReq);
@@ -685,7 +690,7 @@ public class OnboardingController {
         try {
             String expiryFormatted = tenant.getExpirationDate() != null
                     ? tenant.getExpirationDate().format(VN_DATE)
-                    : LocalDate.now().plusYears(1).format(VN_DATE);
+                    : LocalDate.now().plusMonths(SubscriptionPlan.FREE_TRIAL_MONTHS).format(VN_DATE);
             notificationService.pushSystemAsync(username, Notification.NotificationType.SYSTEM,
                     LocalizedText.of("notification.shop.welcome.title"),
                     LocalizedText.of("notification.shop.welcome.self.message",

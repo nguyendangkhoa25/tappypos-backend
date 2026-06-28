@@ -1,7 +1,6 @@
 package com.tappy.pos.multitenant;
 
 import com.tappy.pos.config.FeatureContext;
-import com.tappy.pos.exception.TenantExpiredException;
 import com.tappy.pos.model.entity.tenant.Tenant;
 import com.tappy.pos.repository.tenant.TenantRepository;
 import com.tappy.pos.service.MessageService;
@@ -81,6 +80,8 @@ class TenantInterceptorTest {
                 .thenReturn("Tenant is inactive");
         lenient().when(messageService.getMessage("error.tenant.expired"))
                 .thenReturn("Tenant subscription has expired");
+        lenient().when(messageService.getMessage("error.tenant.readonly"))
+                .thenReturn("Subscription expired — read-only mode");
 
         // Setup valid tenant
         validTenant = Tenant.builder()
@@ -174,7 +175,6 @@ class TenantInterceptorTest {
         when(request.getRequestURI()).thenReturn("/api/auth/login");
         when(request.getHeader("X-Tenant-ID")).thenReturn("test-tenant-001");
         when(tenantRepository.findByTenantId("test-tenant-001")).thenReturn(Optional.of(validTenant));
-        doNothing().when(tenantContext).validateTenantNotExpired();
         doNothing().when(tenantContext).setCurrentTenant(validTenant);
 
         // When
@@ -254,7 +254,6 @@ class TenantInterceptorTest {
         when(request.getRequestURI()).thenReturn("/api/v1/orders");
         when(request.getHeader("X-Tenant-ID")).thenReturn("test-tenant-001");
         when(tenantRepository.findByTenantId("test-tenant-001")).thenReturn(Optional.of(validTenant));
-        doNothing().when(tenantContext).validateTenantNotExpired();
 
         // When
         boolean result = tenantInterceptor.preHandle(request, response, new Object());
@@ -305,21 +304,46 @@ class TenantInterceptorTest {
     }
 
     @Test
-    @DisplayName("Should reject request from expired tenant")
-    void testPreHandle_ExpiredTenant() throws Exception {
-        // Given
-        when(request.getRequestURI()).thenReturn("/api/v1/orders");
+    @DisplayName("Read-only mode: should reject a mutating (POST) request from an expired tenant")
+    void testPreHandle_ExpiredTenant_WriteBlocked() throws Exception {
+        // Given — an expired tenant attempting a write
+        Tenant expired = Tenant.builder()
+                .id(1L).tenantId("test-tenant-001").active(true)
+                .expirationDate(LocalDate.now().minusDays(1))
+                .build();
+        when(request.getRequestURI()).thenReturn("/api/orders");
+        when(request.getMethod()).thenReturn("POST");
         when(request.getHeader("X-Tenant-ID")).thenReturn("test-tenant-001");
-        when(tenantRepository.findByTenantId("test-tenant-001")).thenReturn(Optional.of(validTenant));
-        doThrow(new TenantExpiredException("test-tenant-001", "2026-01-01"))
-                .when(tenantContext).validateTenantNotExpired();
+        when(tenantRepository.findByTenantId("test-tenant-001")).thenReturn(Optional.of(expired));
 
         // When
         boolean result = tenantInterceptor.preHandle(request, response, new Object());
 
-        // Then
+        // Then — blocked with 403 TENANT_READONLY
         assertThat(result).isFalse();
-        verify(response).setStatus(HttpStatus.BAD_REQUEST.value());
+        verify(response).setStatus(HttpStatus.FORBIDDEN.value());
+        assertThat(responseWriter.toString()).contains("TENANT_READONLY");
+    }
+
+    @Test
+    @DisplayName("Read-only mode: should allow a read (GET) request from an expired tenant")
+    void testPreHandle_ExpiredTenant_ReadAllowed() throws Exception {
+        // Given — an expired tenant reading data
+        Tenant expired = Tenant.builder()
+                .id(1L).tenantId("test-tenant-001").active(true)
+                .expirationDate(LocalDate.now().minusDays(1))
+                .build();
+        when(request.getRequestURI()).thenReturn("/api/orders");
+        when(request.getMethod()).thenReturn("GET");
+        when(request.getHeader("X-Tenant-ID")).thenReturn("test-tenant-001");
+        when(tenantRepository.findByTenantId("test-tenant-001")).thenReturn(Optional.of(expired));
+
+        // When
+        boolean result = tenantInterceptor.preHandle(request, response, new Object());
+
+        // Then — read passes through; tenant context is set
+        assertThat(result).isTrue();
+        verify(tenantContext).setCurrentTenant(expired);
     }
 
     @Test
@@ -336,7 +360,6 @@ class TenantInterceptorTest {
         when(request.getRequestURI()).thenReturn("/api/v1/orders");
         when(request.getHeader("X-Tenant-ID")).thenReturn("test-tenant-001");
         when(tenantRepository.findByTenantId("test-tenant-001")).thenReturn(Optional.of(tenant));
-        doNothing().when(tenantContext).validateTenantNotExpired();
         when(featureContext.getTokenFeaturesVersion()).thenReturn(4);
         lenient().when(messageService.getMessage("error.token.stale")).thenReturn("stale");
 
@@ -364,7 +387,6 @@ class TenantInterceptorTest {
         when(request.getRequestURI()).thenReturn("/api/v1/orders");
         when(request.getHeader("X-Tenant-ID")).thenReturn("test-tenant-001");
         when(tenantRepository.findByTenantId("test-tenant-001")).thenReturn(Optional.of(tenant));
-        doNothing().when(tenantContext).validateTenantNotExpired();
         when(featureContext.getTokenFeaturesVersion()).thenReturn(7);
 
         // When
@@ -486,7 +508,6 @@ class TenantInterceptorTest {
                 .build();
 
         when(tenantRepository.findByTenantId("tenant-abc-123_XYZ")).thenReturn(Optional.of(tenant));
-        doNothing().when(tenantContext).validateTenantNotExpired();
 
         // When
         boolean result = tenantInterceptor.preHandle(request, response, new Object());
@@ -520,7 +541,6 @@ class TenantInterceptorTest {
         when(request.getRequestURI()).thenReturn("/api/v1/orders");
         when(request.getHeader("X-Tenant-ID")).thenReturn("test-tenant-001");
         when(tenantRepository.findByTenantId("test-tenant-001")).thenReturn(Optional.of(validTenant));
-        doNothing().when(tenantContext).validateTenantNotExpired();
 
         boolean preHandleResult = tenantInterceptor.preHandle(request, response, new Object());
 
@@ -557,7 +577,6 @@ class TenantInterceptorTest {
         when(request.getHeader("X-Tenant-ID")).thenReturn("  test-tenant-001  ");
         // Implementation calls trim(), so mock for trimmed value
         when(tenantRepository.findByTenantId("test-tenant-001")).thenReturn(Optional.of(validTenant));
-        doNothing().when(tenantContext).validateTenantNotExpired();
 
         // When
         boolean result = tenantInterceptor.preHandle(request, response, new Object());

@@ -50,8 +50,8 @@ class GlobalExceptionHandlerTest {
         assertThat(response).isNotNull();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getMessage()).isEqualTo(message);
-        assertThat(response.getBody().getError()).isEqualTo("BAD_REQUEST");
+        assertThat(response.getBody().getError().getMessage()).isEqualTo(message);
+        assertThat(response.getBody().getError().getCode()).isEqualTo("BAD_REQUEST");
     }
 
     @Test
@@ -68,8 +68,8 @@ class GlobalExceptionHandlerTest {
         assertThat(response).isNotNull();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getMessage()).isEqualTo(message);
-        assertThat(response.getBody().getError()).isEqualTo("RESOURCE_NOT_FOUND");
+        assertThat(response.getBody().getError().getMessage()).isEqualTo(message);
+        assertThat(response.getBody().getError().getCode()).isEqualTo("RESOURCE_NOT_FOUND");
     }
 
     @Test
@@ -86,8 +86,8 @@ class GlobalExceptionHandlerTest {
         assertThat(response).isNotNull();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getError()).isEqualTo("DUPLICATE_RESOURCE");
-        assertThat(response.getBody().getMessage()).isEqualTo(message);
+        assertThat(response.getBody().getError().getCode()).isEqualTo("DUPLICATE_RESOURCE");
+        assertThat(response.getBody().getError().getMessage()).isEqualTo(message);
     }
 
     @Test
@@ -104,9 +104,9 @@ class GlobalExceptionHandlerTest {
         assertThat(response).isNotNull();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getError()).isEqualTo("UNAUTHORIZED");
-        assertThat(response.getBody().getMessage()).isNotNull();
-        assertThat(response.getBody().getMessage()).isEqualTo(message);
+        assertThat(response.getBody().getError().getCode()).isEqualTo("UNAUTHORIZED");
+        assertThat(response.getBody().getError().getMessage()).isNotNull();
+        assertThat(response.getBody().getError().getMessage()).isEqualTo(message);
         assertThat(response.getBody().isSuccess()).isFalse();
     }
 
@@ -125,7 +125,7 @@ class GlobalExceptionHandlerTest {
         assertThat(response).isNotNull();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getError()).isEqualTo("FORBIDDEN");
+        assertThat(response.getBody().getError().getCode()).isEqualTo("FORBIDDEN");
     }
 
     @Test
@@ -142,8 +142,8 @@ class GlobalExceptionHandlerTest {
         assertThat(response).isNotNull();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getError()).isEqualTo("BUSINESS_RULE_VIOLATION");
-        assertThat(response.getBody().getMessage()).isEqualTo(message);
+        assertThat(response.getBody().getError().getCode()).isEqualTo("BUSINESS_RULE_VIOLATION");
+        assertThat(response.getBody().getError().getMessage()).isEqualTo(message);
     }
 
     @Test
@@ -176,8 +176,8 @@ class GlobalExceptionHandlerTest {
         assertThat(response).isNotNull();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getError()).isEqualTo("INVALID_ARGUMENT");
-        assertThat(response.getBody().getMessage()).isEqualTo(message);
+        assertThat(response.getBody().getError().getCode()).isEqualTo("INVALID_ARGUMENT");
+        assertThat(response.getBody().getError().getMessage()).isEqualTo(message);
     }
 
     @Test
@@ -289,22 +289,6 @@ class GlobalExceptionHandlerTest {
     // ============= Additional Comprehensive Tests =============
 
     @Test
-    @DisplayName("Should handle TenantExpiredException as BadRequestException")
-    void testHandleTenantExpiredException() {
-        // Given
-        TenantExpiredException exception = new TenantExpiredException("tenant-1", "2026-01-01");
-
-        // When
-        ResponseEntity<ApiResponse<Void>> response = exceptionHandler.handleBadRequestException(exception);
-
-        // Then
-        assertThat(response).isNotNull();
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getError()).isEqualTo("TENANT_EXPIRED");
-    }
-
-    @Test
     @DisplayName("Should handle BadCredentialsException with 401 status")
     void testHandleBadCredentialsException() {
         // Given
@@ -319,7 +303,7 @@ class GlobalExceptionHandlerTest {
         assertThat(response).isNotNull();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getError()).isEqualTo("INVALID_CREDENTIALS");
+        assertThat(response.getBody().getError().getCode()).isEqualTo("INVALID_CREDENTIALS");
     }
 
     @Test
@@ -337,7 +321,7 @@ class GlobalExceptionHandlerTest {
         assertThat(response).isNotNull();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getError()).isEqualTo("ACCESS_DENIED");
+        assertThat(response.getBody().getError().getCode()).isEqualTo("ACCESS_DENIED");
     }
 
     @Test
@@ -354,7 +338,7 @@ class GlobalExceptionHandlerTest {
         assertThat(response).isNotNull();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getError()).isEqualTo("NOT_FOUND");
+        assertThat(response.getBody().getError().getCode()).isEqualTo("NOT_FOUND");
     }
 
     @Test
@@ -371,7 +355,7 @@ class GlobalExceptionHandlerTest {
         assertThat(response).isNotNull();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getError()).isEqualTo("ILLEGAL_STATE");
+        assertThat(response.getBody().getError().getCode()).isEqualTo("ILLEGAL_STATE");
     }
 
     @Test
@@ -388,7 +372,7 @@ class GlobalExceptionHandlerTest {
         assertThat(response).isNotNull();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getMessage()).isEqualTo("Illegal state");
+        assertThat(response.getBody().getError().getMessage()).isEqualTo("Illegal state");
     }
 
     @Test
@@ -405,7 +389,7 @@ class GlobalExceptionHandlerTest {
         assertThat(response).isNotNull();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getError()).isEqualTo("INTERNAL_SERVER_ERROR");
+        assertThat(response.getBody().getError().getCode()).isEqualTo("INTERNAL_SERVER_ERROR");
     }
 
     @Test
@@ -415,25 +399,25 @@ class GlobalExceptionHandlerTest {
         BadRequestException badReq = new BadRequestException("test");
         ResponseEntity<ApiResponse<Void>> badReqResponse = exceptionHandler.handleBadRequestException(badReq);
         assertThat(badReqResponse.getBody()).isNotNull();
-        assertThat(badReqResponse.getBody().getError()).isEqualTo("BAD_REQUEST");
+        assertThat(badReqResponse.getBody().getError().getCode()).isEqualTo("BAD_REQUEST");
 
         // ResourceNotFoundException
         ResourceNotFoundException notFound = new ResourceNotFoundException("test");
         ResponseEntity<ApiResponse<Void>> notFoundResponse = exceptionHandler.handleResourceNotFoundException(notFound);
         assertThat(notFoundResponse.getBody()).isNotNull();
-        assertThat(notFoundResponse.getBody().getError()).isEqualTo("RESOURCE_NOT_FOUND");
+        assertThat(notFoundResponse.getBody().getError().getCode()).isEqualTo("RESOURCE_NOT_FOUND");
 
         // DuplicateResourceException
         DuplicateResourceException duplicate = new DuplicateResourceException("test");
         ResponseEntity<ApiResponse<Void>> duplicateResponse = exceptionHandler.handleDuplicateResourceException(duplicate, webRequest);
         assertThat(duplicateResponse.getBody()).isNotNull();
-        assertThat(duplicateResponse.getBody().getError()).isEqualTo("DUPLICATE_RESOURCE");
+        assertThat(duplicateResponse.getBody().getError().getCode()).isEqualTo("DUPLICATE_RESOURCE");
 
         // BusinessException
         BusinessException business = new BusinessException("test");
         ResponseEntity<ApiResponse<Void>> businessResponse = exceptionHandler.handleBusinessException(business, webRequest);
         assertThat(businessResponse.getBody()).isNotNull();
-        assertThat(businessResponse.getBody().getError()).isEqualTo("BUSINESS_RULE_VIOLATION");
+        assertThat(businessResponse.getBody().getError().getCode()).isEqualTo("BUSINESS_RULE_VIOLATION");
     }
 
     @Test
@@ -520,15 +504,15 @@ class GlobalExceptionHandlerTest {
         when(messageService.getMessage("error.validation.failed")).thenReturn("Validation failed");
 
         // When
-        ResponseEntity<ApiResponse<java.util.Map<String, String>>> response =
+        ResponseEntity<ApiResponse<Void>> response =
                 exceptionHandler.handleValidationExceptions(exception);
 
         // Then
         assertThat(response).isNotNull();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getError()).isEqualTo("VALIDATION_ERROR");
-        assertThat(response.getBody().getData()).containsKey("testField");
+        assertThat(response.getBody().getError().getCode()).isEqualTo("VALIDATION_ERROR");
+        assertThat(response.getBody().getError().getDetails()).containsKey("testField");
     }
 
     @Test
@@ -548,7 +532,7 @@ class GlobalExceptionHandlerTest {
         assertThat(response).isNotNull();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getError()).isEqualTo("TYPE_MISMATCH");
+        assertThat(response.getBody().getError().getCode()).isEqualTo("TYPE_MISMATCH");
     }
 
     @Test
@@ -565,7 +549,7 @@ class GlobalExceptionHandlerTest {
         assertThat(response).isNotNull();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getMessage()).isEqualTo("Invalid argument");
+        assertThat(response.getBody().getError().getMessage()).isEqualTo("Invalid argument");
     }
 
     @Test
@@ -661,7 +645,7 @@ class GlobalExceptionHandlerTest {
         assertThat(response).isNotNull();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getMessage()).isEqualTo("Resource not found");
+        assertThat(response.getBody().getError().getMessage()).isEqualTo("Resource not found");
     }
 
     @Test
@@ -678,7 +662,7 @@ class GlobalExceptionHandlerTest {
         assertThat(response).isNotNull();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getMessage()).isEqualTo("Unexpected error");
+        assertThat(response.getBody().getError().getMessage()).isEqualTo("Unexpected error");
     }
 
     @Test
@@ -704,13 +688,13 @@ class GlobalExceptionHandlerTest {
         BadRequestException ex1 = new BadRequestException("Bad request message");
         ResponseEntity<ApiResponse<Void>> res1 = exceptionHandler.handleBadRequestException(ex1);
         assertThat(res1.getBody()).isNotNull();
-        assertThat(res1.getBody().getMessage()).isEqualTo("Bad request message");
+        assertThat(res1.getBody().getError().getMessage()).isEqualTo("Bad request message");
 
         // ResourceNotFoundException
         ResourceNotFoundException ex2 = new ResourceNotFoundException("Not found message");
         ResponseEntity<ApiResponse<Void>> res2 = exceptionHandler.handleResourceNotFoundException(ex2);
         assertThat(res2.getBody()).isNotNull();
-        assertThat(res2.getBody().getMessage()).isEqualTo("Not found message");
+        assertThat(res2.getBody().getError().getMessage()).isEqualTo("Not found message");
     }
 
     @Test

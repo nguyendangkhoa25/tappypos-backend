@@ -156,8 +156,16 @@ public class InventoryServiceImpl implements InventoryService {
     @Override
     @Transactional(readOnly = true)
     public Page<InventoryDTO> getAllInventory(Pageable pageable) {
-        log.info("Request: Get all inventory - page: {}, size: {}", pageable.getPageNumber(), pageable.getPageSize());
-        Page<Inventory> inventories = inventoryRepository.findAllActive(pageable);
+        return getAllInventory(null, pageable);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<InventoryDTO> getAllInventory(Long categoryId, Pageable pageable) {
+        log.info("Request: Get all inventory - categoryId: {}, page: {}, size: {}", categoryId, pageable.getPageNumber(), pageable.getPageSize());
+        Page<Inventory> inventories = categoryId != null
+                ? inventoryRepository.findAllActiveByCategoryId(categoryId, pageable)
+                : inventoryRepository.findAllActive(pageable);
         log.info("Retrieved {} inventories from page {}", inventories.getContent().size(), pageable.getPageNumber());
         return mapWithPrescriptionFlag(inventories);
     }
@@ -250,18 +258,25 @@ public class InventoryServiceImpl implements InventoryService {
     @Override
     @Transactional(readOnly = true)
     public Page<InventoryDTO> searchInventory(String keyword, Pageable pageable) {
-        log.info("Request: Search inventory - keyword: {}, page: {}", keyword, pageable.getPageNumber());
+        return searchInventory(keyword, null, pageable);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<InventoryDTO> searchInventory(String keyword, Long categoryId, Pageable pageable) {
+        log.info("Request: Search inventory - keyword: {}, categoryId: {}, page: {}", keyword, categoryId, pageable.getPageNumber());
+        long productId;
         try {
-            Long productId = Long.parseLong(keyword);
-            Page<Inventory> inventories = inventoryRepository.searchByKeyword(productId, keyword, pageable);
-            log.info("Found {} inventories matching keyword", inventories.getTotalElements());
-            return mapWithPrescriptionFlag(inventories);
+            productId = Long.parseLong(keyword);
         } catch (NumberFormatException e) {
-            // Search by batch number or warehouse location instead
-            Page<Inventory> inventories = inventoryRepository.searchByKeyword(0L, keyword, pageable);
-            log.info("Found {} inventories matching keyword", inventories.getTotalElements());
-            return mapWithPrescriptionFlag(inventories);
+            // Not a numeric product id — search by name/SKU/batch/location only
+            productId = 0L;
         }
+        Page<Inventory> inventories = categoryId != null
+                ? inventoryRepository.searchByKeywordAndCategoryId(productId, keyword, categoryId, pageable)
+                : inventoryRepository.searchByKeyword(productId, keyword, pageable);
+        log.info("Found {} inventories matching keyword", inventories.getTotalElements());
+        return mapWithPrescriptionFlag(inventories);
     }
 
     @Override

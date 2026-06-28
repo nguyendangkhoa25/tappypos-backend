@@ -133,7 +133,7 @@ class EmployeeControllerTest {
                     .header("Authorization", bearerToken("ORDER"))
                     .header("X-Tenant-ID", TENANT_ID))
                    .andExpect(status().isForbidden())
-                   .andExpect(jsonPath("$.error").value("FORBIDDEN"));
+                   .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
         }
     }
 
@@ -237,8 +237,8 @@ class EmployeeControllerTest {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(body))
                    .andExpect(status().isBadRequest())
-                   .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"))
-                   .andExpect(jsonPath("$.data.fullName").exists());
+                   .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
+                   .andExpect(jsonPath("$.error.details.fullName").exists());
         }
     }
 

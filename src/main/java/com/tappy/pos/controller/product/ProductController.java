@@ -77,9 +77,13 @@ public class ProductController {
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<Page<ProductDTO>>> searchProducts(
             @RequestParam String keyword,
+            @RequestParam(required = false) Long categoryId,
+            @RequestParam(required = false) Long productTypeId,
+            @RequestParam(defaultValue = "false") boolean pawnOriginOnly,
             Pageable pageable) {
-        log.info("GET /api/products/search - Search products by keyword: {}", keyword);
-        Page<ProductDTO> products = productService.searchProducts(keyword, pageable);
+        log.info("GET /api/products/search - Search products by keyword: {}, categoryId: {}, productTypeId: {}, pawnOriginOnly: {}",
+                keyword, categoryId, productTypeId, pawnOriginOnly);
+        Page<ProductDTO> products = productService.searchProducts(keyword, categoryId, productTypeId, pawnOriginOnly, pageable);
         return ResponseEntity.ok(ApiResponse.success(products, "Products retrieved successfully"));
     }
 

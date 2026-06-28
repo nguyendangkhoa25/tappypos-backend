@@ -140,7 +140,7 @@ class AuthControllerTest {
                     .content(objectMapper.writeValueAsString(loginRequest(USERNAME, "wrong"))))
                    .andExpect(status().isBadRequest())
                    .andExpect(jsonPath("$.success").value(false))
-                   .andExpect(jsonPath("$.error").value("TURNSTILE_FAILED"));
+                   .andExpect(jsonPath("$.error.code").value("TURNSTILE_FAILED"));
         }
 
         @Test
@@ -175,7 +175,7 @@ class AuthControllerTest {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(objectMapper.writeValueAsString(loginRequest(USERNAME, "pw"))))
                    .andExpect(status().isConflict())
-                   .andExpect(jsonPath("$.error").value("DEVICE_CONFLICT"))
+                   .andExpect(jsonPath("$.error.code").value("DEVICE_CONFLICT"))
                    .andExpect(jsonPath("$.data.ipAddress").value("192.168.1.100"));
         }
     }
@@ -195,7 +195,7 @@ class AuthControllerTest {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(objectMapper.writeValueAsString(loginRequest(USERNAME, "pw"))))
                    .andExpect(status().isBadRequest())
-                   .andExpect(jsonPath("$.error").value("TURNSTILE_FAILED"));
+                   .andExpect(jsonPath("$.error.code").value("TURNSTILE_FAILED"));
         }
 
         @Test
@@ -228,7 +228,7 @@ class AuthControllerTest {
             // AuthContext.clear() in @BeforeEach ensures no leftover from prior tests.
             mockMvc.perform(post("/auth/logout"))
                    .andExpect(status().isUnauthorized())
-                   .andExpect(jsonPath("$.error").value("UNAUTHORIZED"));
+                   .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
         }
 
         @Test
@@ -256,7 +256,7 @@ class AuthControllerTest {
         void noToken_returns401() throws Exception {
             mockMvc.perform(get("/auth/profile"))
                    .andExpect(status().isUnauthorized())
-                   .andExpect(jsonPath("$.error").value("UNAUTHORIZED"));
+                   .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
         }
 
         @Test

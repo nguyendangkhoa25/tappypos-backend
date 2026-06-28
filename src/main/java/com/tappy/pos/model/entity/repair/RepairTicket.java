@@ -56,6 +56,14 @@ public class RepairTicket extends TenantAwareEntity {
     @Column(name = "reported_fault", columnDefinition = "TEXT", nullable = false)
     private String reportedFault;
 
+    /** i18n message key for system-generated reported-fault text (render-at-read); null for user-authored. */
+    @Column(name = "reported_fault_key", length = 150)
+    private String reportedFaultKey;
+
+    /** JSON-encoded message args for {@link #reportedFaultKey} (see {@code MessageArgs}). */
+    @Column(name = "reported_fault_args", columnDefinition = "TEXT")
+    private String reportedFaultArgs;
+
     @Column(name = "diagnosis", columnDefinition = "TEXT")
     private String diagnosis;
 
@@ -96,6 +104,14 @@ public class RepairTicket extends TenantAwareEntity {
 
     @Column(name = "note", columnDefinition = "TEXT")
     private String note;
+
+    /** i18n message key for system-generated note text (render-at-read); null for user-authored notes. */
+    @Column(name = "note_key", length = 150)
+    private String noteKey;
+
+    /** JSON-encoded message args for {@link #noteKey} (see {@code MessageArgs}). */
+    @Column(name = "note_args", columnDefinition = "TEXT")
+    private String noteArgs;
 
     @Column(name = "received_at")
     private LocalDateTime receivedAt;

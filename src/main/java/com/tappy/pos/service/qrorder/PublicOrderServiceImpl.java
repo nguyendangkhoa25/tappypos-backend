@@ -10,6 +10,8 @@ import com.tappy.pos.model.dto.qrorder.PublicOrderRequest;
 import com.tappy.pos.model.dto.qrorder.PublicOrderResponse;
 import com.tappy.pos.model.dto.qrorder.PublicTableDTO;
 import com.tappy.pos.model.entity.notification.Notification;
+import com.tappy.pos.model.entity.order.Combo;
+import com.tappy.pos.model.entity.order.ComboItem;
 import com.tappy.pos.model.entity.order.Order;
 import com.tappy.pos.model.entity.order.OrderItem;
 import com.tappy.pos.model.entity.product.Category;
@@ -20,6 +22,7 @@ import com.tappy.pos.model.enums.RoleEnum;
 import com.tappy.pos.model.enums.ShopConfigKey;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.customer.CustomerRepository;
+import com.tappy.pos.repository.order.ComboRepository;
 import com.tappy.pos.repository.order.OrderRepository;
 import com.tappy.pos.repository.product.ProductRepository;
 import com.tappy.pos.repository.table.TableRepository;
@@ -56,6 +59,7 @@ public class PublicOrderServiceImpl implements PublicOrderService {
     private final ProductRepository productRepository;
     private final CustomerRepository customerRepository;
     private final OrderRepository orderRepository;
+    private final ComboRepository comboRepository;
     private final ShopConfigService shopConfigService;
     private final MessageService messageService;
     private final NotificationService notificationService;
@@ -126,7 +130,35 @@ public class PublicOrderServiceImpl implements PublicOrderService {
                     .id(null).name(messageService.getMessage("qr.menu.uncategorised")).items(uncategorised).build());
         }
 
-        return PublicMenuDTO.builder().shopName(tenant.getName()).categories(categories).build();
+        // Active combos (fixed bundles) shown as their own section.
+        List<PublicMenuDTO.MenuCombo> combos = comboRepository.findByDeletedFalseAndActive(true).stream()
+                .map(c -> PublicMenuDTO.MenuCombo.builder()
+                        .id(c.getId())
+                        .name(c.getName())
+                        .description(c.getDescription())
+                        .price(nz(c.getPrice()))
+                        .retailTotal(comboRetailTotal(c))
+                        .components(c.getItems().stream()
+                                .map(ci -> PublicMenuDTO.ComboComponent.builder()
+                                        .name(ci.getProductName())
+                                        .quantity(ci.getQuantity())
+                                        .build())
+                                .collect(Collectors.toList()))
+                        .build())
+                .collect(Collectors.toList());
+
+        return PublicMenuDTO.builder().shopName(tenant.getName()).categories(categories).combos(combos).build();
+    }
+
+    private static BigDecimal nz(BigDecimal v) {
+        return v == null ? BigDecimal.ZERO : v;
+    }
+
+    /** À-la-carte sum of a combo's components (component retail price × quantity). */
+    private BigDecimal comboRetailTotal(Combo combo) {
+        return combo.getItems().stream()
+                .map(ci -> nz(ci.getPrice()).multiply(BigDecimal.valueOf(ci.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     @Override
@@ -177,6 +209,14 @@ public class PublicOrderServiceImpl implements PublicOrderService {
         List<OrderItem> items = new ArrayList<>();
         BigDecimal subtotal = BigDecimal.ZERO;
         for (PublicOrderRequest.Line line : request.getItems()) {
+            // Combo lines expand into their component items; price comes from the combo, not the client.
+            if (line.getComboId() != null) {
+                subtotal = subtotal.add(addComboLine(order, tenantId, line, items));
+                continue;
+            }
+            if (line.getProductId() == null) {
+                throw new BadRequestException(messageService.getMessage("error.order.line.invalid"));
+            }
             // Re-price from the catalog — client-sent prices are never trusted.
             Product p = productRepository.findByIdAndDeletedFalse(line.getProductId())
                     .filter(pr -> pr.getStatus() == Product.ProductStatus.ACTIVE)
@@ -240,6 +280,78 @@ public class PublicOrderServiceImpl implements PublicOrderService {
         }
 
         return toResponse(saved);
+    }
+
+    /**
+     * Expand a combo into per-component {@link OrderItem}s (so the kitchen sees each dish) and return
+     * the line subtotal — the combo's deal price × quantity, so the order total reflects the bundle
+     * price, not the à-la-carte sum. The deal price is allocated across components proportional to
+     * their retail price (integer VND, remainder onto the largest line) so the components sum exactly.
+     */
+    private BigDecimal addComboLine(Order order, String tenantId, PublicOrderRequest.Line line, List<OrderItem> items) {
+        Combo combo = comboRepository.findByIdAndDeletedFalse(line.getComboId())
+                .filter(c -> Boolean.TRUE.equals(c.getActive()))
+                .orElseThrow(() -> new BadRequestException(messageService.getMessage("error.combo.not.found", line.getComboId())));
+        List<ComboItem> comboItems = combo.getItems();
+        if (comboItems.isEmpty()) {
+            throw new BadRequestException(messageService.getMessage("combo.inactive"));
+        }
+        int comboQty = line.getQuantity();
+        BigDecimal dealPrice = nz(combo.getPrice());
+        BigDecimal retailTotal = comboRetailTotal(combo);
+
+        int n = comboItems.size();
+        BigDecimal[] alloc = new BigDecimal[n];
+        BigDecimal running = BigDecimal.ZERO;
+        int maxIdx = 0;
+        for (int i = 0; i < n; i++) {
+            ComboItem ci = comboItems.get(i);
+            BigDecimal lineRetail = nz(ci.getPrice()).multiply(BigDecimal.valueOf(ci.getQuantity()));
+            BigDecimal a = retailTotal.signum() == 0
+                    ? dealPrice.divide(BigDecimal.valueOf(n), 0, RoundingMode.DOWN)
+                    : dealPrice.multiply(lineRetail).divide(retailTotal, 0, RoundingMode.HALF_UP);
+            alloc[i] = a;
+            running = running.add(a);
+            if (a.compareTo(alloc[maxIdx]) > 0) maxIdx = i;
+        }
+        BigDecimal remainder = dealPrice.subtract(running);
+        if (remainder.signum() != 0) alloc[maxIdx] = alloc[maxIdx].add(remainder);
+
+        // Sum the expanded line items as we build them and return THAT as the line subtotal (rather
+        // than dealPrice × comboQty). Because each OrderItem total is unitPrice × quantity with a
+        // whole-VND unit price, the components can't always re-sum to an arbitrary deal price; deriving
+        // the subtotal from the actual lines guarantees the receipt always reconciles with the order
+        // total (the deal price is matched exactly whenever each component is one unit per combo).
+        BigDecimal lineSubtotal = BigDecimal.ZERO;
+        for (int i = 0; i < n; i++) {
+            ComboItem ci = comboItems.get(i);
+            // Re-validate each component against the catalog — a withdrawn (inactive) or deleted
+            // product must not be sellable just because it's bundled in an active combo. Mirrors the
+            // ACTIVE check on standalone lines above.
+            Product p = productRepository.findByIdAndDeletedFalse(ci.getProductId())
+                    .filter(pr -> pr.getStatus() == Product.ProductStatus.ACTIVE)
+                    .orElseThrow(() -> new BadRequestException(messageService.getMessage("error.product.not.found")));
+            int qtyPerCombo = ci.getQuantity() != null ? ci.getQuantity() : 1;
+            int lineQty = qtyPerCombo * comboQty;
+            BigDecimal unitPrice = qtyPerCombo > 0
+                    ? alloc[i].divide(BigDecimal.valueOf(qtyPerCombo), 0, RoundingMode.HALF_UP)
+                    : alloc[i];
+            OrderItem oi = new OrderItem();
+            oi.setTenantId(tenantId);
+            oi.setOrder(order);
+            oi.setProductId(ci.getProductId());
+            oi.setProductName(p.getName());
+            oi.setQuantity(lineQty);
+            oi.setUnitPrice(unitPrice);
+            oi.setUnitCost(p.getCostPrice() != null ? p.getCostPrice() : BigDecimal.ZERO);
+            oi.setItemType(OrderItem.ItemType.STANDARD);
+            oi.setStatus(OrderItem.ItemStatus.PENDING);
+            oi.setComboId(combo.getId());
+            if (i == 0) oi.setNote(line.getNotes());
+            items.add(oi);
+            lineSubtotal = lineSubtotal.add(unitPrice.multiply(BigDecimal.valueOf(lineQty)));
+        }
+        return lineSubtotal;
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

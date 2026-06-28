@@ -13,6 +13,8 @@ import java.util.List;
 public class PublicMenuDTO {
     private String shopName;
     private List<MenuCategory> categories;
+    /** Fixed combo bundles, shown as their own section. Empty/null when the shop has none. */
+    private List<MenuCombo> combos;
 
     @Data
     @Builder
@@ -20,6 +22,25 @@ public class PublicMenuDTO {
         private Long id;
         private String name;
         private List<MenuItem> items;
+    }
+
+    /** A fixed bundle sold at {@code price}; {@code retailTotal} is the à-la-carte sum (for "savings"). */
+    @Data
+    @Builder
+    public static class MenuCombo {
+        private Long id;
+        private String name;
+        private String description;
+        private BigDecimal price;
+        private BigDecimal retailTotal;
+        private List<ComboComponent> components;
+    }
+
+    @Data
+    @Builder
+    public static class ComboComponent {
+        private String name;
+        private Integer quantity;
     }
 
     @Data

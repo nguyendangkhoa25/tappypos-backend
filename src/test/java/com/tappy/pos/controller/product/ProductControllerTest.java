@@ -162,7 +162,7 @@ class ProductControllerTest {
                     .header("X-Tenant-ID", TENANT_ID))
                    .andExpect(status().isForbidden())
                    .andExpect(jsonPath("$.success").value(false))
-                   .andExpect(jsonPath("$.error").value("FORBIDDEN"));
+                   .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
         }
     }
 
@@ -241,10 +241,10 @@ class ProductControllerTest {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(body))
                    .andExpect(status().isBadRequest())
-                   .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"))
-                   .andExpect(jsonPath("$.data.name").exists())
-                   .andExpect(jsonPath("$.data.sku").exists())
-                   .andExpect(jsonPath("$.data.productTypeId").exists());
+                   .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
+                   .andExpect(jsonPath("$.error.details.name").exists())
+                   .andExpect(jsonPath("$.error.details.sku").exists())
+                   .andExpect(jsonPath("$.error.details.productTypeId").exists());
         }
     }
 
@@ -279,7 +279,7 @@ class ProductControllerTest {
                     .header("X-Tenant-ID", TENANT_ID))
                    .andExpect(status().isNotFound())
                    .andExpect(jsonPath("$.success").value(false))
-                   .andExpect(jsonPath("$.error").value("RESOURCE_NOT_FOUND"));
+                   .andExpect(jsonPath("$.error.code").value("RESOURCE_NOT_FOUND"));
         }
 
         @Test
@@ -348,7 +348,7 @@ class ProductControllerTest {
         void byKeyword_returns200() throws Exception {
             Page<ProductDTO> result = new PageImpl<>(List.of(
                     ProductDTO.builder().id(3L).name("Trà xanh").build()));
-            when(productService.searchProducts(eq("trà"), any(Pageable.class))).thenReturn(result);
+            when(productService.searchProducts(eq("trà"), any(), any(), anyBoolean(), any(Pageable.class))).thenReturn(result);
 
             mockMvc.perform(get("/products/search")
                     .param("keyword", "trà")

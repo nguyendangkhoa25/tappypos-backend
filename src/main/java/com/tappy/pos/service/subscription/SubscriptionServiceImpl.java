@@ -36,7 +36,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
         String planCode = tenant.getSubscriptionType() != null
                 ? tenant.getSubscriptionType().toUpperCase()
-                : "TRIAL";
+                : SubscriptionPlan.DEFAULT_PLAN;
         SubscriptionPlan.PlanLimits limits = resolveLimits(planCode);
 
         LocalDate expiration = tenant.getExpirationDate();
@@ -58,6 +58,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         data.put("maxOrdersPerMonth", limits.isOrderUnlimited() ? null : limits.maxOrdersPerMonth());
         data.put("currentMonthOrders", currentMonthOrders);
         data.put("pricePerMonth", limits.pricePerMonth());
+        data.put("pricePerYear", limits.pricePerYear());
         data.put("features", java.util.List.of());
         return data;
     }
@@ -71,7 +72,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         // Expired tenants are blocked upstream by TenantInterceptor; skip here.
         String planCode = tenant.getSubscriptionType() != null
                 ? tenant.getSubscriptionType().toUpperCase()
-                : "TRIAL";
+                : SubscriptionPlan.DEFAULT_PLAN;
         SubscriptionPlan.PlanLimits limits = resolveLimits(planCode);
         if (limits.isOrderUnlimited()) return;
 
@@ -87,21 +88,21 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     /**
      * Resolve plan limits without ever throwing on the read/checkout hot paths. A bad/legacy
      * subscription_type (one that slipped past write-time validation, e.g. a manual DB edit)
-     * degrades to TRIAL with a warning instead of 500-ing the subscription screen or blocking
-     * the cash register. Bad codes are rejected loudly at write time in TenantService.
+     * degrades to the default plan with a warning instead of 500-ing the subscription screen or
+     * blocking the cash register. Bad codes are rejected loudly at write time in TenantService.
      */
     private SubscriptionPlan.PlanLimits resolveLimits(String planCode) {
         try {
             return SubscriptionPlan.of(planCode);
         } catch (IllegalArgumentException e) {
-            log.warn("Unknown subscription plan code '{}' — treating as TRIAL", planCode);
-            return SubscriptionPlan.of("TRIAL");
+            log.warn("Unknown subscription plan code '{}' — treating as {}", planCode, SubscriptionPlan.DEFAULT_PLAN);
+            return SubscriptionPlan.of(SubscriptionPlan.DEFAULT_PLAN);
         }
     }
 
     private String resolveStatus(Tenant tenant) {
         if (!tenant.isActive()) return "SUSPENDED";
-        if (tenant.getExpirationDate() != null && tenant.getExpirationDate().isBefore(LocalDate.now())) return "EXPIRED";
+        if (tenant.isExpired()) return "EXPIRED";
         return "ACTIVE";
     }
 

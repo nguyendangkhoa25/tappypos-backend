@@ -1,6 +1,5 @@
 package com.tappy.pos.multitenant;
 
-import com.tappy.pos.exception.TenantExpiredException;
 import com.tappy.pos.model.entity.tenant.Tenant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -225,109 +224,6 @@ class TenantContextTest {
         assertThat(tenantContext.getCurrentTenantId()).isEqualTo("new-tenant");
     }
 
-    // ==================== validateTenantNotExpired Tests ====================
-
-    @Test
-    @DisplayName("Should pass validation when tenant is not expired")
-    void testValidateTenantNotExpired_Success() {
-        // Given
-        testTenant.setExpirationDate(LocalDate.now().plusDays(30));
-        tenantContext.setCurrentTenant(testTenant);
-
-        // When & Then - Should not throw exception
-        assertThatNoException().isThrownBy(() -> tenantContext.validateTenantNotExpired());
-    }
-
-    @Test
-    @DisplayName("Should pass validation when tenant has no expiration date")
-    void testValidateTenantNotExpired_NoExpirationDate() {
-        // Given
-        testTenant.setExpirationDate(null);
-        tenantContext.setCurrentTenant(testTenant);
-
-        // When & Then - Should not throw exception
-        assertThatNoException().isThrownBy(() -> tenantContext.validateTenantNotExpired());
-    }
-
-    @Test
-    @DisplayName("Should throw exception when tenant is expired")
-    void testValidateTenantNotExpired_TenantExpired() {
-        // Given
-        LocalDate yesterday = LocalDate.now().minusDays(1);
-        testTenant.setExpirationDate(yesterday);
-        tenantContext.setCurrentTenant(testTenant);
-
-        // When & Then
-        assertThatThrownBy(() -> tenantContext.validateTenantNotExpired())
-                .isInstanceOf(TenantExpiredException.class)
-                .hasMessageContaining("expired");
-    }
-
-    @Test
-    @DisplayName("Should throw exception with correct tenant ID in message")
-    void testValidateTenantNotExpired_ExceptionContainsTenantId() {
-        // Given
-        testTenant.setExpirationDate(LocalDate.now().minusDays(1));
-        tenantContext.setCurrentTenant(testTenant);
-
-        // When & Then
-        assertThatThrownBy(() -> tenantContext.validateTenantNotExpired())
-                .isInstanceOf(TenantExpiredException.class)
-                .hasMessageContaining("test-tenant-001");
-    }
-
-    @Test
-    @DisplayName("Should throw exception when expiration date is today")
-    void testValidateTenantNotExpired_ExpirationToday() {
-        // Given
-        testTenant.setExpirationDate(LocalDate.now());
-        tenantContext.setCurrentTenant(testTenant);
-
-        // When & Then
-        assertThatThrownBy(() -> tenantContext.validateTenantNotExpired())
-                .isInstanceOf(TenantExpiredException.class);
-    }
-
-    @Test
-    @DisplayName("Should not throw exception when expiration is tomorrow")
-    void testValidateTenantNotExpired_ExpirationTomorrow() {
-        // Given
-        testTenant.setExpirationDate(LocalDate.now().plusDays(1));
-        tenantContext.setCurrentTenant(testTenant);
-
-        // When & Then
-        assertThatNoException().isThrownBy(() -> tenantContext.validateTenantNotExpired());
-    }
-
-    @Test
-    @DisplayName("Should return early when no tenant context is set")
-    void testValidateTenantNotExpired_NoTenantSet() {
-        // When & Then - Should not throw exception
-        assertThatNoException().isThrownBy(() -> tenantContext.validateTenantNotExpired());
-    }
-
-    @Test
-    @DisplayName("Should not throw exception when expiration is more than 7 days away")
-    void testValidateTenantNotExpired_MoreThan7DaysAway() {
-        // Given
-        testTenant.setExpirationDate(LocalDate.now().plusDays(10));
-        tenantContext.setCurrentTenant(testTenant);
-
-        // When & Then
-        assertThatNoException().isThrownBy(() -> tenantContext.validateTenantNotExpired());
-    }
-
-    @Test
-    @DisplayName("Should warn when expiration is within 7 days")
-    void testValidateTenantNotExpired_Within7Days() {
-        // Given
-        testTenant.setExpirationDate(LocalDate.now().plusDays(5));
-        tenantContext.setCurrentTenant(testTenant);
-
-        // When & Then - Should not throw, only warn
-        assertThatNoException().isThrownBy(() -> tenantContext.validateTenantNotExpired());
-    }
-
     // ==================== Thread Safety Tests ====================
 
     @Test
@@ -372,8 +268,8 @@ class TenantContextTest {
     // ==================== Integration Tests ====================
 
     @Test
-    @DisplayName("Should complete full lifecycle: set -> validate -> clear")
-    void testFullLifecycle_SetValidateClear() {
+    @DisplayName("Should complete full lifecycle: set -> clear")
+    void testFullLifecycle_SetClear() {
         // Given
         testTenant.setExpirationDate(LocalDate.now().plusDays(30));
 
@@ -381,19 +277,9 @@ class TenantContextTest {
         tenantContext.setCurrentTenant(testTenant);
         assertThat(tenantContext.getCurrentTenantId()).isEqualTo("test-tenant-001");
 
-        // When & Then - Validate
-        assertThatNoException().isThrownBy(() -> tenantContext.validateTenantNotExpired());
-
         // When & Then - Clear
         tenantContext.clear();
         assertThat(tenantContext.getCurrentTenant()).isNull();
-    }
-
-    @Test
-    @DisplayName("Should handle validation before setting tenant")
-    void testValidateBeforeSet_NoError() {
-        // When & Then - Should not throw even when no tenant is set
-        assertThatNoException().isThrownBy(() -> tenantContext.validateTenantNotExpired());
     }
 }
 

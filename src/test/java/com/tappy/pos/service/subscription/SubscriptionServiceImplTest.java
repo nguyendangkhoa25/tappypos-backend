@@ -67,7 +67,7 @@ class SubscriptionServiceImplTest {
     @DisplayName("getForCurrentTenant: inactive tenant → SUSPENDED")
     void getForCurrentTenant_suspended() {
         when(tenantContext.getCurrentTenantId()).thenReturn("shop-1");
-        Tenant t = tenant("TRIAL", false, LocalDate.now().plusDays(5));
+        Tenant t = tenant("BASIC", false, LocalDate.now().plusDays(5));
         when(tenantRepository.findByTenantId("shop-1")).thenReturn(Optional.of(t));
         when(orderRepository.countOrdersThisMonth(anyInt(), anyInt())).thenReturn(0L);
         when(userRepository.countByTenantId("shop-1")).thenReturn(1);
@@ -76,7 +76,7 @@ class SubscriptionServiceImplTest {
     }
 
     @Test
-    @DisplayName("getForCurrentTenant: unknown plan code degrades to TRIAL (no 500 on the read path)")
+    @DisplayName("getForCurrentTenant: unknown plan code degrades to default BASIC (no 500 on the read path)")
     void getForCurrentTenant_unknownPlan() {
         when(tenantContext.getCurrentTenantId()).thenReturn("shop-1");
         Tenant t = tenant("LEGACY_BOGUS", true, LocalDate.now().plusMonths(6));
@@ -84,10 +84,10 @@ class SubscriptionServiceImplTest {
         when(orderRepository.countOrdersThisMonth(anyInt(), anyInt())).thenReturn(0L);
         when(userRepository.countByTenantId("shop-1")).thenReturn(1);
 
-        // Resilient: bad/legacy code falls back to TRIAL limits instead of throwing.
+        // Resilient: bad/legacy code falls back to the default plan (BASIC) limits instead of throwing.
         Map<String, Object> data = service.getForCurrentTenant();
-        assertThat(data.get("maxUsers")).isEqualTo(2);       // TRIAL = 2 users
-        assertThat(data.get("maxOrdersPerMonth")).isNull();  // TRIAL = unlimited orders
+        assertThat(data.get("maxUsers")).isEqualTo(2);       // BASIC = 2 users
+        assertThat(data.get("maxOrdersPerMonth")).isNull();  // orders unlimited on every plan
     }
 
     @Test

@@ -70,16 +70,10 @@ public class GlobalExceptionHandler {
     /**
      * Handle BadRequestException - 400 Bad Request
      */
-    @ExceptionHandler({
-            BadRequestException.class,
-            TenantExpiredException.class
-    })
+    @ExceptionHandler(BadRequestException.class)
     public ResponseEntity<ApiResponse<Void>> handleBadRequestException(Exception ex) {
         log.error("Bad request: {}", ex.getMessage());
         String message = ex.getMessage() != null ? ex.getMessage() : messageService.getMessage("error.bad.request");
-        if (ex instanceof TenantExpiredException tee) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error("TENANT_EXPIRED", message));
-        }
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error("BAD_REQUEST", message));
     }
 
@@ -107,13 +101,10 @@ public class GlobalExceptionHandler {
                 "userAgent", s.userAgent() != null ? s.userAgent() : "",
                 "loginAt", s.loginAt().toString()
         );
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(ApiResponse.<Map<String, Object>>builder()
-                        .success(false)
-                        .error("DEVICE_CONFLICT")
-                        .message(messageService.getMessage("error.session.device.conflict"))
-                        .data(data)
-                        .build());
+        // Structured error (code + message + traceId) plus the existing-session info in `data`,
+        // which the client reads to render the device-conflict dialog.
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.errorWithData(
+                "DEVICE_CONFLICT", messageService.getMessage("error.session.device.conflict"), data));
     }
 
     /**
@@ -232,24 +223,20 @@ public class GlobalExceptionHandler {
      * Handle validation errors - 400 Bad Request
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiResponse<Map<String, String>>> handleValidationExceptions(
+    public ResponseEntity<ApiResponse<Void>> handleValidationExceptions(
             MethodArgumentNotValidException ex) {
         log.error("Validation error: {}", ex.getMessage());
-        Map<String, String> errors = new HashMap<>();
+        // Per-field messages go into error.details (the unified Tappy shape), not data.
+        Map<String, Object> details = new HashMap<>();
         ex.getBindingResult().getAllErrors().forEach((error) -> {
             String fieldName = ((FieldError) error).getField();
             String errorMessage = error.getDefaultMessage();
-            errors.put(fieldName, errorMessage);
+            details.put(fieldName, errorMessage);
         });
 
-        ApiResponse<Map<String, String>> response = ApiResponse.<Map<String, String>>builder()
-                .success(false)
-                .error("VALIDATION_ERROR")
-                .message(messageService.getMessage("error.validation.failed"))
-                .data(errors)
-                .build();
-
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error("VALIDATION_ERROR",
+                        messageService.getMessage("error.validation.failed"), details));
     }
 
     /**

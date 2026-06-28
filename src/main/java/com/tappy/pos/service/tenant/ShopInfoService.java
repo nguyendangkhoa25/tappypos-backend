@@ -7,6 +7,7 @@ import com.tappy.pos.model.dto.tenant.PublicShopInfoDTO;
 import com.tappy.pos.model.dto.tenant.ShopInfoDTO;
 import com.tappy.pos.model.dto.tenant.UpdateMobileShopConfigRequest;
 import com.tappy.pos.model.entity.tenant.ShopInfo;
+import com.tappy.pos.model.enums.BusinessType;
 import com.tappy.pos.model.enums.ShopConfigKey;
 import com.tappy.pos.multitenant.TenantContext;
 import com.tappy.pos.repository.tenant.ShopInfoRepository;
@@ -67,6 +68,9 @@ public class ShopInfoService {
         if (dto.getEmail() != null)         shopInfo.setEmail(dto.getEmail());
         if (dto.getSupplierTaxCode() != null) shopInfo.setSupplierTaxCode(dto.getSupplierTaxCode());
         if (dto.getWebsite() != null)       shopInfo.setWebsite(dto.getWebsite());
+        if (dto.getBusinessType() != null && !dto.getBusinessType().isBlank())
+            shopInfo.setBusinessType(BusinessType.valueOf(dto.getBusinessType()));
+        if (dto.getTaxIndustryGroups() != null) shopInfo.setTaxIndustryGroups(dto.getTaxIndustryGroups());
 
         ShopInfo saved = shopInfoRepository.save(shopInfo);
 
@@ -101,6 +105,8 @@ public class ShopInfoService {
         shopConfigService.set(ShopConfigKey.PRICE_BOARD_CODE, dto.getPriceBoardCode());
         // shopLocations may be explicitly cleared — always write
         shopConfigService.set(ShopConfigKey.SHOP_LOCATIONS, dto.getShopLocations());
+        if (dto.getAutoGenerateBarcode() != null)
+            shopConfigService.set(ShopConfigKey.AUTO_GENERATE_BARCODE, dto.getAutoGenerateBarcode());
 
         log.info("Shop info updated successfully - id: {}, shopName: {}", saved.getId(), saved.getShopName());
         return mapToDTO(saved);
@@ -302,6 +308,9 @@ public class ShopInfoService {
                 .pawnDenominations(shopConfigService.getString(ShopConfigKey.PAWN_DENOMINATIONS))
                 .priceBoardCode(shopConfigService.getString(ShopConfigKey.PRICE_BOARD_CODE))
                 .shopLocations(shopConfigService.getString(ShopConfigKey.SHOP_LOCATIONS))
+                .businessType(shopInfo.getBusinessType() != null ? shopInfo.getBusinessType().name() : null)
+                .taxIndustryGroups(shopInfo.getTaxIndustryGroups())
+                .autoGenerateBarcode(shopConfigService.getBoolean(ShopConfigKey.AUTO_GENERATE_BARCODE, true))
                 .createdAt(shopInfo.getCreatedAt())
                 .updatedAt(shopInfo.getUpdatedAt())
                 .build();

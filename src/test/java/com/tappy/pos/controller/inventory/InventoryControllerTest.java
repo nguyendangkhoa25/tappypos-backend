@@ -148,7 +148,7 @@ class InventoryControllerTest {
         @Test
         @DisplayName("POS-only token on GET /inventory satisfies method-level OR annotation → 200")
         void posToken_listEndpoint_returns200() throws Exception {
-            when(inventoryService.getAllInventory(any(Pageable.class))).thenReturn(Page.empty());
+            when(inventoryService.getAllInventory(any(), any(Pageable.class))).thenReturn(Page.empty());
 
             mockMvc.perform(get("/inventory")
                     .header("Authorization", bearerToken("POS"))
@@ -194,7 +194,7 @@ class InventoryControllerTest {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(body))
                    .andExpect(status().isBadRequest())
-                   .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"));
+                   .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
         }
     }
 
@@ -208,7 +208,7 @@ class InventoryControllerTest {
         @DisplayName("INVENTORY feature → 200 with paginated list")
         void inventoryToken_returns200() throws Exception {
             Page<InventoryDTO> page = new PageImpl<>(List.of(inventoryWith(1L, 10L)));
-            when(inventoryService.getAllInventory(any(Pageable.class))).thenReturn(page);
+            when(inventoryService.getAllInventory(any(), any(Pageable.class))).thenReturn(page);
 
             mockMvc.perform(get("/inventory")
                     .header("Authorization", bearerToken("INVENTORY"))
@@ -230,7 +230,7 @@ class InventoryControllerTest {
         @DisplayName("?keyword= with POS feature satisfies OR annotation → 200")
         void posToken_returns200() throws Exception {
             Page<InventoryDTO> page = new PageImpl<>(List.of(inventoryWith(2L, 20L)));
-            when(inventoryService.searchInventory(anyString(), any(Pageable.class))).thenReturn(page);
+            when(inventoryService.searchInventory(anyString(), any(), any(Pageable.class))).thenReturn(page);
 
             mockMvc.perform(get("/inventory/search")
                     .param("keyword", "panadol")

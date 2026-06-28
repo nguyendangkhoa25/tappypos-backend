@@ -133,7 +133,7 @@ class CustomerControllerTest {
                     .header("Authorization", bearerToken("ORDER"))
                     .header("X-Tenant-ID", TENANT_ID))
                    .andExpect(status().isForbidden())
-                   .andExpect(jsonPath("$.error").value("FORBIDDEN"));
+                   .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
         }
     }
 
@@ -257,7 +257,7 @@ class CustomerControllerTest {
                     .header("Authorization", bearerToken("CUSTOMER"))
                     .header("X-Tenant-ID", TENANT_ID))
                    .andExpect(status().isNotFound())
-                   .andExpect(jsonPath("$.error").value("RESOURCE_NOT_FOUND"));
+                   .andExpect(jsonPath("$.error.code").value("RESOURCE_NOT_FOUND"));
         }
     }
 

@@ -82,10 +82,12 @@ public class InventoryController {
      */
     @RequiresFeature({"INVENTORY", "POS"})
     @GetMapping
-    public ResponseEntity<ApiResponse<Page<InventoryDTO>>> getAllInventory(Pageable pageable) {
-        log.info("GET /api/v1/inventory - Get all inventory, page: {}, size: {}", 
-                pageable.getPageNumber(), pageable.getPageSize());
-        Page<InventoryDTO> inventories = inventoryService.getAllInventory(pageable);
+    public ResponseEntity<ApiResponse<Page<InventoryDTO>>> getAllInventory(
+            @RequestParam(required = false) Long categoryId,
+            Pageable pageable) {
+        log.info("GET /api/v1/inventory - Get all inventory, categoryId: {}, page: {}, size: {}",
+                categoryId, pageable.getPageNumber(), pageable.getPageSize());
+        Page<InventoryDTO> inventories = inventoryService.getAllInventory(categoryId, pageable);
         return ResponseEntity.ok(ApiResponse.success(inventories, "Inventories retrieved successfully"));
     }
 
@@ -154,9 +156,10 @@ public class InventoryController {
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<Page<InventoryDTO>>> searchInventory(
             @RequestParam String keyword,
+            @RequestParam(required = false) Long categoryId,
             Pageable pageable) {
-        log.info("GET /api/v1/inventory/search - Search inventory by keyword: {}", keyword);
-        Page<InventoryDTO> inventories = inventoryService.searchInventory(keyword, pageable);
+        log.info("GET /api/v1/inventory/search - Search inventory by keyword: {}, categoryId: {}", keyword, categoryId);
+        Page<InventoryDTO> inventories = inventoryService.searchInventory(keyword, categoryId, pageable);
         return ResponseEntity.ok(ApiResponse.success(inventories, "Inventory search results retrieved successfully"));
     }
 

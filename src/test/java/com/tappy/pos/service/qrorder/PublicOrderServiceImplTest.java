@@ -57,6 +57,7 @@ class PublicOrderServiceImplTest {
     @Mock private ProductRepository productRepository;
     @Mock private CustomerRepository customerRepository;
     @Mock private OrderRepository orderRepository;
+    @Mock private com.tappy.pos.repository.order.ComboRepository comboRepository;
     @Mock private ShopConfigService shopConfigService;
     @Mock private MessageService messageService;
     @Mock private NotificationService notificationService;
