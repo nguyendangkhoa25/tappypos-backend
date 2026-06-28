@@ -22,8 +22,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
@@ -58,7 +58,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   - Service ResourceNotFoundException maps to 404
  *   - Optional request bodies (cancel/void accept absent body without NPE)
  *
- * TenantInterceptor is @MockBean so path-prefix differences in WebMvcTest
+ * TenantInterceptor is @MockitoBean so path-prefix differences in WebMvcTest
  * don't falsely block requests.
  */
 @WebMvcTest(OrderController.class)
@@ -81,11 +81,11 @@ class OrderControllerTest {
     @Autowired JwtTokenProvider jwtTokenProvider;
     @Autowired ObjectMapper  objectMapper;
 
-    @MockBean TenantInterceptor            tenantInterceptor;
-    @MockBean SessionRegistry              sessionRegistry;
-    @MockBean JwtAuthenticationEntryPoint  jwtAuthenticationEntryPoint;
-    @MockBean MessageService               messageService;
-    @MockBean OrderService                 orderService;
+    @MockitoBean TenantInterceptor            tenantInterceptor;
+    @MockitoBean SessionRegistry              sessionRegistry;
+    @MockitoBean JwtAuthenticationEntryPoint  jwtAuthenticationEntryPoint;
+    @MockitoBean MessageService               messageService;
+    @MockitoBean OrderService                 orderService;
 
     @BeforeEach
     void setUp() throws Exception {

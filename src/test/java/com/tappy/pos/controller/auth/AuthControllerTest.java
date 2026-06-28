@@ -23,8 +23,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -56,7 +56,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   - /auth/logout and /auth/profile: valid JWT → JwtAuthenticationFilter populates AuthContext → 200
  *
  * Two setup nuances:
- *   1. TenantInterceptor is @MockBean so path-prefix differences (/api/auth vs /auth) don't block.
+ *   1. TenantInterceptor is @MockitoBean so path-prefix differences (/api/auth vs /auth) don't block.
  *   2. AuthContext (ThreadLocal) is explicitly cleared in @BeforeEach because JwtAuthenticationFilter
  *      only clears FeatureContext in its finally block — without this, a test with a valid JWT would
  *      leak the username into the next "no-token" test and cause it to get 200 instead of 401.
@@ -80,13 +80,13 @@ class AuthControllerTest {
     @Autowired ObjectMapper  objectMapper;
     @Autowired AuthContext   authContext;        // injected to clear ThreadLocal between tests
 
-    @MockBean TenantInterceptor            tenantInterceptor;
-    @MockBean SessionRegistry              sessionRegistry;
-    @MockBean JwtAuthenticationEntryPoint  jwtAuthenticationEntryPoint;
-    @MockBean MessageService               messageService;
-    @MockBean AuthService                  authService;
-    @MockBean TurnstileService             turnstileService;
-    @MockBean PasswordResetService         passwordResetService;
+    @MockitoBean TenantInterceptor            tenantInterceptor;
+    @MockitoBean SessionRegistry              sessionRegistry;
+    @MockitoBean JwtAuthenticationEntryPoint  jwtAuthenticationEntryPoint;
+    @MockitoBean MessageService               messageService;
+    @MockitoBean AuthService                  authService;
+    @MockitoBean TurnstileService             turnstileService;
+    @MockitoBean PasswordResetService         passwordResetService;
 
     @BeforeEach
     void setUp() throws Exception {

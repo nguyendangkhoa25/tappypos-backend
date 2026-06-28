@@ -57,6 +57,16 @@ class ZaloZnsServiceTest {
     }
 
     @Test
+    @DisplayName("localizePhone converts 84-prefix to 0 and passes 0 through (inverse of normalize)")
+    void localizePhone() {
+        assertThat(ZaloZnsService.localizePhone("84912345678")).isEqualTo("0912345678");
+        assertThat(ZaloZnsService.localizePhone("0912345678")).isEqualTo("0912345678");
+        assertThat(ZaloZnsService.localizePhone("+84 912 345 678")).isEqualTo("0912345678");
+        assertThat(ZaloZnsService.localizePhone(null)).isEmpty();
+        assertThat(ZaloZnsService.localizePhone("123")).isEqualTo("123");
+    }
+
+    @Test
     @DisplayName("maskPhone hides the middle and short numbers")
     void maskPhone() {
         assertThat(ZaloZnsService.maskPhone("84912345678")).isEqualTo("8491***678");

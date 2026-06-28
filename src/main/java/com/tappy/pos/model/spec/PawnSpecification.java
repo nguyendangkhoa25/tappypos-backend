@@ -18,7 +18,7 @@ public class PawnSpecification {
     private static final String ANY_STRING = "%";
 
     public static Specification<PawnQuery> searchPawnId(Long pawnId) {
-        Specification<PawnQuery> pawnIdSpec = Specification.where(null);
+        Specification<PawnQuery> pawnIdSpec = Specification.unrestricted();
         pawnIdSpec = pawnIdSpec.and(
                 ((root, criteriaQuery, criteriaBuilder) ->
                         criteriaBuilder.equal(root.get("pawnId"), pawnId)));
@@ -26,7 +26,7 @@ public class PawnSpecification {
     }
 
     public static Specification<PawnQuery> includeVisibleStatus() {
-        Specification<PawnQuery> spec = Specification.where(null);
+        Specification<PawnQuery> spec = Specification.unrestricted();
         spec = spec.or(
                         (root, criteriaQuery, criteriaBuilder) ->
                                 criteriaBuilder.isNull(root.get("visible")))
@@ -37,7 +37,7 @@ public class PawnSpecification {
     }
 
     public static Specification<PawnQuery> searchStatus(List<PawnStatus> pawnStatuses) {
-        Specification<PawnQuery> pawnIdSpec = Specification.where(null);
+        Specification<PawnQuery> pawnIdSpec = Specification.unrestricted();
         pawnIdSpec = pawnIdSpec.and(
                 ((root, criteriaQuery, criteriaBuilder) ->
                         criteriaBuilder.and(root.get("pawnStatus").in(pawnStatuses))));
@@ -50,7 +50,7 @@ public class PawnSpecification {
     }
 
     public static Specification<PawnQuery> searchByItemName(String itemName) {
-        Specification<PawnQuery> pawnIdSpec = Specification.where(null);
+        Specification<PawnQuery> pawnIdSpec = Specification.unrestricted();
         pawnIdSpec = pawnIdSpec.and(
                 ((root, criteriaQuery, criteriaBuilder) ->
                         criteriaBuilder.like(
@@ -67,7 +67,7 @@ public class PawnSpecification {
     }
 
     public static Specification<PawnQuery> freeSearch(String searchWord) {
-        Specification<PawnQuery> spec = Specification.where(null);
+        Specification<PawnQuery> spec = Specification.unrestricted();
         spec = spec.or(
                         ((root, criteriaQuery, criteriaBuilder) ->
                                 criteriaBuilder.like(
@@ -113,7 +113,7 @@ public class PawnSpecification {
     }
 
     public static Specification<PawnQuery> searchPawnDueDate(DateFilterRequest pawnDueDate) {
-        Specification<PawnQuery> spec = Specification.where(null);
+        Specification<PawnQuery> spec = Specification.unrestricted();
         if (pawnDueDate.getFromDate() > 0) {
             LocalDateTime fromDate = Instant.ofEpochMilli(pawnDueDate.getFromDate()).atZone(ZoneId.systemDefault()).toLocalDateTime();
             spec = spec.and(
@@ -136,7 +136,7 @@ public class PawnSpecification {
     }
 
     public static Specification<PawnQuery> searchPawnDate(DateFilterRequest pawnDate) {
-        Specification<PawnQuery> spec = Specification.where(null);
+        Specification<PawnQuery> spec = Specification.unrestricted();
         if (pawnDate.getFromDate() > 0) {
             LocalDateTime fromDate = Instant.ofEpochMilli(pawnDate.getFromDate()).atZone(ZoneId.systemDefault()).toLocalDateTime();
             spec = spec.and(
@@ -159,7 +159,7 @@ public class PawnSpecification {
     }
 
     public static Specification<PawnQuery> searchRedeemDate(DateFilterRequest redeemDate) {
-        Specification<PawnQuery> spec = Specification.where(null);
+        Specification<PawnQuery> spec = Specification.unrestricted();
         if (redeemDate.getFromDate() > 0) {
             LocalDateTime fromDate = Instant.ofEpochMilli(redeemDate.getFromDate()).atZone(ZoneId.systemDefault()).toLocalDateTime();
             spec = spec.and(
@@ -182,7 +182,7 @@ public class PawnSpecification {
     }
 
     public static Specification<PawnQuery> searchForfeitedDate(DateFilterRequest forfeitedDate) {
-        Specification<PawnQuery> spec = Specification.where(null);
+        Specification<PawnQuery> spec = Specification.unrestricted();
         if (forfeitedDate.getFromDate() > 0) {
             LocalDateTime fromDate = Instant.ofEpochMilli(forfeitedDate.getFromDate()).atZone(ZoneId.systemDefault()).toLocalDateTime();
             spec = spec.and(
@@ -205,7 +205,7 @@ public class PawnSpecification {
     }
 
     public static Specification<PawnQuery> searchRequestMoneyRequestDate(DateFilterRequest requestDate) {
-        Specification<PawnQuery> spec = Specification.where(null);
+        Specification<PawnQuery> spec = Specification.unrestricted();
         if (requestDate.getFromDate() > 0) {
             LocalDateTime fromDate = Instant.ofEpochMilli(requestDate.getFromDate()).atZone(ZoneId.systemDefault()).toLocalDateTime();
             spec = spec.and(

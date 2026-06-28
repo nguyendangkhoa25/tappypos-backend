@@ -23,7 +23,7 @@ public class OpenFoodFactsClient {
     private static final String SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl";
     private static final String PRODUCT_URL = "https://world.openfoodfacts.org/api/v2/product/";
     private static final String FIELDS = "code,product_name,brands,categories_tags,quantity,image_front_url";
-    private static final String USER_AGENT = "TappyPOS/1.0 (pos.tappy.vn; support@tappy.vn)";
+    private static final String USER_AGENT = "TappyShop/1.0 (pos.tappy.vn; support@tappy.vn)";
 
     private final RestTemplate restTemplate;
 
@@ -45,7 +45,7 @@ public class OpenFoodFactsClient {
      * Attaches credentials when configured to avoid anonymous rate limits (503s).
      */
     public OffSearchResponse search(int page, int pageSize) {
-        UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(SEARCH_URL)
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(SEARCH_URL)
                 .queryParam("action", "process")
                 .queryParam("countries_tags_en", "vietnam")
                 .queryParam("json", "1")

@@ -331,6 +331,20 @@ public class ZaloZnsService {
         return digits;
     }
 
+    /**
+     * Converts to the local Vietnamese format: 84XXXXXXXXX → 0XXXXXXXXX.
+     * Inverse of {@link #normalizePhone}. Used to match users whose phone is stored
+     * in the local "0..." form (registration persists the number exactly as typed,
+     * e.g. "0974863175"), since {@link #normalizePhone} produces the "84..." send form.
+     */
+    static String localizePhone(String phone) {
+        if (phone == null) return "";
+        String digits = phone.replaceAll("[^0-9]", "");
+        if (digits.startsWith("84")) return "0" + digits.substring(2);
+        if (digits.startsWith("0")) return digits;
+        return digits;
+    }
+
     static String maskPhone(String phone) {
         if (phone == null || phone.length() < 5) return "****";
         int keep = Math.min(4, phone.length() - 3);

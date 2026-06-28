@@ -22,8 +22,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
@@ -56,7 +56,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   - CRUD lifecycle: create (201), list (200 paginated), get by ID, check-phone, orders, delete
  *   - Service ResourceNotFoundException → 404
  *
- * Two service dependencies: CustomerService + OrderService (both must be @MockBean).
+ * Two service dependencies: CustomerService + OrderService (both must be @MockitoBean).
  */
 @WebMvcTest(CustomerController.class)
 @Import({
@@ -78,12 +78,12 @@ class CustomerControllerTest {
     @Autowired JwtTokenProvider jwtTokenProvider;
     @Autowired ObjectMapper  objectMapper;
 
-    @MockBean TenantInterceptor            tenantInterceptor;
-    @MockBean SessionRegistry              sessionRegistry;
-    @MockBean JwtAuthenticationEntryPoint  jwtAuthenticationEntryPoint;
-    @MockBean MessageService               messageService;
-    @MockBean CustomerService              customerService;
-    @MockBean OrderService                 orderService;
+    @MockitoBean TenantInterceptor            tenantInterceptor;
+    @MockitoBean SessionRegistry              sessionRegistry;
+    @MockitoBean JwtAuthenticationEntryPoint  jwtAuthenticationEntryPoint;
+    @MockitoBean MessageService               messageService;
+    @MockitoBean CustomerService              customerService;
+    @MockitoBean OrderService                 orderService;
 
     @BeforeEach
     void setUp() throws Exception {

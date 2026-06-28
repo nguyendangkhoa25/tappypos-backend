@@ -65,7 +65,9 @@ class PasswordResetServiceTest {
     @DisplayName("requestOtp issues OTP and fires ZNS for a registered phone")
     void requestOtp_registered() {
         when(otpRepository.countRecentRequestsByPhone(eq("84912345678"), any())).thenReturn(1);
-        when(userRepository.findByPhoneGlobal("84912345678")).thenReturn(Optional.of(user));
+        // User is stored in local "0..." form (registration keeps the number as typed);
+        // the lookup must use that form, not the "84..." send form.
+        when(userRepository.findByPhoneGlobal("0912345678")).thenReturn(Optional.of(user));
         when(otpRepository.save(any())).thenAnswer(i -> {
             PasswordResetOtp r = i.getArgument(0);
             r.setId(11L);
@@ -84,10 +86,12 @@ class PasswordResetServiceTest {
     }
 
     @Test
-    @DisplayName("requestOtp surfaces ZaloUserNotReachableException when the phone isn't on Zalo")
+    @DisplayName("requestOtp swallows ZaloUserNotReachableException (best-effort) — identical 200, row kept")
     void requestOtp_notOnZalo() {
         when(otpRepository.countRecentRequestsByPhone(anyString(), any())).thenReturn(0);
-        when(userRepository.findByPhoneGlobal("84912345678")).thenReturn(Optional.of(user));
+        // User is stored in local "0..." form (registration keeps the number as typed);
+        // the lookup must use that form, not the "84..." send form.
+        when(userRepository.findByPhoneGlobal("0912345678")).thenReturn(Optional.of(user));
         when(otpRepository.save(any())).thenAnswer(i -> {
             PasswordResetOtp r = i.getArgument(0);
             r.setId(12L);
@@ -96,18 +100,20 @@ class PasswordResetServiceTest {
         doThrow(new ZaloUserNotReachableException("Zalo error -124"))
                 .when(zaloZnsService).sendOtpSync(eq("84912345678"), anyString(), eq(12L));
 
-        assertThatThrownBy(() -> service.requestOtp("0912345678", "ip"))
-                .isInstanceOf(ZaloUserNotReachableException.class);
+        // No exception leaks out — same response as every other path (anti-enumeration)
+        String masked = service.requestOtp("0912345678", "ip");
 
-        // The OTP row is still saved (kept for rate-limiting via noRollbackFor)
-        verify(otpRepository).save(any());
+        assertThat(masked).contains("***");
+        verify(otpRepository).save(any());   // row kept (counts toward rate limit)
     }
 
     @Test
-    @DisplayName("requestOtp surfaces ZaloSendException on a transient send failure")
+    @DisplayName("requestOtp swallows ZaloSendException on a transient send failure — identical 200")
     void requestOtp_sendFailed() {
         when(otpRepository.countRecentRequestsByPhone(anyString(), any())).thenReturn(0);
-        when(userRepository.findByPhoneGlobal("84912345678")).thenReturn(Optional.of(user));
+        // User is stored in local "0..." form (registration keeps the number as typed);
+        // the lookup must use that form, not the "84..." send form.
+        when(userRepository.findByPhoneGlobal("0912345678")).thenReturn(Optional.of(user));
         when(otpRepository.save(any())).thenAnswer(i -> {
             PasswordResetOtp r = i.getArgument(0);
             r.setId(13L);
@@ -116,8 +122,9 @@ class PasswordResetServiceTest {
         doThrow(new ZaloSendException("Zalo ZNS call error"))
                 .when(zaloZnsService).sendOtpSync(eq("84912345678"), anyString(), eq(13L));
 
-        assertThatThrownBy(() -> service.requestOtp("0912345678", "ip"))
-                .isInstanceOf(ZaloSendException.class);
+        String masked = service.requestOtp("0912345678", "ip");
+
+        assertThat(masked).contains("***");
     }
 
     @Test
@@ -134,12 +141,15 @@ class PasswordResetServiceTest {
     }
 
     @Test
-    @DisplayName("requestOtp throws 429 when rate-limited")
+    @DisplayName("requestOtp stays silent when rate-limited (no 429, no save, no send) — anti-enumeration")
     void requestOtp_rateLimited() {
         when(otpRepository.countRecentRequestsByPhone(anyString(), any())).thenReturn(3);
-        assertThatThrownBy(() -> service.requestOtp("0912345678", "ip"))
-                .isInstanceOf(ResponseStatusException.class)
-                .extracting("statusCode").hasToString("429 TOO_MANY_REQUESTS");
+
+        String masked = service.requestOtp("0912345678", "ip");
+
+        assertThat(masked).contains("***");
+        verify(otpRepository, never()).save(any());
+        verify(zaloZnsService, never()).sendOtpSync(anyString(), anyString(), anyLong());
     }
 
     // ── verifyOtp ──────────────────────────────────────────────────────────────

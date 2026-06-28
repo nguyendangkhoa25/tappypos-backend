@@ -192,4 +192,84 @@ class SubscriptionPaymentServiceImplTest {
         verify(paymentRepository, never()).save(any());
         verify(tenantRepository, never()).bumpFeaturesVersion(any());
     }
+
+    @Test
+    @DisplayName("refund: a PAID payment is marked REFUNDED; tenant expiry is left unchanged")
+    void refund_marksPaidRefunded() {
+        SubscriptionPaymentServiceImpl service = newService();
+        SubscriptionPayment paid = SubscriptionPayment.builder()
+                .tenantId("shop1").provider(PaymentProvider.VIETQR).planCode("PRO")
+                .billingCycle(BillingCycle.MONTHLY).amount(199_000)
+                .status(PaymentStatus.PAID).providerTxnRef("TXN1").build();
+        when(paymentRepository.findByProviderTxnRef("TXN1")).thenReturn(Optional.of(paid));
+        when(paymentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.refund("TXN1");
+
+        assertThat(paid.getStatus()).isEqualTo(PaymentStatus.REFUNDED);
+        verify(tenantRepository, never()).findByTenantId(any());        // expiry untouched
+        verify(tenantRepository, never()).bumpFeaturesVersion(any());
+    }
+
+    @Test
+    @DisplayName("refund: an already-REFUNDED payment is idempotent (no re-save)")
+    void refund_idempotent() {
+        SubscriptionPaymentServiceImpl service = newService();
+        SubscriptionPayment refunded = SubscriptionPayment.builder()
+                .tenantId("shop1").provider(PaymentProvider.VIETQR).planCode("PRO")
+                .billingCycle(BillingCycle.MONTHLY).amount(199_000)
+                .status(PaymentStatus.REFUNDED).providerTxnRef("TXN1").build();
+        when(paymentRepository.findByProviderTxnRef("TXN1")).thenReturn(Optional.of(refunded));
+
+        service.refund("TXN1");
+
+        verify(paymentRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("refund: a non-paid (PENDING) payment cannot be refunded")
+    void refund_rejectsNonPaid() {
+        SubscriptionPaymentServiceImpl service = newService();
+        SubscriptionPayment pending = SubscriptionPayment.builder()
+                .tenantId("shop1").provider(PaymentProvider.VIETQR).planCode("PRO")
+                .billingCycle(BillingCycle.MONTHLY).amount(199_000)
+                .status(PaymentStatus.PENDING).providerTxnRef("TXN1").build();
+        when(paymentRepository.findByProviderTxnRef("TXN1")).thenReturn(Optional.of(pending));
+
+        assertThatThrownBy(() -> service.refund("TXN1")).isInstanceOf(BadRequestException.class);
+        verify(paymentRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("recordOfflinePayment: creates a PAID MANUAL payment (plan-derived amount) and extends the subscription")
+    void recordOfflinePayment_createsPaidManualAndExtends() {
+        SubscriptionPaymentServiceImpl service = newService();
+        Tenant tenant = mock(Tenant.class);
+        when(tenant.getTenantId()).thenReturn("shop1");
+        when(tenant.getExpirationDate()).thenReturn(null);
+        when(tenantRepository.findByTenantId("shop1")).thenReturn(Optional.of(tenant));
+        when(paymentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.recordOfflinePayment("shop1", "basic", BillingCycle.MONTHLY, "cash at counter");
+
+        // MANUAL provider, amount derived from BASIC monthly (99,000), persisted.
+        verify(paymentRepository, atLeastOnce()).save(argThat(p ->
+                p.getProvider() == PaymentProvider.MANUAL
+                        && "BASIC".equals(p.getPlanCode())
+                        && p.getAmount() == 99_000));
+        verify(tenant).setExpirationDate(LocalDate.now().plusMonths(1));
+        verify(tenant).setSubscriptionType("BASIC");
+        verify(tenant).setMaxUsers(2); // BASIC = 2 users
+        verify(tenantRepository).bumpFeaturesVersion("shop1");
+    }
+
+    @Test
+    @DisplayName("recordOfflinePayment: an unknown plan code is rejected before any write")
+    void recordOfflinePayment_rejectsUnknownPlan() {
+        SubscriptionPaymentServiceImpl service = newService();
+
+        assertThatThrownBy(() -> service.recordOfflinePayment("shop1", "NOPE", BillingCycle.MONTHLY, null))
+                .isInstanceOf(BadRequestException.class);
+        verify(paymentRepository, never()).save(any());
+    }
 }
