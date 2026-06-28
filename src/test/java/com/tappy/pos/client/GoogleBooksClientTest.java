@@ -158,7 +158,7 @@ class GoogleBooksClientTest {
         client.fetchByIsbn("9786046992264");
 
         HttpHeaders headers = entityCaptor.getValue().getHeaders();
-        assertThat(headers.getFirst(HttpHeaders.USER_AGENT)).contains("TappyPOS");
+        assertThat(headers.getFirst(HttpHeaders.USER_AGENT)).contains("TappyShop");
     }
 
     @Test

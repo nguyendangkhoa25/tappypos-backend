@@ -15,7 +15,7 @@ import static com.tappy.pos.model.spec.PawnSpecification.*;
 public class PawnSpecificationBuilder {
 
     public Specification<PawnQuery> buildPawnSpecifications(SearchPawnRequest searchRequest) {
-        Specification<PawnQuery> spec = Specification.where(null);
+        Specification<PawnQuery> spec = Specification.unrestricted();
         if (searchRequest == null) return spec;
 
         if (searchRequest.getPawnId() != null) {

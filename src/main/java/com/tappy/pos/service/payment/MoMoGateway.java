@@ -72,7 +72,7 @@ public class MoMoGateway implements PaymentGateway {
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("partnerCode", cfg.getPartnerCode());
-        body.put("partnerName", "Tappy POS");
+        body.put("partnerName", "Tappy Shop");
         body.put("storeId", "TappyPOS");
         body.put("requestId", requestId);
         body.put("amount", payment.getAmount());

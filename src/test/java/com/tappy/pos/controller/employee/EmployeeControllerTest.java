@@ -22,8 +22,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageImpl;
@@ -77,13 +77,13 @@ class EmployeeControllerTest {
     @Autowired JwtTokenProvider jwtTokenProvider;
     @Autowired ObjectMapper  objectMapper;
 
-    @MockBean TenantInterceptor            tenantInterceptor;
-    @MockBean SessionRegistry              sessionRegistry;
-    @MockBean JwtAuthenticationEntryPoint  jwtAuthenticationEntryPoint;
-    @MockBean MessageService               messageService;
-    @MockBean EmployeeService              employeeService;
-    @MockBean OrderRepository              orderRepository;
-    @MockBean OrderItemRepository          orderItemRepository;
+    @MockitoBean TenantInterceptor            tenantInterceptor;
+    @MockitoBean SessionRegistry              sessionRegistry;
+    @MockitoBean JwtAuthenticationEntryPoint  jwtAuthenticationEntryPoint;
+    @MockitoBean MessageService               messageService;
+    @MockitoBean EmployeeService              employeeService;
+    @MockitoBean OrderRepository              orderRepository;
+    @MockitoBean OrderItemRepository          orderItemRepository;
 
     @BeforeEach
     void setUp() throws Exception {

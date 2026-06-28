@@ -1,7 +1,6 @@
 package com.tappy.pos.service.auth;
 
 import com.tappy.pos.exception.BadRequestException;
-import com.tappy.pos.exception.ZaloUserNotReachableException;
 import com.tappy.pos.model.entity.auth.PasswordResetOtp;
 import com.tappy.pos.model.entity.auth.User;
 import com.tappy.pos.repository.auth.PasswordResetOtpRepository;
@@ -60,31 +59,41 @@ public class PasswordResetService {
 
     /**
      * Request a password-reset OTP for the given phone number.
-     * Always returns the masked phone (caller may show it in the UI).
-     * Never reveals whether the phone is registered — identical HTTP 200 either way.
      *
-     * @throws ResponseStatusException          429 when rate-limit is exceeded.
-     * @throws ZaloUserNotReachableException    422 when the phone isn't on Zalo (hasn't followed the OA).
-     *                                          The OTP row is intentionally kept ({@code noRollbackFor})
-     *                                          so it still counts toward the rate limit.
-     * @throws com.tappy.pos.exception.ZaloSendException 502 on a transient send failure (row rolls back so the user can retry).
+     * <p><b>Anti-enumeration: always returns the masked phone with an identical HTTP 200</b>,
+     * regardless of whether the phone is unregistered, rate-limited, or undeliverable. A caller
+     * can never tell from the response (status or body) whether an account exists for that number.
+     * This mirrors the tappy/build forgot-password behaviour.
+     *
+     * <p>The OTP row and the Zalo send only happen for a registered phone that is within the rate
+     * limit. Every other path — unknown phone, rate-limit exceeded, "not on Zalo", transient send
+     * failure — is logged and swallowed so the externally observable result is the same.
      */
-    @Transactional(noRollbackFor = ZaloUserNotReachableException.class)
+    @Transactional
     public String requestOtp(String rawPhone, String ipAddress) {
         String phone = ZaloZnsService.normalizePhone(rawPhone);
         String masked = ZaloZnsService.maskPhone(phone);
 
-        // Rate-limit: ≤ MAX_RESENDS_PER_WINDOW requests in the past RESEND_WINDOW_MINUTES
+        // Rate-limit: ≤ MAX_RESENDS_PER_WINDOW requests in the past RESEND_WINDOW_MINUTES.
+        // Exceeding it stops silently (no 429): only a registered phone can ever accumulate OTP
+        // rows, so surfacing the limit would leak that the phone is registered. The client enforces
+        // the resend cooldown in the UI; the server still caps actual sends here.
         LocalDateTime windowStart = LocalDateTime.now().minusMinutes(RESEND_WINDOW_MINUTES);
         int recentCount = otpRepository.countRecentRequestsByPhone(phone, windowStart);
         if (recentCount >= MAX_RESENDS_PER_WINDOW) {
-            log.warn("[OTP] Rate limit hit for phone={}", masked);
-            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
-                    messageService.getMessage("error.otp.too.many.requests"));
+            log.warn("[OTP] Rate limit hit for phone={} — silently ignored", masked);
+            return masked;
         }
 
-        // Silent exit if no user found — same response so callers can't enumerate phones
-        var userOpt = userRepository.findByPhoneGlobal(phone);
+        // Silent exit if no user found — same response so callers can't enumerate phones.
+        // Users are stored in the local "0..." form (registration keeps the number as typed),
+        // so look up by the local form first, then fall back to the "84..." form for any
+        // legacy rows that may have been persisted normalized.
+        String localPhone = ZaloZnsService.localizePhone(phone);
+        var userOpt = userRepository.findByPhoneGlobal(localPhone);
+        if (userOpt.isEmpty() && !localPhone.equals(phone)) {
+            userOpt = userRepository.findByPhoneGlobal(phone);
+        }
         if (userOpt.isEmpty()) {
             log.info("[OTP] Reset requested for unregistered phone={}", masked);
             return masked;
@@ -107,12 +116,17 @@ public class PasswordResetService {
                 .build();
         otpRepository.save(record);
 
-        // Synchronous send so we can surface "not on Zalo" (and other delivery failures) to the user
-        // who is waiting on the screen, instead of silently never delivering a code.
-        zaloZnsService.sendOtpSync(phone, otp, record.getId());
-
-        log.info("[OTP] Issued for user={} phone={} rowId={}",
-                user.getUsername(), masked, record.getId());
+        // Best-effort delivery: never surface a delivery failure to the caller. Both "not on Zalo"
+        // and transient send errors can only occur for a REGISTERED phone, so propagating them would
+        // leak account existence. Failures are logged; the user can simply request a new code.
+        try {
+            zaloZnsService.sendOtpSync(phone, otp, record.getId());
+            log.info("[OTP] Issued for user={} phone={} rowId={}",
+                    user.getUsername(), masked, record.getId());
+        } catch (RuntimeException e) {
+            log.warn("[OTP] Delivery failed (best-effort) for phone={} rowId={}: {}",
+                    masked, record.getId(), e.toString());
+        }
         return masked;
     }
 

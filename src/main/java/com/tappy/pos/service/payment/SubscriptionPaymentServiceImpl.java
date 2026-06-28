@@ -186,8 +186,86 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
         activate(payment);
     }
 
-    /** Mark paid and extend the tenant's subscription. Caller guarantees not-already-paid. */
+    @Override
+    @Transactional
+    public void refund(String txnRef) {
+        SubscriptionPayment payment = paymentRepository.findByProviderTxnRef(txnRef)
+                .orElseThrow(() -> new BadRequestException(messageService.getMessage("error.payment.not_found")));
+        if (payment.getStatus() == PaymentStatus.REFUNDED) return; // idempotent
+        if (payment.getStatus() != PaymentStatus.PAID) {
+            throw new BadRequestException(messageService.getMessage("error.payment.not_refundable"));
+        }
+        // Record-keeping only: flag the payment REFUNDED. The actual money refund is done out-of-band
+        // via the provider, and the tenant's expiry is intentionally left unchanged (the operator
+        // adjusts it separately via the extend dialog if a clawback is warranted).
+        payment.setStatus(PaymentStatus.REFUNDED);
+        paymentRepository.save(payment);
+
+        activityLogService.logAsync(payment.getTenantId(), currentActorOrSystem(), null,
+                ActivityAction.SUBSCRIPTION_REFUNDED, "SUBSCRIPTION", payment.getProviderTxnRef(),
+                "activity.subscription.refunded", null, payment.getPlanCode(), payment.getProviderTxnRef());
+    }
+
+    @Override
+    @Transactional
+    public void recordOfflinePayment(String tenantId, String planCode, BillingCycle billingCycle, String note) {
+        if (tenantId == null || tenantId.isBlank()) {
+            throw new BadRequestException(messageService.getMessage("error.tenant.header.required"));
+        }
+        String code = planCode != null ? planCode.trim().toUpperCase() : null;
+        if (code == null || code.isBlank() || !SubscriptionPlan.isValid(code)) {
+            throw new BadRequestException(messageService.getMessage("error.subscription.invalid", code));
+        }
+        if (tenantRepository.findByTenantId(tenantId).isEmpty()) {
+            throw new BadRequestException(messageService.getMessage("error.tenant.invalid"));
+        }
+        BillingCycle cycle = billingCycle != null ? billingCycle : BillingCycle.MONTHLY;
+        long amount = cycle.amountFor(SubscriptionPlan.of(code));
+
+        SubscriptionPayment payment = SubscriptionPayment.builder()
+                .tenantId(tenantId)
+                .provider(PaymentProvider.MANUAL)
+                .planCode(code)
+                .billingCycle(cycle)
+                .amount(amount)
+                .currency("VND")
+                .status(PaymentStatus.PENDING)
+                .providerTxnRef(generateTxnRef())
+                .description(note != null && !note.isBlank() ? note.trim() : "Thanh toán ngoài hệ thống gói " + code)
+                .build();
+        payment = paymentRepository.save(payment);
+
+        LocalDate newExpiry = applyPaidExtension(payment);
+        log.info("Recorded offline {} {} for tenant {} → expires {}", code, cycle, tenantId, newExpiry);
+        activityLogService.logAsync(tenantId, currentActorOrSystem(), null,
+                ActivityAction.SUBSCRIPTION_PAYMENT_RECORDED, "SUBSCRIPTION", payment.getProviderTxnRef(),
+                "activity.subscription.payment.recorded", null, code, newExpiry != null ? newExpiry.toString() : "");
+    }
+
+    /** Mark paid and extend the tenant's subscription, then audit as a renewal. Caller guarantees not-already-paid. */
     private void activate(SubscriptionPayment payment) {
+        LocalDate newExpiry = applyPaidExtension(payment);
+        if (newExpiry == null) return;
+
+        log.info("Activated {} {} for tenant {} → expires {}",
+                payment.getPlanCode(), payment.getBillingCycle(), payment.getTenantId(), newExpiry);
+
+        // Audit on the shop's own timeline. tenantId is passed explicitly because the webhook thread
+        // carries no TenantContext; actor is "system" for webhook activations or the master admin for
+        // a manual confirm.
+        activityLogService.logAsync(payment.getTenantId(), currentActorOrSystem(), null,
+                ActivityAction.SUBSCRIPTION_RENEWED, "SUBSCRIPTION", payment.getProviderTxnRef(),
+                "activity.subscription.renewed", null, payment.getPlanCode(), newExpiry.toString());
+    }
+
+    /**
+     * Shared paid+extend core: mark the payment PAID, extend the tenant's expiry (from the later of
+     * today / current expiry so paying early keeps remaining days), set plan + maxUsers, and bump the
+     * features version so live tokens refresh (clearing read-only mode instantly). Returns the new
+     * expiry, or {@code null} if the tenant row is missing. Does NOT audit — the caller logs the
+     * appropriate action (renewal vs operator-recorded).
+     */
+    private LocalDate applyPaidExtension(SubscriptionPayment payment) {
         payment.setStatus(PaymentStatus.PAID);
         payment.setPaidAt(LocalDateTime.now());
         paymentRepository.save(payment);
@@ -195,10 +273,9 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
         Tenant tenant = tenantRepository.findByTenantId(payment.getTenantId()).orElse(null);
         if (tenant == null) {
             log.error("Paid payment {} but tenant {} not found", payment.getProviderTxnRef(), payment.getTenantId());
-            return;
+            return null;
         }
 
-        // Extend from the later of today / current expiry, so paying early doesn't lose remaining days.
         LocalDate today = LocalDate.now();
         LocalDate base = (tenant.getExpirationDate() != null && tenant.getExpirationDate().isAfter(today))
                 ? tenant.getExpirationDate() : today;
@@ -210,18 +287,8 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
         tenant.setMaxUsers(limits.maxUsers());
         tenantRepository.save(tenant);
 
-        // Invalidate live tokens so the client refreshes — this also clears read-only mode instantly.
         tenantRepository.bumpFeaturesVersion(tenant.getTenantId());
-
-        log.info("Activated {} {} for tenant {} → expires {}",
-                payment.getPlanCode(), payment.getBillingCycle(), tenant.getTenantId(), newExpiry);
-
-        // Audit on the shop's own timeline. tenantId is passed explicitly because the webhook thread
-        // carries no TenantContext; actor is "system" for webhook activations or the master admin for
-        // a manual confirm.
-        activityLogService.logAsync(tenant.getTenantId(), currentActorOrSystem(), null,
-                ActivityAction.SUBSCRIPTION_RENEWED, "SUBSCRIPTION", payment.getProviderTxnRef(),
-                "activity.subscription.renewed", null, payment.getPlanCode(), newExpiry.toString());
+        return newExpiry;
     }
 
     @Override

@@ -68,7 +68,7 @@ Features are enforced at three levels:
 - **Every shop controller must be annotated** `@RequiresFeature("FEATURE_NAME")`. No exceptions — if a controller handles shop data, it must have this annotation. Controllers without it are accessible to all authenticated users, which is wrong.
 - `FeatureAccessAspect` intercepts all annotated controllers, reads `FeatureContext`, and throws `ForbiddenException("error.access.feature_required")` → HTTP 403 if the feature is absent.
 - `@RequiresFeature` accepts a single string **or an array** — `@RequiresFeature({"POS", "CUSTOMER"})` grants access when the user has **any** of the listed features (OR logic).
-- **MASTER_TENANT** role features: `[USER, TENANT_MGMT, AGENT_MGMT, ACTIVITY_LOG, FEEDBACK_MGMT, MASTER_DASHBOARD, NOTIFICATION, CONTACT_LEAD_MGMT, PRODUCT_CATALOG]`
+- **MASTER_TENANT** role features: `[USER, TENANT_MGMT, AGENT_MGMT, ACTIVITY_LOG, FEEDBACK_MGMT, MASTER_DASHBOARD, NOTIFICATION, CONTACT_LEAD_MGMT, PRODUCT_CATALOG, BILLING_MGMT]`
 - **AGENT** role features: `[TENANT_MGMT, MASTER_DASHBOARD, NOTIFICATION]` — agents see shops and the dashboard but cannot access product catalog, feedback management, or contact leads.
 - Master-only endpoints (tenant provisioning, feedback admin, contact leads) use `@MasterDatabaseOnly` instead — checks `MASTER_TENANT` role + `isMasterUser` flag, not features.
 
@@ -105,6 +105,7 @@ Features are enforced at three levels:
 | `FEEDBACK` | `FeedbackController` (shop-user submit methods only; admin review methods use `@MasterDatabaseOnly`) |
 | `MASTER_DASHBOARD` | `MasterDashboardController` (MASTER_TENANT + AGENT) |
 | `PRODUCT_CATALOG` | `ProductCatalogController` (MASTER_TENANT only; AGENT excluded) |
+| `BILLING_MGMT` | `PaymentAdminController` (master Billing & Revenue cockpit: stats, payment ledger, refund, record-offline; MASTER_TENANT only; AGENT excluded via `@RequiresFeature`) |
 | `CONTACT_LEAD_MGMT` | `ContactController` admin methods use `@MasterDatabaseOnly` (MASTER_TENANT only) |
 | `FEEDBACK_MGMT` | `FeedbackController` admin methods use `@MasterDatabaseOnly` (MASTER_TENANT only) |
 

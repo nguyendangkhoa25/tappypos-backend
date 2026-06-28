@@ -9,5 +9,7 @@ public enum PaymentProvider {
     VNPAY,
     VIETQR,
     APPLE_IAP,
-    GOOGLE_IAP
+    GOOGLE_IAP,
+    /** Operator-recorded offline payment (cash / direct bank transfer entered by the master admin). */
+    MANUAL
 }

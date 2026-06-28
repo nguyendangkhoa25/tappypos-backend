@@ -32,7 +32,7 @@ import java.util.Optional;
 public class GoogleBooksClient {
 
     private static final String VOLUMES_URL = "https://www.googleapis.com/books/v1/volumes";
-    private static final String USER_AGENT = "TappyPOS/1.0 (pos.tappy.vn; support@tappy.vn)";
+    private static final String USER_AGENT = "TappyShop/1.0 (pos.tappy.vn; support@tappy.vn)";
 
     private final RestTemplate restTemplate;
 
@@ -57,7 +57,7 @@ public class GoogleBooksClient {
         String cleaned = isbn == null ? "" : isbn.trim();
         if (cleaned.isBlank()) return Optional.empty();
 
-        UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(VOLUMES_URL)
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(VOLUMES_URL)
                 .queryParam("q", "isbn:" + cleaned)
                 .queryParam("maxResults", 1)
                 .queryParam("country", "VN");

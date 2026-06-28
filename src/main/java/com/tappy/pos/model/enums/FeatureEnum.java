@@ -68,7 +68,8 @@ public enum FeatureEnum {
     MASTER_DASHBOARD("Bảng Điều Khiển Tổng", "Thống kê toàn nền tảng cho quản trị viên và đại lý"),
     FEEDBACK_MGMT("Quản Lý Góp Ý", "Xem và xử lý góp ý gửi từ các cửa hàng — chỉ dành cho cơ sở dữ liệu chính"),
     CONTACT_LEAD_MGMT("Quản Lý Yêu Cầu Liên Hệ", "Quản lý yêu cầu dùng thử từ trang giới thiệu — chỉ dành cho cơ sở dữ liệu chính"),
-    PRODUCT_CATALOG("Danh Mục Sản Phẩm Chung", "Cơ sở dữ liệu mã vạch sản phẩm dùng chung — chỉ dành cho cơ sở dữ liệu chính");
+    PRODUCT_CATALOG("Danh Mục Sản Phẩm Chung", "Cơ sở dữ liệu mã vạch sản phẩm dùng chung — chỉ dành cho cơ sở dữ liệu chính"),
+    BILLING_MGMT("Quản Lý Doanh Thu", "Theo dõi doanh thu, MRR và lịch sử thanh toán gói dịch vụ toàn nền tảng — chỉ dành cho cơ sở dữ liệu chính");
 
     /**
      * -- GETTER --

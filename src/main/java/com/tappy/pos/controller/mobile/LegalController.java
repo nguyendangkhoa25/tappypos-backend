@@ -14,7 +14,7 @@ public class LegalController {
     public ResponseEntity<ApiResponse<Map<String, String>>> getTnC() {
         return ResponseEntity.ok(ApiResponse.success(
                 Map.of("version", "1.0",
-                        "content", "Điều khoản sử dụng TappyPOS.",
+                        "content", "Điều khoản sử dụng Tappy Shop.",
                         "updatedAt", "2024-01-01T00:00:00"),
                 "OK"));
     }

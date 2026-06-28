@@ -22,8 +22,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
@@ -62,7 +62,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   - Bean Validation (@Valid) rejection → 400 VALIDATION_ERROR with field map
  *   - Service exceptions → correct HTTP error codes
  *
- * TenantInterceptor is @MockBean so that the path-prefix mismatch between
+ * TenantInterceptor is @MockitoBean so that the path-prefix mismatch between
  * /api/auth (production) and /auth (WebMvcTest) doesn't falsely block requests.
  */
 @WebMvcTest(ProductController.class)
@@ -85,11 +85,11 @@ class ProductControllerTest {
     @Autowired JwtTokenProvider jwtTokenProvider;
     @Autowired ObjectMapper  objectMapper;
 
-    @MockBean TenantInterceptor            tenantInterceptor;   // bypass path-prefix mismatch
-    @MockBean SessionRegistry              sessionRegistry;
-    @MockBean JwtAuthenticationEntryPoint  jwtAuthenticationEntryPoint;
-    @MockBean MessageService               messageService;
-    @MockBean ProductService               productService;
+    @MockitoBean TenantInterceptor            tenantInterceptor;   // bypass path-prefix mismatch
+    @MockitoBean SessionRegistry              sessionRegistry;
+    @MockitoBean JwtAuthenticationEntryPoint  jwtAuthenticationEntryPoint;
+    @MockitoBean MessageService               messageService;
+    @MockitoBean ProductService               productService;
 
     @BeforeEach
     void setUp() throws Exception {

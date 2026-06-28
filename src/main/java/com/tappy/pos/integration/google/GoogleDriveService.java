@@ -30,7 +30,7 @@ public class GoogleDriveService {
     private static final String USERINFO_URL  = "https://www.googleapis.com/oauth2/v3/userinfo";
     private static final String DRIVE_FILES   = "https://www.googleapis.com/drive/v3/files";
     private static final String FOLDER_MIME   = "application/vnd.google-apps.folder";
-    private static final String APP_ROOT_NAME = "TappyPOS";
+    private static final String APP_ROOT_NAME = "Tappy Shop";
 
     @Value("${integration.google-drive.client-id:}")
     private String clientId;
@@ -146,7 +146,7 @@ public class GoogleDriveService {
      * Returns a map of entityType → folderId (e.g. "PAWN" → "1abc…").
      *
      * Structure in Drive:
-     *   TappyPOS/
+     *   Tappy Shop/
      *     └─ {shopName}/
      *          ├─ Pawns/
      *          ├─ Employees/
