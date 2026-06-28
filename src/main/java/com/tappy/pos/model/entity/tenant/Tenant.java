@@ -114,6 +114,17 @@ public class Tenant {
         return deletedAt != null;
     }
 
+    /**
+     * Whether the subscription has lapsed. A tenant keeps full access through the end of its
+     * expiration day and is expired only once that date is strictly in the past. This is the
+     * single source of truth for both the read-only-mode gate ({@code TenantInterceptor}) and the
+     * reported subscription status ({@code SubscriptionServiceImpl}), so enforcement and the UI
+     * banner can never disagree by a day. A null expiration date never expires.
+     */
+    public boolean isExpired() {
+        return expirationDate != null && expirationDate.isBefore(LocalDate.now());
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = System.currentTimeMillis();

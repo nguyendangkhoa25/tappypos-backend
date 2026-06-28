@@ -274,7 +274,11 @@ public class BookingServiceImpl implements BookingService {
         booking.setStartedAt(LocalDateTime.now());
         // Concurrent check-in (or a walk-in) on the same resource races past the pre-check;
         // the one-active-per-resource index catches it → friendly "busy" instead of a 409/500.
-        return mapBooking(persistDetectingConflicts(booking));
+        Booking saved = persistDetectingConflicts(booking);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.BOOKING_CHECKIN, "BOOKING", String.valueOf(saved.getId()),
+                "activity.booking.checkin", null);
+        return mapBooking(saved);
     }
 
     @Override
@@ -343,7 +347,11 @@ public class BookingServiceImpl implements BookingService {
             throw new BadRequestException(messageService.getMessage("error.booking.invalid.status", booking.getStatus()));
         }
         booking.setStatus("NO_SHOW");
-        return mapBooking(bookingRepository.save(booking));
+        Booking saved = bookingRepository.save(booking);
+        activityLogService.logAsync(tenantContext.getCurrentTenantId(), authContext.getCurrentUsername(), null,
+                ActivityAction.BOOKING_NO_SHOW, "BOOKING", String.valueOf(saved.getId()),
+                "activity.booking.no_show", null);
+        return mapBooking(saved);
     }
 
     @Override

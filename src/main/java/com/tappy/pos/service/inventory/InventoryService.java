@@ -38,6 +38,11 @@ public interface InventoryService {
     Page<InventoryDTO> getAllInventory(Pageable pageable);
 
     /**
+     * Get all active inventory items, optionally filtered to a single product category.
+     */
+    Page<InventoryDTO> getAllInventory(Long categoryId, Pageable pageable);
+
+    /**
      * Update inventory record
      */
     InventoryDTO updateInventory(Long id, UpdateInventoryRequest request);
@@ -71,6 +76,11 @@ public interface InventoryService {
      * Search inventory by keyword
      */
     Page<InventoryDTO> searchInventory(String keyword, Pageable pageable);
+
+    /**
+     * Search inventory by keyword, optionally filtered to a single product category.
+     */
+    Page<InventoryDTO> searchInventory(String keyword, Long categoryId, Pageable pageable);
 
     /**
      * Get inventory by warehouse location

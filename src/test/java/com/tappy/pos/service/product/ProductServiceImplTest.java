@@ -118,6 +118,9 @@ class ProductServiceImplTest {
     @Mock
     private ProductVariantService productVariantService;
 
+    @Mock
+    private com.tappy.pos.service.tenant.ShopConfigService shopConfigService;
+
     @InjectMocks
     private ProductServiceImpl productService;
 
@@ -130,6 +133,11 @@ class ProductServiceImplTest {
     void setUp() {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("testuser", null, Collections.emptyList()));
+
+        // Auto-barcode generation off in unit tests → barcode stays as requested (legacy behavior).
+        org.mockito.Mockito.lenient()
+                .when(shopConfigService.getBoolean(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(false);
 
         // Initialize test data
         productType = ProductType.builder()

@@ -35,6 +35,24 @@ public final class BarcodeValidator {
     }
 
     /**
+     * Computes the GS1 check digit for a 12-digit EAN-13 base (the first 12 digits).
+     * The full, scannable EAN-13 is {@code base12 + computeEan13CheckDigit(base12)}.
+     * Weighting is the inverse of {@link #hasValidChecksum}: leftmost digit weight 1,
+     * then alternating 3, 1, 3, … so the resulting code passes {@link #isValid}.
+     */
+    public static int computeEan13CheckDigit(String base12) {
+        if (base12 == null || !base12.matches("\\d{12}")) {
+            throw new IllegalArgumentException("EAN-13 base must be exactly 12 digits");
+        }
+        int sum = 0;
+        for (int i = 0; i < 12; i++) {
+            int digit = base12.charAt(i) - '0';
+            sum += digit * ((i % 2 == 0) ? 1 : 3);
+        }
+        return (10 - (sum % 10)) % 10;
+    }
+
+    /**
      * GS1 checksum: digit just left of the check digit always has weight 3,
      * then alternates 1, 3, 1, 3 going further left. Works for EAN-8/13 and UPC-A.
      */

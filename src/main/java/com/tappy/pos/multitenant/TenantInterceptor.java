@@ -44,6 +44,7 @@ public class TenantInterceptor implements HandlerInterceptor {
             "/api/v3/api-docs",          // API docs
             "/api/actuator",             // Health check (context path is /api)
             "/api/contact",              // Public lead capture from landing page
+            "/api/payments/webhook",     // Server-to-server payment callbacks (signature-verified)
             "/api/integrations/oauth",   // OAuth2 callback from providers (no tenant header)
             "/api/shop-types",           // Onboarding: shop type list (no tenant yet)
             "/api/product-templates",    // Onboarding: product template list
@@ -202,33 +203,23 @@ public class TenantInterceptor implements HandlerInterceptor {
         // Set current tenant in context for use in request processing
         tenantContext.setCurrentTenant(tenant);
 
-        // Validate tenant is not expired
-        try {
-            tenantContext.validateTenantNotExpired();
-        } catch (Exception e) {
-            log.warn("Tenant {} is expired, rejecting request", tenantId);
-            response.setStatus(HttpStatus.BAD_REQUEST.value());
+        // Read-only ("gray-out") mode for expired tenants: reads (GET/HEAD/OPTIONS) still succeed so
+        // the shop can log in and view all its data, but mutating requests are rejected with
+        // TENANT_READONLY until the subscription is renewed. Auth/subscription/payment paths stay
+        // writable so the user can authenticate, see the expiry banner, and pay to renew. (Master
+        // tenant is handled earlier and never carries an expiration date.)
+        if (isTenantExpired(tenant) && isMutatingMethod(request.getMethod()) && !isReadOnlyExemptPath(requestPath)) {
+            log.warn("Tenant {} is expired — read-only mode, blocking {} {}",
+                    tenantId, request.getMethod(), requestPath);
+            response.setStatus(HttpStatus.FORBIDDEN.value());
             response.setContentType("application/json");
 
-            // Get i18n message for expired tenant
-            String message = messageService.getMessage("error.tenant.expired");
-            
-            // Extract expiration date from exception if available
-            String expirationDate = null;
-            if (e instanceof com.tappy.pos.exception.TenantExpiredException) {
-                expirationDate = ((com.tappy.pos.exception.TenantExpiredException) e).getExpirationDate();
-            }
-
-            // Build error response with expiration date
-            String errorResponse;
-            if (expirationDate != null) {
-                errorResponse = "{\"success\": false, \"error\": \"TENANT_EXPIRED\", " +
-                        "\"message\": \"" + message + "\", " +
-                        "\"field\": \"" + expirationDate + "\"}";
-            } else {
-                errorResponse = "{\"success\": false, \"error\": \"TENANT_EXPIRED\", " +
-                        "\"message\": \"" + message + "\"}";
-            }
+            String message = messageService.getMessage("error.tenant.readonly");
+            String expirationDate = tenant.getExpirationDate() != null ? tenant.getExpirationDate().toString() : null;
+            String errorResponse = expirationDate != null
+                    ? "{\"success\": false, \"error\": \"TENANT_READONLY\", " +
+                        "\"message\": \"" + message + "\", \"field\": \"" + expirationDate + "\"}"
+                    : "{\"success\": false, \"error\": \"TENANT_READONLY\", \"message\": \"" + message + "\"}";
 
             response.getWriter().write(errorResponse);
             tenantContext.clear();
@@ -288,6 +279,40 @@ public class TenantInterceptor implements HandlerInterceptor {
     private boolean isFlexiblePath(String requestPath) {
         for (String flexiblePath : FLEXIBLE_PATHS) {
             if (requestPath.startsWith(flexiblePath)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // When a tenant is expired (read-only mode), writes to these path prefixes are still allowed so
+    // the user can authenticate and pay to renew. Kept intentionally narrow: reads (GET/HEAD/OPTIONS)
+    // already pass the gate regardless of path, so viewing the current plan (GET /subscriptions/current)
+    // needs no exemption — only the auth and renewal-payment write flows do.
+    private static final String[] READONLY_EXEMPT_PREFIXES = {
+            "/api/auth",           // login / refresh / logout / force-login
+            "/api/payments"        // renew / checkout
+    };
+
+    /**
+     * A tenant is expired only once its expiration date is strictly in the past (it keeps the full
+     * expiration day). Delegates to {@link Tenant#isExpired()} so this read-only gate and the
+     * status reported by {@code SubscriptionServiceImpl} never disagree by a day.
+     */
+    private boolean isTenantExpired(Tenant tenant) {
+        return tenant.isExpired();
+    }
+
+    /** Mutating HTTP verbs are blocked in read-only mode; GET/HEAD/OPTIONS pass through. */
+    private boolean isMutatingMethod(String method) {
+        return "POST".equalsIgnoreCase(method) || "PUT".equalsIgnoreCase(method)
+                || "PATCH".equalsIgnoreCase(method) || "DELETE".equalsIgnoreCase(method);
+    }
+
+    /** True for paths that must stay writable even when the tenant is in read-only mode. */
+    private boolean isReadOnlyExemptPath(String requestPath) {
+        for (String prefix : READONLY_EXEMPT_PREFIXES) {
+            if (requestPath.startsWith(prefix)) {
                 return true;
             }
         }

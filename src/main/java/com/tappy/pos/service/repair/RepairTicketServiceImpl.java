@@ -189,10 +189,11 @@ public class RepairTicketServiceImpl implements RepairTicketService {
         }
 
         RepairTicket saved = repairTicketRepository.save(ticket);
+        // Per-status message key so the status word renders in the reader's locale at read time,
+        // instead of freezing the writer's locale into description_args.
         activityLogService.logAsync(saved.getTenantId(), currentUsername(), null, action,
                 "REPAIR_TICKET", String.valueOf(saved.getId()),
-                "activity.repair.status", null, saved.getTicketNumber(),
-                messageService.getMessage("repair.status." + target));
+                "activity.repair.status." + target.toLowerCase(), null, saved.getTicketNumber());
         return mapToDTO(saved);
     }
 
@@ -270,12 +271,16 @@ public class RepairTicketServiceImpl implements RepairTicketService {
                 .model(original.getModel())
                 .serialImei(original.getSerialImei())
                 .reportedFault(messageService.getMessage("repair.warranty.fault.prefix", original.getTicketNumber()))
+                .reportedFaultKey("repair.warranty.fault.prefix")
+                .reportedFaultArgs(MessageArgs.toJson(original.getTicketNumber()))
                 .laborAmount(BigDecimal.ZERO)
                 .warrantyDays(0)
                 .isWarrantyClaim(true)
                 .status(RepairStatus.RECEIVED.name())
                 .receivedAt(now)
                 .note(messageService.getMessage("repair.warranty.note", original.getTicketNumber()))
+                .noteKey("repair.warranty.note")
+                .noteArgs(MessageArgs.toJson(original.getTicketNumber()))
                 .createdBy(username)
                 .parts(new ArrayList<>())
                 .build();
@@ -453,6 +458,22 @@ public class RepairTicketServiceImpl implements RepairTicketService {
         return String.format("SC-%s-%03d", dateStr, seq);
     }
 
+    /**
+     * Render a fault/note field: prefer the i18n key (in the reader's locale) for system-generated
+     * text; fall back to the literal value for user-authored text and pre-V006 rows.
+     */
+    private String render(String key, String argsJson, String literal) {
+        if (key == null || key.isBlank()) {
+            return literal;
+        }
+        try {
+            return messageService.getMessage(key, MessageArgs.fromJson(argsJson));
+        } catch (Exception e) {
+            log.warn("RepairTicket: failed to render key={}: {}", key, e.getMessage());
+            return literal != null ? literal : key;
+        }
+    }
+
     private RepairTicketDTO mapToDTO(RepairTicket t) {
         List<RepairPartDTO> parts = t.getParts() == null ? List.of()
                 : t.getParts().stream().map(this::mapPart).collect(Collectors.toList());
@@ -468,7 +489,7 @@ public class RepairTicketServiceImpl implements RepairTicketService {
                 .brand(t.getBrand())
                 .model(t.getModel())
                 .serialImei(t.getSerialImei())
-                .reportedFault(t.getReportedFault())
+                .reportedFault(render(t.getReportedFaultKey(), t.getReportedFaultArgs(), t.getReportedFault()))
                 .diagnosis(t.getDiagnosis())
                 .quoteAmount(t.getQuoteAmount())
                 .partsAmount(t.getPartsAmount())
@@ -479,7 +500,7 @@ public class RepairTicketServiceImpl implements RepairTicketService {
                 .assignedTechnicianName(t.getAssignedTechnicianName())
                 .status(t.getStatus())
                 .isWarrantyClaim(t.getIsWarrantyClaim())
-                .note(t.getNote())
+                .note(render(t.getNoteKey(), t.getNoteArgs(), t.getNote()))
                 .receivedAt(t.getReceivedAt())
                 .completedAt(t.getCompletedAt())
                 .deliveredAt(t.getDeliveredAt())

@@ -11,13 +11,16 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * In-memory session registry scoped per tenant.
+ * Session registry scoped per tenant.
  *
  * Structure: tenantKey → (username → SessionInfo)
  *   tenantKey = tenantId from X-Tenant-ID header, or "master" for super-admin users.
  *
- * The map is the authoritative source for per-request validation (no DB hit).
- * The active_sessions table is written on every login for audit and future restart-recovery.
+ * The in-memory map is the fast path for per-request validation; the active_sessions table is the
+ * durable source of truth. Every login/logout writes the table, and {@link #getSession} falls back
+ * to it on an in-memory miss, re-hydrating the map. This makes single-device enforcement survive a
+ * backend restart: after a restart the map is empty, but the first request for each user reloads
+ * that user's one session from the table, so a token from a since-evicted device is still rejected.
  *
  * Backward-compat: tokens issued before this feature was deployed have no sessionId claim.
  * isValid() returns true for those to avoid kicking everyone out on deploy.
@@ -38,16 +41,18 @@ public class SessionRegistry {
 
     public Optional<SessionInfo> getSession(String tenantKey, String username) {
         ConcurrentHashMap<String, SessionInfo> tenantMap = sessions.get(tenantKey);
-        if (tenantMap == null) return Optional.empty();
-        return Optional.ofNullable(tenantMap.get(username));
+        SessionInfo cached = tenantMap == null ? null : tenantMap.get(username);
+        if (cached != null) return Optional.of(cached);
+        // In-memory miss — fall back to the persisted session so enforcement survives a restart.
+        return loadFromDb(tenantKey, username);
     }
 
     /**
      * Returns true when the request should be allowed through.
      * - No sessionId claim (old token) → allow (backward compat)
-     * - No registry entry (server restart) → allow (no DB reload on startup)
-     * - Registry entry matches → allow
-     * - Registry entry does not match → REJECT (different device)
+     * - No session in memory or DB → allow (genuinely no active session: pre-feature token, or post-logout)
+     * - Active session matches → allow
+     * - Active session does not match → REJECT (different device took over)
      */
     public boolean isValid(String tenantKey, String username, String sessionId) {
         if (sessionId == null) return true;
@@ -79,7 +84,31 @@ public class SessionRegistry {
         }
     }
 
-    // ── DB persistence (best-effort, does not affect correctness) ─────────────
+    // ── DB persistence ────────────────────────────────────────────────────────
+
+    /**
+     * Loads the persisted session for a user and re-hydrates the in-memory map so subsequent
+     * requests hit the fast path. Returns empty only when no row exists (genuinely no active session).
+     *
+     * <p>A real DB read failure is allowed to propagate rather than being swallowed into an empty
+     * Optional: {@link #isValid} treats empty as "allow", so swallowing a read error would fail
+     * <em>open</em> — letting a token from a since-evicted device through during the cold-cache window
+     * right after a restart. Failing closed costs nothing extra in practice, because the request's own
+     * work needs the same DB and would fail anyway. (Persistence writes in {@link #persistToDb} stay
+     * best-effort/swallowed — they are not on the validation path.)
+     */
+    private Optional<SessionInfo> loadFromDb(String tenantKey, String username) {
+        String tenantId = MASTER_KEY.equals(tenantKey) ? null : tenantKey;
+        return activeSessionRepository.findByUsernameAndTenantId(username, tenantId)
+                .map(row -> {
+                    SessionInfo info = new SessionInfo(
+                            row.getSessionId(), row.getIpAddress(), row.getUserAgent(), row.getLoginAt());
+                    // register() uses an unconditional put and so always wins over this hydration.
+                    sessions.computeIfAbsent(tenantKey, k -> new ConcurrentHashMap<>())
+                            .putIfAbsent(username, info);
+                    return info;
+                });
+    }
 
     private void persistToDb(String tenantKey, String username, SessionInfo info) {
         try {

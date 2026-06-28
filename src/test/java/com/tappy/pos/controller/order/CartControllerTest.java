@@ -129,7 +129,7 @@ class CartControllerTest {
                     .header("Authorization", bearerToken("ORDER"))
                     .header("X-Tenant-ID", TENANT_ID))
                    .andExpect(status().isForbidden())
-                   .andExpect(jsonPath("$.error").value("FORBIDDEN"));
+                   .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
         }
 
         @Test

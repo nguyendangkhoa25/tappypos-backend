@@ -46,6 +46,7 @@ public class OrderController {
      * Returns paginated PENDING + IN_PROGRESS orders created by the current user.
      */
     @GetMapping("/my-work/pending")
+    @RequiresFeature("MY_WORK")
     public ResponseEntity<ApiResponse<Page<OrderDTO>>> getMyPendingOrders(
             @RequestParam(defaultValue = "0")  int page,
             @RequestParam(defaultValue = "20") int size) {
@@ -66,6 +67,7 @@ public class OrderController {
      *   year        (optional, default current year)
      */
     @GetMapping("/my-work/completed")
+    @RequiresFeature("MY_WORK")
     public ResponseEntity<ApiResponse<Page<OrderDTO>>> getMyCompletedOrders(
             @RequestParam(defaultValue = "DAY") String filterType,
             @RequestParam(required = false) Integer day,
@@ -84,6 +86,7 @@ public class OrderController {
      * Returns pending count, completed count and total revenue for the current user/period.
      */
     @GetMapping("/my-work/stats")
+    @RequiresFeature("MY_WORK")
     public ResponseEntity<ApiResponse<MyWorkStatsDTO>> getMyWorkStats(
             @RequestParam(defaultValue = "DAY") String filterType,
             @RequestParam(required = false) Integer day,

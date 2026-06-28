@@ -88,9 +88,55 @@ class SessionRegistryTest {
     }
 
     @Test
-    @DisplayName("isValid: returns true when no session registered (allows after server restart)")
+    @DisplayName("isValid: returns true when no session in memory or DB (genuinely no active session)")
     void isValid_noRegisteredSession() {
         assertThat(registry.isValid("tenant1", "user1", "any-session-id")).isTrue();
+    }
+
+    // ── restart recovery (in-memory empty, DB has the row) ────────────────────
+
+    @Test
+    @DisplayName("isValid: after restart, rejects a token whose session no longer matches the persisted one")
+    void isValid_afterRestart_rejectsEvictedDevice() {
+        // Simulate a restart: in-memory map is empty, but active_sessions still holds the live session.
+        ActiveSession persisted = ActiveSession.builder()
+                .username("user1").tenantId("tenant1").sessionId("live-session")
+                .ipAddress("192.168.1.1").userAgent("Mozilla/5.0")
+                .loginAt(LocalDateTime.now()).lastActive(LocalDateTime.now()).build();
+        when(activeSessionRepository.findByUsernameAndTenantId("user1", "tenant1"))
+                .thenReturn(Optional.of(persisted));
+
+        // The device that was evicted before the restart still carries the old sessionId.
+        assertThat(registry.isValid("tenant1", "user1", "evicted-session")).isFalse();
+        // The current device's token still matches.
+        assertThat(registry.isValid("tenant1", "user1", "live-session")).isTrue();
+    }
+
+    @Test
+    @DisplayName("getSession: hydrates the in-memory map from DB on a miss, then serves from memory")
+    void getSession_hydratesFromDbThenServesFromMemory() {
+        ActiveSession persisted = ActiveSession.builder()
+                .username("user1").tenantId("tenant1").sessionId("live-session")
+                .loginAt(LocalDateTime.now()).lastActive(LocalDateTime.now()).build();
+        when(activeSessionRepository.findByUsernameAndTenantId("user1", "tenant1"))
+                .thenReturn(Optional.of(persisted));
+
+        assertThat(registry.getSession("tenant1", "user1")).isPresent()
+                .get().extracting(SessionInfo::sessionId).isEqualTo("live-session");
+        // Second read is served from the hydrated map — no second DB hit.
+        assertThat(registry.getSession("tenant1", "user1")).isPresent();
+        verify(activeSessionRepository, times(1)).findByUsernameAndTenantId("user1", "tenant1");
+    }
+
+    @Test
+    @DisplayName("getSession: maps master tenantKey to a null tenant_id when reading from DB")
+    void getSession_masterKeyMapsToNullTenantId() {
+        when(activeSessionRepository.findByUsernameAndTenantId("admin", null))
+                .thenReturn(Optional.empty());
+
+        registry.getSession(SessionRegistry.MASTER_KEY, "admin");
+
+        verify(activeSessionRepository).findByUsernameAndTenantId("admin", null);
     }
 
     // ── remove ────────────────────────────────────────────────────────────────

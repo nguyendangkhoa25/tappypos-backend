@@ -45,5 +45,12 @@ public class ShopInfoDTO {
 
     private String priceBoardCode;
     private String shopLocations;
+
+    /** Loại hình kinh doanh (tên enum BusinessType): HOUSEHOLD / PERSONAL / ENTERPRISE. */
+    private String businessType;
+    /** Nhóm ngành thuế mặc định (CSV mã catalog). */
+    private String taxIndustryGroups;
+    /** When true (default), products saved without a barcode get an auto-generated internal EAN-13. */
+    private Boolean autoGenerateBarcode;
 }
 

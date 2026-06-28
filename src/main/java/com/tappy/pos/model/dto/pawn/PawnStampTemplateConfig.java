@@ -27,8 +27,8 @@ public class PawnStampTemplateConfig {
     // ── Layout measurements for the "custom" variant ──────────────────────────
     // All mm values match the pre-printed form's physical dimensions.
 
-    /** Width of the left (customer stub) column in mm. */
-    @Builder.Default private int leftColWidth = 63;
+    /** Width of the left (customer stub) column in mm. Physical form: 7cm stub + 14cm copy = 21cm. */
+    @Builder.Default private int leftColWidth = 70;
 
     /** Left padding of the left column in px. */
     @Builder.Default private int leftColPaddingLeft = 5;

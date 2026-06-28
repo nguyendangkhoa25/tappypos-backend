@@ -17,6 +17,8 @@ public interface ProductService {
     Page<ProductDTO> getAllProducts(String status, Long categoryId, Long productTypeId, boolean pawnOriginOnly, Pageable pageable);
     Page<ProductDTO> getProductsByType(Long productTypeId, Pageable pageable);
     Page<ProductDTO> searchProducts(String searchTerm, Pageable pageable);
+    Page<ProductDTO> searchProducts(String searchTerm, Long categoryId, Pageable pageable);
+    Page<ProductDTO> searchProducts(String searchTerm, Long categoryId, Long productTypeId, boolean pawnOriginOnly, Pageable pageable);
     List<ProductTypeDTO> getAllProductTypes();
     ProductTypeWithAttributesDTO getProductTypeWithAttributes(Long productTypeId);
     String generateSku(String name, String typeCode);

@@ -103,22 +103,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private void writeTenantMismatchResponse(HttpServletResponse response) throws IOException {
         response.setStatus(HttpServletResponse.SC_FORBIDDEN);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        ApiResponse<Void> body = ApiResponse.<Void>builder()
-                .success(false)
-                .error("TENANT_MISMATCH")
-                .message("Access denied: your session does not belong to this shop.")
-                .build();
+        ApiResponse<Void> body = ApiResponse.error(
+                "TENANT_MISMATCH", "Access denied: your session does not belong to this shop.");
         objectMapper.writeValue(response.getWriter(), body);
     }
 
     private void writeDeviceSwitchedResponse(HttpServletResponse response) throws IOException {
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        ApiResponse<Void> body = ApiResponse.<Void>builder()
-                .success(false)
-                .error("DEVICE_SWITCHED")
-                .message("Your session has been ended because you logged in from another device.")
-                .build();
+        ApiResponse<Void> body = ApiResponse.error(
+                "DEVICE_SWITCHED", "Your session has been ended because you logged in from another device.");
         objectMapper.writeValue(response.getWriter(), body);
     }
 

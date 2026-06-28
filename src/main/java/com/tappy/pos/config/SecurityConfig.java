@@ -60,6 +60,7 @@ public class SecurityConfig {
                         .requestMatchers("/product-templates").permitAll()
                         .requestMatchers("/expense-suggestions").permitAll()
                         .requestMatchers("/public/**").permitAll()   // QR customer ordering (no JWT; tenant-gated in service)
+                        .requestMatchers("/payments/webhook/**").permitAll()  // payment provider callbacks (signature-verified)
                         // All other endpoints require authentication
                         .anyRequest().authenticated()
                 )

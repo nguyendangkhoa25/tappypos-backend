@@ -6,18 +6,20 @@ import lombok.Getter;
  * SubscriptionType - Enum for tenant subscription packages.
  *
  * Unified catalog (see docs/SUBSCRIPTION_PRICING_PLAN.md):
- *   - TRIAL       Dùng thử — free first year, 2 users, full features
- *   - BASIC       Gói Cơ bản — 2 users
- *   - PRO         Gói Chuyên nghiệp — 6 users
- *   - ENTERPRISE  Gói Doanh nghiệp — 15+ users / multi-branch
+ *   - STARTER     Gói Khởi nghiệp — 1 user (solo micro-shop)
+ *   - BASIC       Gói Cơ bản — 2 users (default plan; free first 6 months)
+ *   - PRO         Gói Chuyên nghiệp — 4 users
+ *   - ENTERPRISE  Gói Doanh nghiệp — 10 users / multi-branch
  *   - GOLD_PAWN   Gói Vàng & Cầm đồ — vertical package for jewelry/pawn (2 users)
  *
- * Legacy codes STARTER/PREMIUM were removed; existing rows are remapped by Flyway
- * (STARTER→BASIC, PREMIUM→PRO) in V042__unify_subscription_catalog.sql.
+ * TRIAL was removed (2026-06): every new shop now starts on BASIC, free for 6 months
+ * (see SubscriptionPlan.FREE_TRIAL_MONTHS), then goes read-only. Existing TRIAL rows are
+ * remapped to BASIC by Flyway in V003__subscription_catalog_rework.sql. STARTER is now a
+ * distinct 1-user tier (the old STARTER→BASIC remap predates this re-introduction).
  */
 @Getter
 public enum SubscriptionType {
-    TRIAL("Dùng thử"),
+    STARTER("Khởi nghiệp"),
     BASIC("Cơ bản"),
     PRO("Chuyên nghiệp"),
     ENTERPRISE("Doanh nghiệp"),

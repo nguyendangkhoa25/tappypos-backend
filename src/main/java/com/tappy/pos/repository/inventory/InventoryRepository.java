@@ -48,6 +48,14 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
     Page<Inventory> findAllActive(Pageable pageable);
 
     /**
+     * Find all active inventory items whose product belongs to the given category.
+     * Used by the POS product grid category quick-filter.
+     */
+    @Query("SELECT i FROM Inventory i JOIN i.product.categories c " +
+            "WHERE i.deleted = false AND i.status = 'ACTIVE' AND c.id = :categoryId")
+    Page<Inventory> findAllActiveByCategoryId(@Param("categoryId") Long categoryId, Pageable pageable);
+
+    /**
      * Find inventory items that are low in stock
      */
     @Query("SELECT i FROM Inventory i WHERE i.deleted = false AND i.quantityInStock <= i.reorderLevel")
@@ -82,6 +90,19 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
             "OR LOWER(i.batchNumber) LIKE LOWER(CONCAT('%', :searchKeyword, '%')) " +
             "OR LOWER(i.warehouseLocation) LIKE LOWER(CONCAT('%', :searchKeyword, '%')))")
     Page<Inventory> searchByKeyword(@Param("searchTerm") Long searchTerm, @Param("searchKeyword") String searchKeyword, Pageable pageable);
+
+    /**
+     * Search inventory (as searchByKeyword) restricted to a single product category.
+     */
+    @Query("SELECT i FROM Inventory i JOIN i.product.categories c WHERE i.deleted = false AND c.id = :categoryId AND " +
+            "(i.product.id = :searchTerm OR LOWER(i.product.name) LIKE LOWER(CONCAT('%', :searchKeyword, '%')) " +
+            "OR LOWER(i.product.sku) LIKE LOWER(CONCAT('%', :searchKeyword, '%')) " +
+            "OR LOWER(i.batchNumber) LIKE LOWER(CONCAT('%', :searchKeyword, '%')) " +
+            "OR LOWER(i.warehouseLocation) LIKE LOWER(CONCAT('%', :searchKeyword, '%')))")
+    Page<Inventory> searchByKeywordAndCategoryId(@Param("searchTerm") Long searchTerm,
+                                                 @Param("searchKeyword") String searchKeyword,
+                                                 @Param("categoryId") Long categoryId,
+                                                 Pageable pageable);
 
     /**
      * Find inventory by inventory type

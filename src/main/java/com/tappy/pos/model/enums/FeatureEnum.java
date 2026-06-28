@@ -25,6 +25,7 @@ public enum FeatureEnum {
     CUSTOMER_DEBT("Công Nợ Khách Hàng", "Bán chịu, ghi sổ nợ và thu nợ khách hàng (thường dùng cho vật liệu xây dựng)"),
     INVOICE("Hóa Đơn", "Quản lý hóa đơn, xuất hóa đơn điện tử"),
     REVENUE("Doanh Thu", "Xem báo cáo doanh thu, lợi nhuận"),
+    TAX_DECLARATION("Khai Báo Thuế", "Tính và xuất tờ khai thuế GTGT, TNCN cho hộ kinh doanh theo phương pháp kê khai"),
     EXPENSE("Chi Phí", "Theo dõi và quản lý chi phí hoạt động cửa hàng"),
     USER("Người Dùng", "Quản lý tài khoản người dùng, quyền truy cập"),
     SHOP_INFO("Thông Tin Cửa Hàng", "Cập nhật thông tin cửa hàng, cấu hình hệ thống"),

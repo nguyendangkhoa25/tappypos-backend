@@ -56,7 +56,10 @@ public enum ShopConfigKey {
     ZALO_OA_ID("zalo_oa_id", "ZALO", false),
 
     // PRICING
-    PRICE_BOARD_CODE("price_board_code", "PRICING", false);
+    PRICE_BOARD_CODE("price_board_code", "PRICING", false),
+
+    // PRODUCT
+    AUTO_GENERATE_BARCODE("auto_generate_barcode", "PRODUCT", false);
 
     private final String key;
     private final String group;

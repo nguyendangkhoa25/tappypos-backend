@@ -112,7 +112,7 @@ public class TenantProvisioningService {
         m.put(RoleEnum.SHOP_OWNER.getCode(), Arrays.asList(
             "DASHBOARD", "ORDER", "ORDER_VIEW_ALL", "MY_WORK", "PRODUCT", "PROMOTION", "RECIPE",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "CUSTOMER", "LOYALTY", "CUSTOMER_DEBT",
-            "INVOICE", "ACCOUNTING", "REVENUE", "EXPENSE",
+            "INVOICE", "ACCOUNTING", "REVENUE", "EXPENSE", "TAX_DECLARATION",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "VENDOR", "INVENTORY", "STOCK_TAKE", "POS",
             "TABLE_SERVICE", "ACTIVITY_LOG", "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
             "COMMISSION", "COMMISSION_VIEW_ALL", "GOOGLE_DRIVE", "NOTIFICATION", "FEEDBACK", "APPOINTMENT", "BOOKING", "ROOM",
@@ -134,7 +134,10 @@ public class TenantProvisioningService {
             "PAWN", "GOLD_PRICE", "GOLD_PRICE_CHART"
         ));
         m.put(RoleEnum.ACCOUNTANT.getCode(), Arrays.asList(
-            "DASHBOARD", "MY_WORK", "REVENUE", "EXPENSE", "SALARY", "INVOICE", "ACCOUNTING", "CUSTOMER", "CUSTOMER_DEBT",
+            // ORDER + ORDER_VIEW_ALL: creating an output invoice (hóa đơn đầu ra) lists COMPLETED
+            // orders via GET /orders (@RequiresFeature("ORDER")); the accountant must see all of
+            // them, not just their own, so the invoice flow doesn't 403 / return an empty list.
+            "DASHBOARD", "MY_WORK", "ORDER", "ORDER_VIEW_ALL", "REVENUE", "EXPENSE", "TAX_DECLARATION", "SALARY", "INVOICE", "ACCOUNTING", "CUSTOMER", "CUSTOMER_DEBT",
             "NOTIFICATION", "FEEDBACK", "INSTALLMENT", "INSTALLMENT_VIEW_ALL"
         ));
         m.put(RoleEnum.WAREHOUSE_STAFF.getCode(), Arrays.asList(
@@ -203,10 +206,10 @@ public class TenantProvisioningService {
 
         m.put("PAWN", Arrays.asList(
             "DASHBOARD", "MY_WORK",
-            "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART",
+            "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART", "BUYBACK",
             "CUSTOMER", "LOYALTY", "APPOINTMENT",
             "ORDER", "ORDER_VIEW_ALL", "POS", "PRODUCT",
-            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE", "TAX_DECLARATION",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
             "NOTIFICATION", "FEEDBACK"
@@ -217,7 +220,7 @@ public class TenantProvisioningService {
             "PAWN", "PAWN_VIEW_ALL", "GOLD_PRICE", "GOLD_PRICE_CHART", "BUYBACK",
             "ORDER", "ORDER_VIEW_ALL", "POS", "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION",
             "CUSTOMER", "LOYALTY", "APPOINTMENT",
-            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE", "TAX_DECLARATION",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
             "NOTIFICATION", "FEEDBACK"
@@ -228,7 +231,7 @@ public class TenantProvisioningService {
             "ORDER", "ORDER_VIEW_ALL", "POS",
             "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION",
             "CUSTOMER", "LOYALTY", "CUSTOMER_DEBT", "APPOINTMENT",
-            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE", "TAX_DECLARATION",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
             "NOTIFICATION", "FEEDBACK"
@@ -243,7 +246,7 @@ public class TenantProvisioningService {
             "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION",
             "CONSIGNMENT", "CONSIGNMENT_VIEW_ALL",
             "CUSTOMER", "LOYALTY", "CUSTOMER_DEBT", "APPOINTMENT",
-            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE", "TAX_DECLARATION",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
             "NOTIFICATION", "FEEDBACK"
@@ -258,7 +261,7 @@ public class TenantProvisioningService {
             "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION",
             "CUSTOMER", "LOYALTY", "APPOINTMENT",
             "REPAIR", "REPAIR_VIEW_ALL",
-            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE", "TAX_DECLARATION",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
             "NOTIFICATION", "FEEDBACK"
@@ -272,7 +275,7 @@ public class TenantProvisioningService {
             "ORDER", "ORDER_VIEW_ALL", "POS",
             "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION", "RECIPE",
             "CUSTOMER", "LOYALTY", "APPOINTMENT",
-            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE", "TAX_DECLARATION",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
             "NOTIFICATION", "FEEDBACK", "GOOGLE_DRIVE"
@@ -283,7 +286,7 @@ public class TenantProvisioningService {
             "ORDER", "ORDER_VIEW_ALL", "POS",
             "PRODUCT", "PROMOTION",
             "CUSTOMER", "LOYALTY", "APPOINTMENT", "BOOKING",
-            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE", "TAX_DECLARATION",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
             "NOTIFICATION", "FEEDBACK"
@@ -295,7 +298,7 @@ public class TenantProvisioningService {
             "ORDER", "ORDER_VIEW_ALL", "POS",
             "PRODUCT", "PROMOTION",
             "CUSTOMER", "LOYALTY", "APPOINTMENT",
-            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE", "TAX_DECLARATION",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
             "NOTIFICATION", "FEEDBACK", "GOOGLE_DRIVE"
@@ -306,7 +309,7 @@ public class TenantProvisioningService {
             "ORDER", "ORDER_VIEW_ALL", "POS", "TABLE_SERVICE", "BOOKING",
             "PRODUCT", "INVENTORY", "STOCK_TAKE", "VENDOR", "PROMOTION",
             "CUSTOMER", "LOYALTY", "APPOINTMENT",
-            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE", "TAX_DECLARATION",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
             "NOTIFICATION", "FEEDBACK"
@@ -321,7 +324,7 @@ public class TenantProvisioningService {
             "ORDER", "ORDER_VIEW_ALL", "POS", "BOOKING",
             "PRODUCT", "INVENTORY", "PROMOTION",
             "CUSTOMER", "LOYALTY", "APPOINTMENT",
-            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE", "TAX_DECLARATION",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
             "NOTIFICATION", "FEEDBACK"
@@ -338,7 +341,7 @@ public class TenantProvisioningService {
             "REPAIR", "REPAIR_VIEW_ALL",
             "TRADE_IN", "TRADE_IN_VIEW_ALL",
             "INSTALLMENT", "INSTALLMENT_VIEW_ALL",
-            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE", "TAX_DECLARATION",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL", "COMMISSION", "COMMISSION_VIEW_ALL",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
             "NOTIFICATION", "FEEDBACK", "UTILITIES"
@@ -350,7 +353,7 @@ public class TenantProvisioningService {
             "ORDER", "ORDER_VIEW_ALL", "POS",
             "PRODUCT", "INVENTORY", "VENDOR", "PROMOTION",
             "CUSTOMER", "LOYALTY",
-            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE",
+            "REVENUE", "EXPENSE", "ACCOUNTING", "INVOICE", "TAX_DECLARATION",
             "EMPLOYEE", "SALARY", "SALARY_VIEW_ALL",
             "USER", "SHOP_INFO", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
             "NOTIFICATION", "FEEDBACK"

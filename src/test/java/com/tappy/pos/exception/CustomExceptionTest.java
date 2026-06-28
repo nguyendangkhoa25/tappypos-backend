@@ -323,79 +323,6 @@ class CustomExceptionTest {
         }).isInstanceOf(RuntimeException.class);
     }
 
-    // ============= TenantExpiredException Tests =============
-
-    @Test
-    @DisplayName("Should create TenantExpiredException with tenantId and expirationDate")
-    void testTenantExpiredException_WithTenantIdAndDate() {
-        // Given
-        String tenantId = "kim-ngan-phat";
-        String expirationDate = "2026-03-15";
-
-        // When
-        TenantExpiredException exception = new TenantExpiredException(tenantId, expirationDate);
-
-        // Then
-        assertThat(exception).isNotNull();
-        assertThat(exception.getTenantId()).isEqualTo(tenantId);
-        assertThat(exception.getExpirationDate()).isEqualTo(expirationDate);
-        assertThat(exception.getMessage()).contains(tenantId);
-        assertThat(exception.getMessage()).contains(expirationDate);
-        assertThat(exception).isInstanceOf(RuntimeException.class);
-    }
-
-    @Test
-    @DisplayName("Should format message correctly in TenantExpiredException")
-    void testTenantExpiredException_MessageFormat() {
-        // Given
-        String tenantId = "test-tenant";
-        String expirationDate = "2025-12-31";
-
-        // When
-        TenantExpiredException exception = new TenantExpiredException(tenantId, expirationDate);
-
-        // Then
-        assertThat(exception.getMessage())
-                .contains("test-tenant")
-                .contains("2025-12-31")
-                .contains("expired")
-                .contains("support");
-    }
-
-    @Test
-    @DisplayName("Should be throwable - TenantExpiredException")
-    void testTenantExpiredException_IsThrowable() {
-        // When & Then
-        assertThatThrownBy(() -> {
-            throw new TenantExpiredException("tenant-1", "2026-01-01");
-        }).isInstanceOf(TenantExpiredException.class);
-    }
-
-    @Test
-    @DisplayName("Should be catchable as RuntimeException - TenantExpiredException")
-    void testTenantExpiredException_CatchableAsRuntimeException() {
-        // When & Then
-        assertThatThrownBy(() -> {
-            throw new TenantExpiredException("tenant-1", "2026-01-01");
-        }).isInstanceOf(RuntimeException.class);
-    }
-
-    @Test
-    @DisplayName("Should have correct getter methods in TenantExpiredException")
-    void testTenantExpiredException_Getters() {
-        // Given
-        String tenantId = "my-tenant";
-        String expirationDate = "2026-06-30";
-
-        // When
-        TenantExpiredException exception = new TenantExpiredException(tenantId, expirationDate);
-
-        // Then
-        assertThat(exception.getTenantId()).isNotNull();
-        assertThat(exception.getTenantId()).isEqualTo(tenantId);
-        assertThat(exception.getExpirationDate()).isNotNull();
-        assertThat(exception.getExpirationDate()).isEqualTo(expirationDate);
-    }
 
     @Test
     @DisplayName("Should handle null message in exception constructors")
@@ -501,7 +428,6 @@ class CustomExceptionTest {
         assertThat(UnauthorizedException.class.getSuperclass()).isEqualTo(RuntimeException.class);
         assertThat(ForbiddenException.class.getSuperclass()).isEqualTo(RuntimeException.class);
         assertThat(BusinessException.class.getSuperclass()).isEqualTo(RuntimeException.class);
-        assertThat(TenantExpiredException.class.getSuperclass()).isEqualTo(RuntimeException.class);
     }
 
     @Test

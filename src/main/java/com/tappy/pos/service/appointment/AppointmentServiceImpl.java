@@ -15,6 +15,7 @@ import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.audit.ActivityLogService;
 import com.tappy.pos.model.i18n.LocalizedText;
 import com.tappy.pos.service.notification.NotificationService;
+import com.tappy.pos.util.MessageArgs;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -136,6 +137,8 @@ public class AppointmentServiceImpl implements AppointmentService {
                 .durationMinutes(30)
                 .status("PENDING")
                 .note(messageService.getMessage("appointment.preorder.pickup.note"))
+                .noteKey("appointment.preorder.pickup.note")
+                .noteArgs(null)
                 .linkedOrderId(orderId)
                 .createdBy(currentUsername())
                 .reminderSent(false)
@@ -365,6 +368,22 @@ public class AppointmentServiceImpl implements AppointmentService {
                 .build();
     }
 
+    /**
+     * Render a note field: prefer the i18n key (in the reader's locale) for system-generated
+     * text; fall back to the literal value for user-authored text and pre-V006 rows.
+     */
+    private String render(String key, String argsJson, String literal) {
+        if (key == null || key.isBlank()) {
+            return literal;
+        }
+        try {
+            return messageService.getMessage(key, MessageArgs.fromJson(argsJson));
+        } catch (Exception e) {
+            log.warn("Appointment: failed to render key={}: {}", key, e.getMessage());
+            return literal != null ? literal : key;
+        }
+    }
+
     private AppointmentDTO mapToDTO(Appointment a) {
         return mapToDTO(a, List.of());
     }
@@ -383,7 +402,7 @@ public class AppointmentServiceImpl implements AppointmentService {
                 .scheduledStartTime(a.getScheduledStartTime())
                 .durationMinutes(a.getDurationMinutes())
                 .status(a.getStatus())
-                .note(a.getNote())
+                .note(render(a.getNoteKey(), a.getNoteArgs(), a.getNote()))
                 .linkedOrderId(a.getLinkedOrderId())
                 .createdBy(a.getCreatedBy())
                 .createdAt(a.getCreatedAt())

@@ -60,6 +60,17 @@ public class ProductServiceImpl implements ProductService {
     private final R2StorageService r2StorageService;
     private final R2CleanupService r2CleanupService;
     private final com.tappy.pos.repository.order.OrderItemRepository orderItemRepository;
+    private final com.tappy.pos.service.tenant.ShopConfigService shopConfigService;
+
+    /** GS1 prefix for in-store / restricted-distribution barcodes (Vietnam: 20–29). */
+    private static final String INTERNAL_BARCODE_PREFIX = "20";
+
+    // Upper bound for the auto-generated 10-digit sequence. The generator starts at 1 and increments,
+    // so a value anywhere near this ceiling in the existing data is a user-entered/imported GS1 "20"
+    // barcode that merely shares the prefix — not one we generated. Treating it as "the next sequence"
+    // would (a) poison maxSeq and (b) overflow into an 11-digit string ("20"+11 = 13 chars), which
+    // BarcodeValidator rejects, breaking every subsequent no-barcode product save. Ignore such values.
+    private static final long MAX_INTERNAL_BARCODE_SEQ = 9_000_000_000L;
 
     @Override
     public ProductDTO createProduct(CreateProductRequest request) {
@@ -91,7 +102,7 @@ public class ProductServiceImpl implements ProductService {
                 .tenantId(tenantContext.getCurrentTenantId())
                 .productType(productType)
                 .sku(request.getSku())
-                .barcode(request.getBarcode())
+                .barcode(resolveBarcode(request.getBarcode()))
                 .name(request.getName())
                 .description(request.getDescription())
                 .price(request.getPrice())
@@ -249,7 +260,17 @@ public class ProductServiceImpl implements ProductService {
 
         product.setName(request.getName());
         product.setDescription(request.getDescription());
-        product.setBarcode(request.getBarcode());
+        // Barcode update rules:
+        //  - a non-blank value          → set it (the entered/scanned barcode)
+        //  - an explicit blank ("")      → the user cleared the field → remove the barcode
+        //  - omitted (null)              → no change; auto-generate only when none exists yet
+        if (request.getBarcode() != null && !request.getBarcode().isBlank()) {
+            product.setBarcode(request.getBarcode().trim());
+        } else if (request.getBarcode() != null) {
+            product.setBarcode(null);
+        } else if (product.getBarcode() == null || product.getBarcode().isBlank()) {
+            product.setBarcode(resolveBarcode(null));
+        }
         product.setPrice(request.getPrice());
         product.setCostPrice(request.getCostPrice() != null ? request.getCostPrice() : java.math.BigDecimal.ZERO);
         // commissionRate: null = inherit employee default; explicit value (incl. 0) = override
@@ -500,8 +521,35 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public Page<ProductDTO> searchProducts(String searchTerm, Pageable pageable) {
-        log.info("Searching products with term: {}", searchTerm);
-        Page<Product> products = productRepository.searchByKeyword(searchTerm.toLowerCase(), pageable);
+        return searchProducts(searchTerm, null, pageable);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ProductDTO> searchProducts(String searchTerm, Long categoryId, Pageable pageable) {
+        log.info("Searching products with term: {}, categoryId: {}", searchTerm, categoryId);
+        Page<Product> products = categoryId != null
+                ? productRepository.searchByKeywordAndCategoryId(searchTerm.toLowerCase(), categoryId, pageable)
+                : productRepository.searchByKeyword(searchTerm.toLowerCase(), pageable);
+        return mapProductPageWithFlags(products);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ProductDTO> searchProducts(String searchTerm, Long categoryId, Long productTypeId, boolean pawnOriginOnly, Pageable pageable) {
+        // No type/pawn filter → reuse the simpler paths (preserves the plain searchByKeyword call shape)
+        if (productTypeId == null && !pawnOriginOnly) {
+            return searchProducts(searchTerm, categoryId, pageable);
+        }
+        log.info("Searching products with term: {}, categoryId: {}, productTypeId: {}, pawnOriginOnly: {}",
+                searchTerm, categoryId, productTypeId, pawnOriginOnly);
+        Page<Product> products = productRepository.searchByKeywordFiltered(
+                searchTerm.toLowerCase(), categoryId, productTypeId, pawnOriginOnly, pageable);
+        return mapProductPageWithFlags(products);
+    }
+
+    /** Maps a product page to DTOs, attaching the has-variants / has-modifiers flags in one batch. */
+    private Page<ProductDTO> mapProductPageWithFlags(Page<Product> products) {
         List<Long> productIds = products.getContent().stream().map(Product::getId).collect(Collectors.toList());
         Set<Long> productIdsWithVariants = productIds.isEmpty()
                 ? Collections.emptySet()
@@ -578,6 +626,46 @@ public class ProductServiceImpl implements ProductService {
         String sku = String.format("%s-%03d", prefix, nextSeq);
         log.info("Generated SKU: {}", sku);
         return sku;
+    }
+
+    /**
+     * Resolves the barcode to persist: the user-entered value when present, otherwise an
+     * auto-generated internal EAN-13 — but only when the shop has AUTO_GENERATE_BARCODE enabled
+     * (default on). Returns null when there is no barcode and auto-generation is off.
+     */
+    private String resolveBarcode(String requested) {
+        if (requested != null && !requested.isBlank()) return requested.trim();
+        boolean autoGen = shopConfigService.getBoolean(
+                com.tappy.pos.model.enums.ShopConfigKey.AUTO_GENERATE_BARCODE, true);
+        return autoGen ? generateInternalBarcode() : null;
+    }
+
+    /**
+     * Generates a unique, valid internal EAN-13 for products created without a manufacturer
+     * barcode: "20" (GS1 in-store prefix) + a 10-digit per-tenant sequence + GS1 check digit.
+     * The unique {@code (barcode, tenant_id)} index is the final guard against collisions.
+     */
+    private String generateInternalBarcode() {
+        List<String> existing = productRepository.findBarcodesByPrefix(INTERNAL_BARCODE_PREFIX);
+        long maxSeq = 0L;
+        for (String code : existing) {
+            if (code == null || code.length() != 13) continue;
+            try {
+                long seq = Long.parseLong(code.substring(2, 12));
+                // Skip implausibly large values — they're user-entered/imported "20" barcodes, not ours,
+                // and counting them would exhaust the 10-digit space (see MAX_INTERNAL_BARCODE_SEQ).
+                if (seq > MAX_INTERNAL_BARCODE_SEQ) continue;
+                if (seq > maxSeq) maxSeq = seq;
+            } catch (NumberFormatException ignored) { /* skip non-internal barcodes sharing the prefix */ }
+        }
+        for (long seq = maxSeq + 1; seq <= maxSeq + 50 && seq <= MAX_INTERNAL_BARCODE_SEQ; seq++) {
+            String base12 = INTERNAL_BARCODE_PREFIX + String.format("%010d", seq);
+            String ean13 = base12 + BarcodeValidator.computeEan13CheckDigit(base12);
+            if (productRepository.findByBarcodeAndDeletedFalse(ean13).isEmpty()) {
+                return ean13;
+            }
+        }
+        throw new IllegalStateException("Could not generate a unique barcode after 50 attempts");
     }
 
     private String buildSkuPrefix(String name, String typeCode) {

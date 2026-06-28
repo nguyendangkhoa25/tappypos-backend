@@ -48,6 +48,14 @@ public class Appointment extends TenantAwareEntity {
     @Column(name = "note", columnDefinition = "TEXT")
     private String note;
 
+    /** i18n message key for system-generated note text (render-at-read); null for user-authored notes. */
+    @Column(name = "note_key", length = 150)
+    private String noteKey;
+
+    /** JSON-encoded message args for {@link #noteKey} (see {@code MessageArgs}). */
+    @Column(name = "note_args", columnDefinition = "TEXT")
+    private String noteArgs;
+
     @Column(name = "linked_order_id")
     private Long linkedOrderId;
 
