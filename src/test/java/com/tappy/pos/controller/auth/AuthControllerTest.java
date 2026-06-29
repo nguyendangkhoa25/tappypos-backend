@@ -5,6 +5,7 @@ import com.tappy.pos.config.AuthContext;
 import com.tappy.pos.config.FeatureContext;
 import com.tappy.pos.config.JwtAuthenticationEntryPoint;
 import com.tappy.pos.config.JwtTokenProvider;
+import com.tappy.pos.config.AppConfig;
 import com.tappy.pos.config.SecurityConfig;
 import com.tappy.pos.exception.DeviceConflictException;
 import com.tappy.pos.model.dto.auth.AuthResponse;
@@ -14,6 +15,7 @@ import com.tappy.pos.multitenant.TenantInterceptor;
 import com.tappy.pos.service.MessageService;
 import com.tappy.pos.service.auth.AuthService;
 import com.tappy.pos.service.auth.PasswordResetService;
+import com.tappy.pos.service.auth.PhoneVerificationService;
 import com.tappy.pos.service.auth.SessionInfo;
 import com.tappy.pos.service.auth.SessionRegistry;
 import com.tappy.pos.service.auth.TurnstileService;
@@ -63,6 +65,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @WebMvcTest(AuthController.class)
 @Import({
+        AppConfig.class,   // Jackson-2 ObjectMapper (Boot 4 slice default is Jackson 3)
         SecurityConfig.class,
         JwtTokenProvider.class,
         AuthContext.class,
@@ -87,6 +90,7 @@ class AuthControllerTest {
     @MockitoBean AuthService                  authService;
     @MockitoBean TurnstileService             turnstileService;
     @MockitoBean PasswordResetService         passwordResetService;
+    @MockitoBean PhoneVerificationService     phoneVerificationService;
 
     @BeforeEach
     void setUp() throws Exception {

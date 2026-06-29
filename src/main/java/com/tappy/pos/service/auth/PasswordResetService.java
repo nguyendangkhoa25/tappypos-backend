@@ -6,6 +6,8 @@ import com.tappy.pos.model.entity.auth.User;
 import com.tappy.pos.repository.auth.PasswordResetOtpRepository;
 import com.tappy.pos.repository.auth.UserRepository;
 import com.tappy.pos.service.MessageService;
+import com.tappy.pos.service.messaging.TappyMessageClient;
+import com.tappy.pos.util.PhoneUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -22,10 +24,10 @@ import java.util.HexFormat;
 import java.util.UUID;
 
 /**
- * Forgot-password flow via Zalo ZNS OTP.
+ * Forgot-password flow via the Tappy Message OTP service.
  *
  * Three steps:
- *  1. requestOtp(phone)          — lookup user, issue OTP, fire ZNS send (async)
+ *  1. requestOtp(phone)          — lookup user, issue OTP, send via the message service
  *  2. verifyOtp(phone, otp)      — validate OTP, return short-lived resetToken
  *  3. resetPassword(token, pwd)  — validate token, hash new password, mark used
  *
@@ -52,7 +54,7 @@ public class PasswordResetService {
     private final PasswordResetOtpRepository otpRepository;
     private final UserRepository             userRepository;
     private final PasswordEncoder            passwordEncoder;
-    private final ZaloZnsService             zaloZnsService;
+    private final TappyMessageClient         tappyMessageClient;
     private final MessageService             messageService;
 
     // ── Step 1 ────────────────────────────────────────────────────────────────
@@ -71,8 +73,8 @@ public class PasswordResetService {
      */
     @Transactional
     public String requestOtp(String rawPhone, String ipAddress) {
-        String phone = ZaloZnsService.normalizePhone(rawPhone);
-        String masked = ZaloZnsService.maskPhone(phone);
+        String phone = PhoneUtil.normalizePhone(rawPhone);
+        String masked = PhoneUtil.maskPhone(phone);
 
         // Rate-limit: ≤ MAX_RESENDS_PER_WINDOW requests in the past RESEND_WINDOW_MINUTES.
         // Exceeding it stops silently (no 429): only a registered phone can ever accumulate OTP
@@ -89,7 +91,7 @@ public class PasswordResetService {
         // Users are stored in the local "0..." form (registration keeps the number as typed),
         // so look up by the local form first, then fall back to the "84..." form for any
         // legacy rows that may have been persisted normalized.
-        String localPhone = ZaloZnsService.localizePhone(phone);
+        String localPhone = PhoneUtil.localizePhone(phone);
         var userOpt = userRepository.findByPhoneGlobal(localPhone);
         if (userOpt.isEmpty() && !localPhone.equals(phone)) {
             userOpt = userRepository.findByPhoneGlobal(phone);
@@ -116,16 +118,17 @@ public class PasswordResetService {
                 .build();
         otpRepository.save(record);
 
-        // Best-effort delivery: never surface a delivery failure to the caller. Both "not on Zalo"
-        // and transient send errors can only occur for a REGISTERED phone, so propagating them would
-        // leak account existence. Failures are logged; the user can simply request a new code.
-        try {
-            zaloZnsService.sendOtpSync(phone, otp, record.getId());
+        // Best-effort delivery: never surface a delivery failure to the caller. A failed send (bad
+        // recipient, provider rejection, transient error) can only occur for a REGISTERED phone, so
+        // propagating it would leak account existence. The client never throws; we inspect its Result
+        // only to log. The user can simply request a new code.
+        TappyMessageClient.Result result = tappyMessageClient.sendOtp(phone, otp, record.getId());
+        if (result.sent()) {
             log.info("[OTP] Issued for user={} phone={} rowId={}",
                     user.getUsername(), masked, record.getId());
-        } catch (RuntimeException e) {
-            log.warn("[OTP] Delivery failed (best-effort) for phone={} rowId={}: {}",
-                    masked, record.getId(), e.toString());
+        } else {
+            log.warn("[OTP] Delivery failed (best-effort) for phone={} rowId={}: errorCode={}",
+                    masked, record.getId(), result.errorCode());
         }
         return masked;
     }
@@ -140,8 +143,8 @@ public class PasswordResetService {
      * @throws ResponseStatusException   429 when OTP is LOCKED
      */
     public String verifyOtp(String rawPhone, String submittedOtp) {
-        String phone  = ZaloZnsService.normalizePhone(rawPhone);
-        String masked = ZaloZnsService.maskPhone(phone);
+        String phone  = PhoneUtil.normalizePhone(rawPhone);
+        String masked = PhoneUtil.maskPhone(phone);
 
         PasswordResetOtp record = otpRepository.findLatestPendingByPhone(phone)
                 .orElseThrow(() -> new BadRequestException(

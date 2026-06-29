@@ -10,11 +10,9 @@ import com.tappy.pos.repository.appointment.AppointmentRepository;
 import com.tappy.pos.repository.order.OrderRepository;
 import com.tappy.pos.repository.pawn.PawnRepository;
 import com.tappy.pos.service.MessageService;
-import com.tappy.pos.service.auth.ZaloZnsService;
 import com.tappy.pos.model.i18n.LocalizedText;
+import com.tappy.pos.service.messaging.TappyMessageClient;
 import com.tappy.pos.service.notification.NotificationService;
-import com.tappy.pos.service.tenant.ZaloMessageTemplateService;
-import com.tappy.pos.service.tenant.ZaloOaService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -47,9 +45,7 @@ public class SchedulerNotificationHelper {
     private final AppointmentRepository appointmentRepository;
     private final NotificationService notificationService;
     private final MessageService messageService;
-    private final ZaloZnsService zaloZnsService;
-    private final ZaloMessageTemplateService zaloMessageTemplateService;
-    private final ZaloOaService zaloOaService;
+    private final TappyMessageClient tappyMessageClient;
 
     /** How many days before its due date a pawn contract triggers a borrower ZNS reminder. */
     @Value("${pawn.due.reminder-lead-days:3}")
@@ -120,10 +116,10 @@ public class SchedulerNotificationHelper {
     }
 
     /**
-     * Sends a Zalo ZNS reminder to every borrower whose active contract falls due
-     * exactly {@code reminderLeadDays} days from {@code today}. Each contract is reminded
-     * once (a single due date hits the window on a single scheduler run). Fire-and-forget;
-     * a missing ZNS template simply skips the tenant.
+     * Sends a Zalo reminder (via the Tappy Message service) to every borrower whose active contract
+     * falls due exactly {@code reminderLeadDays} days from {@code today}. Each contract is reminded
+     * once (a single due date hits the window on a single scheduler run). Fire-and-forget; the client
+     * no-ops when no pawn-due-reminder template is configured.
      */
     private void sendPawnDueCustomerReminders(Tenant tenant, LocalDate today) {
         LocalDate target = today.plusDays(reminderLeadDays);
@@ -133,16 +129,6 @@ public class SchedulerNotificationHelper {
         List<Object[]> due = pawnRepository.findDueForCustomerReminder(PawnStatus.PAWNED, from, to);
         if (due.isEmpty()) return;
 
-        String templateId = zaloMessageTemplateService.getDefaultTemplateId(
-                ZaloMessageTemplateService.PAWN_DUE_REMINDER);
-        if (templateId == null) {
-            log.debug("No PAWN_DUE_REMINDER ZNS template for tenant {} — skipping {} borrower reminder(s)",
-                    tenant.getTenantId(), due.size());
-            return;
-        }
-
-        // Tenant's own OA access token (null → ZNS service falls back to platform token).
-        String tenantAccessToken = zaloOaService.getAccessToken();
         NumberFormat vnNum = NumberFormat.getNumberInstance(new Locale("vi"));
 
         for (Object[] row : due) {
@@ -155,8 +141,7 @@ public class SchedulerNotificationHelper {
             String amountStr = vnNum.format(amount == null ? BigDecimal.ZERO : amount) + " ₫";
             String dateStr = dueDate.format(DATE_FMT);
 
-            zaloZnsService.sendPawnDueReminderAsync(
-                    phone, customerName, amountStr, dateStr, pawnId, templateId, tenantAccessToken);
+            tappyMessageClient.sendPawnDueReminder(phone, customerName, amountStr, dateStr, pawnId);
         }
         log.info("Pawn due borrower reminders queued for tenant {}: {} contract(s)",
                 tenant.getTenantId(), due.size());
@@ -164,8 +149,8 @@ public class SchedulerNotificationHelper {
 
     /**
      * Finds appointments scheduled in the 60-minute window starting from
-     * {@code windowStart}, sends a Zalo ZNS reminder to each customer (if they
-     * have a phone number), then marks {@code reminderSent = true}.
+     * {@code windowStart}, sends a Zalo reminder (via the Tappy Message service) to each customer
+     * (if they have a phone number), then marks {@code reminderSent = true}.
      * TenantContext must be set by the caller before invoking this method.
      */
     @Transactional
@@ -178,13 +163,6 @@ public class SchedulerNotificationHelper {
 
         if (due.isEmpty()) return;
 
-        // Look up the tenant's configured template ID (falls back to global config).
-        String templateId = zaloMessageTemplateService.getDefaultTemplateId(
-                ZaloMessageTemplateService.APPOINTMENT_REMINDER);
-
-        // Look up the tenant's own OA access token (null → ZNS service falls back to platform token).
-        String tenantAccessToken = zaloOaService.getAccessToken();
-
         for (Appointment appt : due) {
             try {
                 if (appt.getCustomerPhone() != null && !appt.getCustomerPhone().isBlank()) {
@@ -196,9 +174,9 @@ public class SchedulerNotificationHelper {
                     String time = appt.getScheduledStartTime().format(TIME_FMT);
                     String date = appt.getScheduledDate().format(DATE_FMT);
 
-                    zaloZnsService.sendAppointmentReminderAsync(
+                    tappyMessageClient.sendAppointmentReminder(
                             appt.getCustomerPhone(), appt.getCustomerName(),
-                            serviceNames, time, date, appt.getId(), templateId, tenantAccessToken);
+                            serviceNames, time, date, appt.getId());
                 }
             } finally {
                 // Mark sent regardless of whether the phone number exists or ZNS succeeds,

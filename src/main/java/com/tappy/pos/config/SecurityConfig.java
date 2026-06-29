@@ -1,13 +1,13 @@
 package com.tappy.pos.config;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
@@ -23,6 +23,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
+    private final com.tappy.pos.service.MessageService messageService;
 
     /**
      * Configure security filter chain
@@ -44,6 +45,9 @@ public class SecurityConfig {
                         .requestMatchers("/auth/login").permitAll()
                         .requestMatchers("/auth/login/force").permitAll()
                         .requestMatchers("/auth/register").permitAll()
+                        .requestMatchers("/auth/register/send-otp").permitAll()
+                        .requestMatchers("/auth/register/resend-otp").permitAll()
+                        .requestMatchers("/auth/register/verify-otp").permitAll()
                         .requestMatchers("/auth/refresh").permitAll()
                         .requestMatchers("/auth/logout").permitAll()
                         .requestMatchers("/auth/profile").permitAll()
@@ -74,12 +78,32 @@ public class SecurityConfig {
     }
 
     /**
+     * Prevent Spring Boot from also registering {@link JwtAuthenticationFilter} as a standalone
+     * servlet filter. As a {@code @Component} extending {@code OncePerRequestFilter} it would
+     * otherwise run twice: once auto-registered in the servlet chain and once inside the Spring
+     * Security chain (via {@code addFilterBefore} above). Because it is a {@code OncePerRequestFilter},
+     * whichever copy runs first marks the request "already filtered" and the other is skipped — and if
+     * the standalone copy wins, {@code SecurityContextHolderFilter} then resets the context before
+     * authorization runs, dropping the authentication (surfaced as spurious 401s under MockMvc). The
+     * filter must run only within the security chain, so disable the auto-registration here.
+     */
+    @Bean
+    public FilterRegistrationBean<JwtAuthenticationFilter> jwtAuthenticationFilterRegistration(
+            JwtAuthenticationFilter filter) {
+        FilterRegistrationBean<JwtAuthenticationFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
+    /**
      * Password encoder bean for encoding user passwords
      * Uses BCrypt with 10 rounds
      */
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+        // BCrypt, but rejects > 72-byte passwords with a friendly localized 400 instead of
+        // Spring Security 7's raw "password cannot be more than 72 bytes" exception.
+        return new BoundedBCryptPasswordEncoder(messageService);
     }
 }
 

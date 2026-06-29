@@ -11,7 +11,9 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for SecurityConfig
@@ -27,11 +29,14 @@ class SecurityConfigTest {
     @Mock
     private JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
 
+    @Mock
+    private com.tappy.pos.service.MessageService messageService;
+
     private SecurityConfig securityConfig;
 
     @BeforeEach
     void setUp() {
-        securityConfig = new SecurityConfig(jwtAuthenticationFilter, jwtAuthenticationEntryPoint);
+        securityConfig = new SecurityConfig(jwtAuthenticationFilter, jwtAuthenticationEntryPoint, messageService);
     }
 
     // ==================== PasswordEncoder Bean Tests ====================
@@ -47,13 +52,14 @@ class SecurityConfigTest {
     }
 
     @Test
-    @DisplayName("Should create BCryptPasswordEncoder")
+    @DisplayName("Should create a BCrypt-backed encoder (length-bounded wrapper)")
     void testPasswordEncoder_IsBCryptPasswordEncoder() {
         // When
         PasswordEncoder passwordEncoder = securityConfig.passwordEncoder();
 
-        // Then
-        assertThat(passwordEncoder).isInstanceOf(org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder.class);
+        // Then — the wrapper delegates to BCrypt, so the hash carries BCrypt's $2 prefix.
+        assertThat(passwordEncoder).isInstanceOf(BoundedBCryptPasswordEncoder.class);
+        assertThat(passwordEncoder.encode("pw")).startsWith("$2");
     }
 
     @Test
@@ -163,11 +169,13 @@ class SecurityConfigTest {
     }
 
     @Test
-    @DisplayName("Should handle very long password")
+    @DisplayName("Should handle a long password up to BCrypt's 72-byte limit")
     void testPasswordEncoder_LongPassword() {
-        // Given
+        // Given — BCrypt only considers the first 72 bytes. Spring Security 7's BCryptPasswordEncoder
+        // now rejects anything longer with IllegalArgumentException instead of silently truncating, so
+        // exercise the maximum supported length.
         PasswordEncoder passwordEncoder = securityConfig.passwordEncoder();
-        String longPassword = "a".repeat(500);
+        String longPassword = "a".repeat(72);
 
         // When
         String encodedPassword = passwordEncoder.encode(longPassword);
@@ -175,6 +183,21 @@ class SecurityConfigTest {
 
         // Then
         assertThat(matches).isTrue();
+    }
+
+    @Test
+    @DisplayName("Should reject a password over BCrypt's 72-byte limit with a friendly BadRequestException")
+    void testPasswordEncoder_TooLongPassword_throwsBadRequest() {
+        // Given — Spring Security 7's BCrypt throws a raw IllegalArgumentException for > 72 bytes;
+        // our encoder turns that into a localized BadRequestException instead.
+        when(messageService.getMessage("error.password.too.long")).thenReturn("Password is too long.");
+        PasswordEncoder passwordEncoder = securityConfig.passwordEncoder();
+        String tooLong = "a".repeat(73);
+
+        // When / Then
+        assertThatThrownBy(() -> passwordEncoder.encode(tooLong))
+                .isInstanceOf(com.tappy.pos.exception.BadRequestException.class)
+                .hasMessage("Password is too long.");
     }
 
     @Test

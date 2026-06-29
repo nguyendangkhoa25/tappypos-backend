@@ -6,6 +6,7 @@ import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.http.*;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
@@ -35,6 +36,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+// Spring Boot 4 no longer auto-registers TestRestTemplate from @SpringBootTest alone — opt in.
+@AutoConfigureTestRestTemplate
 @ActiveProfiles("dev")
 @DisplayName("Pharmacy prescription badge — full stack on real Postgres")
 class PharmacyPrescriptionBadgeIntegrationTest {

@@ -1,13 +1,12 @@
 package com.tappy.pos.service.auth;
 
 import com.tappy.pos.exception.BadRequestException;
-import com.tappy.pos.exception.ZaloSendException;
-import com.tappy.pos.exception.ZaloUserNotReachableException;
 import com.tappy.pos.model.entity.auth.PasswordResetOtp;
 import com.tappy.pos.model.entity.auth.User;
 import com.tappy.pos.repository.auth.PasswordResetOtpRepository;
 import com.tappy.pos.repository.auth.UserRepository;
 import com.tappy.pos.service.MessageService;
+import com.tappy.pos.service.messaging.TappyMessageClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -29,7 +28,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -42,7 +40,7 @@ class PasswordResetServiceTest {
     @Mock private PasswordResetOtpRepository otpRepository;
     @Mock private UserRepository userRepository;
     @Mock private PasswordEncoder passwordEncoder;
-    @Mock private ZaloZnsService zaloZnsService;
+    @Mock private TappyMessageClient tappyMessageClient;
     @Mock private MessageService messageService;
 
     @InjectMocks
@@ -54,6 +52,9 @@ class PasswordResetServiceTest {
     void setUp() {
         when(messageService.getMessage(anyString())).thenAnswer(i -> i.getArgument(0));
         when(messageService.getMessage(anyString(), any(Object[].class))).thenAnswer(i -> i.getArgument(0));
+        // Default: a successful send. Individual tests override for the failure path.
+        when(tappyMessageClient.sendOtp(anyString(), anyString(), anyLong()))
+                .thenReturn(new TappyMessageClient.Result(true, null));
         user = new User();
         user.setId(5L);
         user.setUsername("bob");
@@ -62,7 +63,7 @@ class PasswordResetServiceTest {
     // ── requestOtp ─────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("requestOtp issues OTP and fires ZNS for a registered phone")
+    @DisplayName("requestOtp issues OTP and sends via the message client for a registered phone")
     void requestOtp_registered() {
         when(otpRepository.countRecentRequestsByPhone(eq("84912345678"), any())).thenReturn(1);
         // User is stored in local "0..." form (registration keeps the number as typed);
@@ -82,12 +83,12 @@ class PasswordResetServiceTest {
         assertThat(cap.getValue().getStatus()).isEqualTo("PENDING");
         assertThat(cap.getValue().getResendCount()).isEqualTo(1);
         assertThat(cap.getValue().getPhone()).isEqualTo("84912345678");
-        verify(zaloZnsService).sendOtpSync(eq("84912345678"), anyString(), eq(11L));
+        verify(tappyMessageClient).sendOtp(eq("84912345678"), anyString(), eq(11L));
     }
 
     @Test
-    @DisplayName("requestOtp swallows ZaloUserNotReachableException (best-effort) — identical 200, row kept")
-    void requestOtp_notOnZalo() {
+    @DisplayName("requestOtp returns identical 200 (row kept) when the send fails — best-effort, anti-enumeration")
+    void requestOtp_sendFailed() {
         when(otpRepository.countRecentRequestsByPhone(anyString(), any())).thenReturn(0);
         // User is stored in local "0..." form (registration keeps the number as typed);
         // the lookup must use that form, not the "84..." send form.
@@ -97,34 +98,14 @@ class PasswordResetServiceTest {
             r.setId(12L);
             return r;
         });
-        doThrow(new ZaloUserNotReachableException("Zalo error -124"))
-                .when(zaloZnsService).sendOtpSync(eq("84912345678"), anyString(), eq(12L));
+        // The client never throws — a failed delivery comes back as a Result, swallowed by the service.
+        when(tappyMessageClient.sendOtp(eq("84912345678"), anyString(), eq(12L)))
+                .thenReturn(new TappyMessageClient.Result(false, "ZALO_USER_NOT_REACHABLE"));
 
-        // No exception leaks out — same response as every other path (anti-enumeration)
         String masked = service.requestOtp("0912345678", "ip");
 
         assertThat(masked).contains("***");
         verify(otpRepository).save(any());   // row kept (counts toward rate limit)
-    }
-
-    @Test
-    @DisplayName("requestOtp swallows ZaloSendException on a transient send failure — identical 200")
-    void requestOtp_sendFailed() {
-        when(otpRepository.countRecentRequestsByPhone(anyString(), any())).thenReturn(0);
-        // User is stored in local "0..." form (registration keeps the number as typed);
-        // the lookup must use that form, not the "84..." send form.
-        when(userRepository.findByPhoneGlobal("0912345678")).thenReturn(Optional.of(user));
-        when(otpRepository.save(any())).thenAnswer(i -> {
-            PasswordResetOtp r = i.getArgument(0);
-            r.setId(13L);
-            return r;
-        });
-        doThrow(new ZaloSendException("Zalo ZNS call error"))
-                .when(zaloZnsService).sendOtpSync(eq("84912345678"), anyString(), eq(13L));
-
-        String masked = service.requestOtp("0912345678", "ip");
-
-        assertThat(masked).contains("***");
     }
 
     @Test
@@ -137,7 +118,7 @@ class PasswordResetServiceTest {
 
         assertThat(masked).contains("***");
         verify(otpRepository, never()).save(any());
-        verify(zaloZnsService, never()).sendOtpSync(anyString(), anyString(), anyLong());
+        verify(tappyMessageClient, never()).sendOtp(anyString(), anyString(), anyLong());
     }
 
     @Test
@@ -149,7 +130,7 @@ class PasswordResetServiceTest {
 
         assertThat(masked).contains("***");
         verify(otpRepository, never()).save(any());
-        verify(zaloZnsService, never()).sendOtpSync(anyString(), anyString(), anyLong());
+        verify(tappyMessageClient, never()).sendOtp(anyString(), anyString(), anyLong());
     }
 
     // ── verifyOtp ──────────────────────────────────────────────────────────────

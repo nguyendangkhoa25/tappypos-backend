@@ -2,6 +2,7 @@ package com.tappy.pos.controller.order;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tappy.pos.aspect.FeatureAccessAspect;
+import com.tappy.pos.config.AppConfig;
 import com.tappy.pos.config.AuthContext;
 import com.tappy.pos.config.FeatureContext;
 import com.tappy.pos.config.JwtAuthenticationEntryPoint;
@@ -63,6 +64,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @WebMvcTest(OrderController.class)
 @Import({
+        AppConfig.class,   // provides the Jackson-2 ObjectMapper (Boot 4's slice default is Jackson 3)
         SecurityConfig.class,
         JwtTokenProvider.class,
         AuthContext.class,
@@ -319,7 +321,7 @@ class OrderControllerTest {
             when(orderService.getMyWorkStats(anyString(), any(), any(), any())).thenReturn(stats);
 
             mockMvc.perform(get("/orders/my-work/stats")
-                    .header("Authorization", bearerToken("ORDER"))
+                    .header("Authorization", bearerToken("MY_WORK"))
                     .header("X-Tenant-ID", TENANT_ID))
                    .andExpect(status().isOk())
                    .andExpect(jsonPath("$.data.pendingCount").value(3))
@@ -333,7 +335,7 @@ class OrderControllerTest {
             when(orderService.getMyPendingOrders(any(Pageable.class))).thenReturn(page);
 
             mockMvc.perform(get("/orders/my-work/pending")
-                    .header("Authorization", bearerToken("ORDER"))
+                    .header("Authorization", bearerToken("MY_WORK"))
                     .header("X-Tenant-ID", TENANT_ID))
                    .andExpect(status().isOk())
                    .andExpect(jsonPath("$.data.content[0].id").value(7));

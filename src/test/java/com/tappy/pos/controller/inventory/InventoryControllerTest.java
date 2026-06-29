@@ -6,6 +6,7 @@ import com.tappy.pos.config.AuthContext;
 import com.tappy.pos.config.FeatureContext;
 import com.tappy.pos.config.JwtAuthenticationEntryPoint;
 import com.tappy.pos.config.JwtTokenProvider;
+import com.tappy.pos.config.AppConfig;
 import com.tappy.pos.config.SecurityConfig;
 import com.tappy.pos.model.dto.inventory.CreateInventoryRequest;
 import com.tappy.pos.model.dto.inventory.InventoryDTO;
@@ -58,6 +59,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @WebMvcTest(InventoryController.class)
 @Import({
+        AppConfig.class,   // Jackson-2 ObjectMapper (Boot 4 slice default is Jackson 3)
         SecurityConfig.class,
         JwtTokenProvider.class,
         AuthContext.class,

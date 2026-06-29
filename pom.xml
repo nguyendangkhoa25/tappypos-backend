@@ -194,6 +194,13 @@
             <artifactId>spring-boot-resttestclient</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- TestRestTemplate's autoconfig (@AutoConfigureTestRestTemplate) needs RestTemplateBuilder,
+             which Spring Boot 4 split into the spring-boot-restclient module. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-restclient</artifactId>
+            <scope>test</scope>
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.security</groupId>

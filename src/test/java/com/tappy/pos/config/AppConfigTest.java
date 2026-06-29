@@ -6,9 +6,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.MediaType;
-import org.springframework.http.converter.HttpMessageConverter;
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDateTime;
@@ -33,23 +30,6 @@ class AppConfigTest {
 
         // Then
         assertThat(restTemplate).isNotNull();
-    }
-
-    @Test
-    @DisplayName("RestTemplate's Jackson converter accepts text/json (Zalo OAuth/ZNS reply type)")
-    void testRestTemplate_AcceptsTextJson() {
-        RestTemplate restTemplate = appConfig.restTemplate();
-
-        boolean textJsonSupported = false;
-        for (HttpMessageConverter<?> converter : restTemplate.getMessageConverters()) {
-            if (converter instanceof MappingJackson2HttpMessageConverter jackson
-                    && jackson.getSupportedMediaTypes().contains(MediaType.valueOf("text/json"))) {
-                textJsonSupported = true;
-                // canRead a Map from a text/json response — the exact path that failed in prod
-                assertThat(jackson.canRead(java.util.Map.class, MediaType.valueOf("text/json"))).isTrue();
-            }
-        }
-        assertThat(textJsonSupported).isTrue();
     }
 
     @Test

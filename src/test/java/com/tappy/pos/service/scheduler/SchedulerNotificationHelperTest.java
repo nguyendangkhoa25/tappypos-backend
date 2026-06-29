@@ -6,10 +6,8 @@ import com.tappy.pos.repository.appointment.AppointmentRepository;
 import com.tappy.pos.repository.order.OrderRepository;
 import com.tappy.pos.repository.pawn.PawnRepository;
 import com.tappy.pos.service.MessageService;
-import com.tappy.pos.service.auth.ZaloZnsService;
+import com.tappy.pos.service.messaging.TappyMessageClient;
 import com.tappy.pos.service.notification.NotificationService;
-import com.tappy.pos.service.tenant.ZaloMessageTemplateService;
-import com.tappy.pos.service.tenant.ZaloOaService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -40,9 +38,7 @@ class SchedulerNotificationHelperTest {
     @Mock private AppointmentRepository appointmentRepository;
     @Mock private NotificationService notificationService;
     @Mock private MessageService messageService;
-    @Mock private ZaloZnsService zaloZnsService;
-    @Mock private ZaloMessageTemplateService zaloMessageTemplateService;
-    @Mock private ZaloOaService zaloOaService;
+    @Mock private TappyMessageClient tappyMessageClient;
 
     @InjectMocks
     private SchedulerNotificationHelper helper;
@@ -98,42 +94,37 @@ class SchedulerNotificationHelperTest {
     }
 
     @Test
-    @DisplayName("sendPawnDueNotification: ZNS-reminds each borrower whose contract is upcoming-due")
-    void pawnDue_borrowerReminder_sendsZns() {
+    @DisplayName("sendPawnDueNotification: reminds each borrower whose contract is upcoming-due via the message client")
+    void pawnDue_borrowerReminder_sends() {
         when(pawnRepository.sumByPawnStatusAndPawnDueDateBetween(any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean()))
                 .thenReturn(List.of());
         when(pawnRepository.findDueForCustomerReminder(any(), any(), any()))
                 .thenReturn(List.<Object[]>of(new Object[]{
                         7L, "Khách B", "0900000001",
                         LocalDate.of(2026, 6, 23).atStartOfDay(), new BigDecimal("5000000")}));
-        when(zaloMessageTemplateService.getDefaultTemplateId(any())).thenReturn("pawn-tmpl-1");
-        when(zaloOaService.getAccessToken()).thenReturn("token-1");
 
         helper.sendPawnDueNotification(tenant());
 
-        verify(zaloZnsService).sendPawnDueReminderAsync(
-                anyString(), anyString(), anyString(), anyString(), anyLong(), anyString(), any());
+        verify(tappyMessageClient).sendPawnDueReminder(
+                anyString(), anyString(), anyString(), anyString(), anyLong());
     }
 
     @Test
-    @DisplayName("sendPawnDueNotification: upcoming-due but no ZNS template → no borrower reminder")
-    void pawnDue_borrowerReminder_noTemplate_skips() {
+    @DisplayName("sendPawnDueNotification: no upcoming-due contracts → no borrower reminder")
+    void pawnDue_borrowerReminder_noneDue_skips() {
         when(pawnRepository.sumByPawnStatusAndPawnDueDateBetween(any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean()))
                 .thenReturn(List.of());
         when(pawnRepository.findDueForCustomerReminder(any(), any(), any()))
-                .thenReturn(List.<Object[]>of(new Object[]{
-                        7L, "Khách B", "0900000001",
-                        LocalDate.of(2026, 6, 23).atStartOfDay(), new BigDecimal("5000000")}));
-        when(zaloMessageTemplateService.getDefaultTemplateId(any())).thenReturn(null);
+                .thenReturn(List.of());
 
         helper.sendPawnDueNotification(tenant());
 
-        verify(zaloZnsService, never()).sendPawnDueReminderAsync(
-                any(), any(), any(), any(), anyLong(), any(), any());
+        verify(tappyMessageClient, never()).sendPawnDueReminder(
+                any(), any(), any(), any(), anyLong());
     }
 
     @Test
-    @DisplayName("sendAppointmentReminders: sends a Zalo reminder per due appointment and marks them sent")
+    @DisplayName("sendAppointmentReminders: sends a reminder per due appointment and marks them sent")
     void appointmentReminders_withDue() {
         Appointment appt = Appointment.builder()
                 .customerName("Khách A")
@@ -145,25 +136,23 @@ class SchedulerNotificationHelperTest {
         appt.setId(1L);
         when(appointmentRepository.findDueForReminder(anyString(), any(), any(), any()))
                 .thenReturn(List.of(appt));
-        when(zaloMessageTemplateService.getDefaultTemplateId(any())).thenReturn("tmpl-1");
-        when(zaloOaService.getAccessToken()).thenReturn("token-1");
 
         helper.sendAppointmentReminders(tenant(), LocalTime.of(10, 0));
 
-        verify(zaloZnsService).sendAppointmentReminderAsync(
-                any(), any(), any(), any(), any(), anyLong(), any(), any());
+        verify(tappyMessageClient).sendAppointmentReminder(
+                any(), any(), any(), any(), any(), anyLong());
         verify(appointmentRepository).saveAll(any());
     }
 
     @Test
-    @DisplayName("sendAppointmentReminders: nothing due → no Zalo call")
+    @DisplayName("sendAppointmentReminders: nothing due → no message call")
     void appointmentReminders_empty() {
         when(appointmentRepository.findDueForReminder(anyString(), any(), any(), any()))
                 .thenReturn(List.of());
 
         helper.sendAppointmentReminders(tenant(), LocalTime.of(10, 0));
 
-        verify(zaloZnsService, never()).sendAppointmentReminderAsync(
-                any(), any(), any(), any(), any(), anyLong(), any(), any());
+        verify(tappyMessageClient, never()).sendAppointmentReminder(
+                any(), any(), any(), any(), any(), anyLong());
     }
 }
