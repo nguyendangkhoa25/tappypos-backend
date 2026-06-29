@@ -7,37 +7,30 @@ import com.fasterxml.jackson.databind.cfg.CoercionAction;
 import com.fasterxml.jackson.databind.cfg.CoercionInputShape;
 import com.fasterxml.jackson.databind.type.LogicalType;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import org.springframework.boot.jackson.autoconfigure.JsonMapperBuilderCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.MediaType;
-import org.springframework.http.converter.HttpMessageConverter;
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.web.client.RestTemplate;
-
-import java.util.ArrayList;
-import java.util.List;
 
 @Configuration
 public class AppConfig {
 
-    /** Zalo's OAuth + ZNS endpoints reply with Content-Type {@code text/json}, which the default
-     *  Jackson converter does not bind. Without this, every Zalo token refresh / send fails with
-     *  "no suitable HttpMessageConverter for response type Map and content type text/json". */
-    static final MediaType TEXT_JSON = MediaType.valueOf("text/json");
-
     @Bean
     public RestTemplate restTemplate() {
-        RestTemplate restTemplate = new RestTemplate();
-        for (HttpMessageConverter<?> converter : restTemplate.getMessageConverters()) {
-            if (converter instanceof MappingJackson2HttpMessageConverter jackson) {
-                List<MediaType> supported = new ArrayList<>(jackson.getSupportedMediaTypes());
-                if (!supported.contains(TEXT_JSON)) {
-                    supported.add(TEXT_JSON);
-                    jackson.setSupportedMediaTypes(supported);
-                }
-            }
-        }
-        return restTemplate;
+        return new RestTemplate();
+    }
+
+    /**
+     * Spring Boot 4's server MVC JSON converter is Jackson 3, which (unlike the Jackson 2 this app was
+     * built on) defaults {@code FAIL_ON_NULL_FOR_PRIMITIVES} to {@code true} — so a request that omits a
+     * primitive {@code boolean}/{@code int} field 500s instead of defaulting it. Turn it back off so the
+     * API keeps its pre-Boot-4 leniency. (The {@code spring.jackson.deserialization.*} property is not
+     * honored here because the user-defined Jackson 2 {@link ObjectMapper} bean above changes how the
+     * Jackson 3 mapper is built, so we set the feature directly on the Jackson 3 mapper builder.)
+     */
+    @Bean
+    public JsonMapperBuilderCustomizer failOnNullForPrimitivesDisabled() {
+        return builder -> builder.disable(tools.jackson.databind.DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES);
     }
 
     @Bean

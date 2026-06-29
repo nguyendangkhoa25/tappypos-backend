@@ -8,10 +8,17 @@ import com.tappy.pos.model.dto.auth.OtpRequestBody;
 import com.tappy.pos.model.dto.auth.OtpRequestResponse;
 import com.tappy.pos.model.dto.auth.OtpVerifyRequest;
 import com.tappy.pos.model.dto.auth.OtpVerifyResponse;
+import com.tappy.pos.model.dto.auth.RegisterOtpRequest;
+import com.tappy.pos.model.dto.auth.RegisterOtpResendRequest;
+import com.tappy.pos.model.dto.auth.RegisterOtpResponse;
+import com.tappy.pos.model.dto.auth.RegisterOtpVerifyRequest;
+import com.tappy.pos.model.dto.auth.RegisterOtpVerifyResponse;
+import com.tappy.pos.model.dto.auth.RegisterRequest;
 import com.tappy.pos.model.dto.auth.ResetPasswordRequest;
 import com.tappy.pos.model.dto.auth.UserDTO;
 import com.tappy.pos.service.auth.AuthService;
 import com.tappy.pos.service.auth.PasswordResetService;
+import com.tappy.pos.service.auth.PhoneVerificationService;
 import com.tappy.pos.service.auth.TurnstileService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -38,6 +45,7 @@ public class AuthController {
     private final AuthContext authContext;
     private final TurnstileService turnstileService;
     private final PasswordResetService passwordResetService;
+    private final PhoneVerificationService phoneVerificationService;
 
     /**
      * POST /api/auth/login
@@ -190,19 +198,56 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success(null, "PIN set up successfully"));
     }
 
+    /**
+     * POST /api/auth/register/send-otp
+     * Registration step 1: submit phone → receive an OTP via Zalo.
+     * Returns 409 if the phone is already registered (UI routes to login).
+     */
+    @PostMapping("/register/send-otp")
+    public ResponseEntity<ApiResponse<RegisterOtpResponse>> sendRegisterOtp(
+            @Valid @RequestBody RegisterOtpRequest body,
+            HttpServletRequest request) {
+        RegisterOtpResponse result = phoneVerificationService.sendOtp(body.getPhone(), resolveClientIp(request));
+        return ResponseEntity.ok(ApiResponse.success(result, "Mã OTP đã được gửi qua Zalo"));
+    }
+
+    /**
+     * POST /api/auth/register/resend-otp
+     * Registration step 1b: reissue the OTP for an existing verification (subject to a cooldown).
+     */
+    @PostMapping("/register/resend-otp")
+    public ResponseEntity<ApiResponse<RegisterOtpResponse>> resendRegisterOtp(
+            @Valid @RequestBody RegisterOtpResendRequest body,
+            HttpServletRequest request) {
+        RegisterOtpResponse result = phoneVerificationService.resendOtp(body.getVerificationId(), resolveClientIp(request));
+        return ResponseEntity.ok(ApiResponse.success(result, "Mã OTP đã được gửi lại qua Zalo"));
+    }
+
+    /**
+     * POST /api/auth/register/verify-otp
+     * Registration step 2: submit OTP → receive a single-use verificationToken (15 min).
+     */
+    @PostMapping("/register/verify-otp")
+    public ResponseEntity<ApiResponse<RegisterOtpVerifyResponse>> verifyRegisterOtp(
+            @Valid @RequestBody RegisterOtpVerifyRequest body) {
+        String verificationToken = phoneVerificationService.verifyOtp(body.getVerificationId(), body.getCode());
+        return ResponseEntity.ok(ApiResponse.success(
+                new RegisterOtpVerifyResponse(verificationToken), "OTP hợp lệ"));
+    }
+
+    /**
+     * POST /api/auth/register
+     * Registration step 3: create the account with the verified phone.
+     * Requires the verificationToken from step 2.
+     */
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<AuthResponse>> register(
-            @RequestBody java.util.Map<String, String> body,
-            HttpServletRequest request,
-            HttpServletResponse response) {
-        String phone = body.get("phone");
-        String password = body.get("password");
-        if (phone == null || password == null) {
-            return ResponseEntity.badRequest().body(ApiResponse.error("BAD_REQUEST", "phone and password required"));
-        }
+            @Valid @RequestBody RegisterRequest body,
+            HttpServletRequest request) {
         String clientIp = resolveClientIp(request);
         String userAgent = request.getHeader("User-Agent");
-        AuthResponse authResponse = authService.registerUser(phone, password, clientIp, userAgent);
+        AuthResponse authResponse = authService.registerUser(
+                body.getPhone(), body.getPassword(), body.getVerificationToken(), clientIp, userAgent);
         return ResponseEntity.ok(ApiResponse.success(authResponse, "Registration successful"));
     }
 

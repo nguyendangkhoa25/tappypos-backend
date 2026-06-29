@@ -14,6 +14,7 @@ public class ResetPasswordRequest {
     private String resetToken;
 
     @NotBlank(message = "newPassword is required")
-    @Size(min = 8, max = 100, message = "Password must be at least 8 characters")
+    // Max 72 — BCrypt only hashes the first 72 bytes and Spring Security 7 rejects anything longer.
+    @Size(min = 8, max = 72, message = "Password must be between 8 and 72 characters")
     private String newPassword;
 }

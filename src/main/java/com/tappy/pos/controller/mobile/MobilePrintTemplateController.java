@@ -1,7 +1,7 @@
 package com.tappy.pos.controller.mobile;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import com.tappy.pos.annotation.RequiresFeature;
 import com.tappy.pos.model.dto.ApiResponse;
 import com.tappy.pos.model.dto.tenant.MobileCreatePrintTemplateRequest;
@@ -157,7 +157,7 @@ public class MobilePrintTemplateController {
             configNode = objectMapper.readTree(dto.getConfigJson());
         } catch (Exception e) {
             log.warn("Failed to parse configJson for template id={}: {}", dto.getId(), e.getMessage());
-            configNode = objectMapper.createObjectNode();
+            configNode = objectMapper.readTree("{}");
         }
         String updatedAt = dto.getUpdatedAt() != null ? dto.getUpdatedAt().format(ISO) : null;
         return new MobilePrintTemplateResponse(
@@ -175,15 +175,8 @@ public class MobilePrintTemplateController {
      * Serialises the JsonNode back to a JSON string for the service layer.
      */
     private SavePrintTemplateRequest toSaveRequest(String name, JsonNode config) {
-        String configJson;
-        try {
-            configJson = config != null
-                    ? objectMapper.writeValueAsString(config)
-                    : "{}";
-        } catch (Exception e) {
-            log.warn("Failed to serialise config JsonNode: {}", e.getMessage());
-            configJson = "{}";
-        }
+        // JsonNode.toString() emits compact, valid JSON — no mapper needed and version-agnostic.
+        String configJson = config != null ? config.toString() : "{}";
         SavePrintTemplateRequest req = new SavePrintTemplateRequest();
         req.setName(name);
         req.setConfigJson(configJson);

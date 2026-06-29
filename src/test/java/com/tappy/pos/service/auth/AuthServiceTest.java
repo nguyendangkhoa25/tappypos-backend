@@ -58,6 +58,7 @@ class AuthServiceTest {
     @Mock private MessageService messageService;
     @Mock private SessionRegistry sessionRegistry;
     @Mock private ActivityLogService activityLogService;
+    @Mock private PhoneVerificationService phoneVerificationService;
 
     @InjectMocks
     private AuthService authService;
@@ -1033,7 +1034,7 @@ class AuthServiceTest {
             when(jwtTokenProvider.getTokenExpirationMs()).thenReturn(3600000L);
             when(refreshTokenRepository.save(any(RefreshToken.class))).thenReturn(mock(RefreshToken.class));
 
-            AuthResponse response = authService.registerUser("0900000000", "password123", "ip", "ua");
+            AuthResponse response = authService.registerUser("0900000000", "password123", "vtoken", "ip", "ua");
 
             assertThat(response.getAccessToken()).isEqualTo("reg-token");
             assertThat(response.getRefreshToken()).isEqualTo("raw-rt");
@@ -1047,7 +1048,7 @@ class AuthServiceTest {
             when(userRepository.findByUsernameGlobal("0900000000")).thenReturn(Optional.of(testUser));
             when(messageService.getMessage("error.auth.phone.registered")).thenReturn("Phone registered");
 
-            assertThatThrownBy(() -> authService.registerUser("0900000000", "pw", "ip", "ua"))
+            assertThatThrownBy(() -> authService.registerUser("0900000000", "pw", "vtoken", "ip", "ua"))
                     .isInstanceOf(DuplicateResourceException.class);
         }
     }

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.http.*;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -34,6 +35,9 @@ import java.util.Map;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("dev")
+// Spring Boot 4 moved TestRestTemplate to the spring-boot-resttestclient module and no longer
+// auto-registers the bean from @SpringBootTest alone — it must be opted into explicitly.
+@AutoConfigureTestRestTemplate
 abstract class AbstractApiIT {
 
     // One shared container for the whole IT suite (manual lifecycle — not @Container).

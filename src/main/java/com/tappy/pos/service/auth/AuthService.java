@@ -59,6 +59,7 @@ public class AuthService {
     private final MessageService messageService;
     private final SessionRegistry sessionRegistry;
     private final ActivityLogService activityLogService;
+    private final PhoneVerificationService phoneVerificationService;
     public static final String REFRESH_TOKEN_HEADER_KEY = "refresh-token";
 
     /**
@@ -499,12 +500,21 @@ public class AuthService {
     }
 
     /**
-     * Register a new user (mobile self-registration — stub)
+     * Register a new user (mobile/web self-registration).
+     *
+     * <p>Requires a {@code verificationToken} obtained from the register OTP flow
+     * ({@code /auth/register/send-otp} → {@code /auth/register/verify-otp}) — the phone must be
+     * proven via a Zalo OTP before an account can be created. The token is single-use and bound to
+     * this exact phone + the REGISTRATION purpose.
      */
-    public AuthResponse registerUser(String phone, String password, String clientIp, String userAgent) {
+    public AuthResponse registerUser(String phone, String password, String verificationToken,
+                                     String clientIp, String userAgent) {
         if (userRepository.findByUsernameGlobal(phone).isPresent()) {
             throw new DuplicateResourceException(messageService.getMessage("error.auth.phone.registered"));
         }
+        // Proves phone ownership; throws if the token is missing/expired/used/for another phone.
+        phoneVerificationService.consumeVerificationToken(
+                verificationToken, phone, com.tappy.pos.model.enums.OtpPurpose.REGISTRATION);
         User user = User.builder()
                 .username(phone)
                 .phone(phone)

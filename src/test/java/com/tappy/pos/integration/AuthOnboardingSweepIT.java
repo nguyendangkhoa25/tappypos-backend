@@ -1,15 +1,21 @@
 package com.tappy.pos.integration;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.tappy.pos.service.messaging.TappyMessageClient;
 import org.junit.jupiter.api.*;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.verify;
 
 /**
  * Full-stack controller sweep for the AUTH / PROFILE / ONBOARDING / INVITATION surface.
@@ -45,6 +51,10 @@ class AuthOnboardingSweepIT extends AbstractApiIT {
             "EMPLOYEE", "SALARY", "EXPENSE", "REVENUE", "USER", "SHOP_INFO", "VENDOR",
             "NOTIFICATION", "FEEDBACK", "PRINT_TEMPLATE", "BANK_ACCOUNT", "ACTIVITY_LOG",
             "PAWN", "TABLE_SERVICE", "APPOINTMENT");
+
+    // Real bean (dev: enabled=false → no network); spied to capture the registration OTP.
+    @MockitoSpyBean
+    private TappyMessageClient tappyMessageClient;
 
     private String token;
     private HttpHeaders H;        // shop-scoped headers (X-Tenant-ID + admin JWT)
@@ -256,10 +266,35 @@ class AuthOnboardingSweepIT extends AbstractApiIT {
     @Test @Order(8)
     @DisplayName("Register a brand-new tenant-less user, then self-provision a full shop")
     void registerThenSelfProvision() {
-        // Unique phone/username — register returns a token for a user with no shop yet.
+        // Unique phone/username — register now requires a verified phone (Zalo OTP) first.
         String phone = uniquePhone();
+
+        // 1. Send the registration OTP. The dev-disabled message client is spied so we can capture
+        //    the plaintext OTP the service generated (no real Zalo send).
+        ResponseEntity<String> sendOtp = post("/auth/register/send-otp",
+                Map.of("phone", phone), jsonHeaders());
+        assertThat(sendOtp.getStatusCode().is2xxSuccessful())
+                .as("POST /auth/register/send-otp: %s", sendOtp.getBody()).isTrue();
+        String verificationId = json(sendOtp).path("data").path("verificationId").asText();
+        assertThat(verificationId).isNotBlank();
+
+        ArgumentCaptor<String> otpArg = ArgumentCaptor.forClass(String.class);
+        verify(tappyMessageClient).sendOtp(any(), otpArg.capture(), anyLong());
+        String otp = otpArg.getValue();
+        assertThat(otp).as("generated OTP").matches("\\d{6}");
+
+        // 2. Verify the OTP → single-use verification token.
+        ResponseEntity<String> verifyOtp = post("/auth/register/verify-otp",
+                Map.of("verificationId", verificationId, "code", otp), jsonHeaders());
+        assertThat(verifyOtp.getStatusCode().is2xxSuccessful())
+                .as("POST /auth/register/verify-otp: %s", verifyOtp.getBody()).isTrue();
+        String verificationToken = json(verifyOtp).path("data").path("verificationToken").asText();
+        assertThat(verificationToken).isNotBlank();
+
+        // 3. Register with the verified token → an access token for a user with no shop yet.
         ResponseEntity<String> register = post("/auth/register",
-                Map.of("phone", phone, "password", "register123"), jsonHeaders());
+                Map.of("phone", phone, "password", "register123", "verificationToken", verificationToken),
+                jsonHeaders());
         assertThat(register.getStatusCode().is2xxSuccessful())
                 .as("POST /auth/register: %s", register.getBody()).isTrue();
         String newUserToken = json(register).path("data").path("accessToken").asText();

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.http.*;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -39,6 +40,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+// Spring Boot 4 no longer auto-registers TestRestTemplate from @SpringBootTest alone — opt in.
+@AutoConfigureTestRestTemplate
 @ActiveProfiles("dev")   // supplies sinvoice.*, jwt.secret, encryption key, etc.; datasource is overridden below
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @DisplayName("API smoke — full stack on real Postgres + Flyway V001")
@@ -102,9 +105,12 @@ class ApiSmokeIntegrationTest {
                 String.class);
         // V001 is the single consolidated bootstrap: all pre-production migrations (the former
         // V002–V044) were folded into it (ALTERs merged into their CREATE TABLE, new tables +
-        // RLS appended, seed data merged, pure data-migrations dropped). There is now exactly
-        // one applied migration.
-        assertThat(versions).containsExactly("001");
+        // RLS appended, seed data merged, pure data-migrations dropped). Post-baseline schema
+        // changes are added as sequential V0XX migrations on top, so assert V001 is the FIRST
+        // applied (the baseline) rather than the only one — an exact-list check would break on
+        // every new migration.
+        assertThat(versions).isNotEmpty();
+        assertThat(versions.get(0)).isEqualTo("001");
 
         // Tables created by the bootstrap (formerly separate booking/cash-drawer migrations).
         assertThat(tableExists("tenants")).isTrue();
