@@ -112,13 +112,14 @@
             <artifactId>postgresql</artifactId>
             <scope>test</scope>
         </dependency>
-        <!-- Apache HttpClient 5: lets TestRestTemplate issue PATCH and handle 401/403 on
-             POST bodies cleanly in the full-stack integration sweeps (the default
-             SimpleClientHttpRequestFactory supports neither). Auto-detected by TestRestTemplate. -->
+        <!-- Apache HttpClient 5 — REQUIRED AT RUNTIME by the AWS SDK v2 S3 client used for
+             Cloudflare R2 (R2StorageService); the SDK's apache-client picks it up. Must NOT be
+             test-scoped, or it is excluded from the packaged jar and R2StorageService fails to
+             instantiate at startup (NoClassDefFoundError org.apache.hc.client5.*), crash-looping
+             the app. Also used by TestRestTemplate (PATCH / 401-403 on POST bodies) in the IT sweeps. -->
         <dependency>
             <groupId>org.apache.httpcomponents.client5</groupId>
             <artifactId>httpclient5</artifactId>
-            <scope>test</scope>
         </dependency>
 
         <!-- Lombok -->
