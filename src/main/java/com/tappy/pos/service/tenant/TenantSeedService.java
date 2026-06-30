@@ -63,6 +63,35 @@ public class TenantSeedService {
         Map.entry(ShopType.PUB_SEAFOOD,        "db/tenant/pub_seafood.sql"),
         Map.entry(ShopType.PUB_GOAT,           "db/tenant/pub_goat.sql"),
         Map.entry(ShopType.PUB_BEEF,           "db/tenant/pub_beef.sql"),
+        // ── New F&B food verticals → share the restaurant seed (F&B product types + categories) ──
+        Map.entry(ShopType.PHO_NOODLE,         "db/tenant/restaurant.sql"),
+        Map.entry(ShopType.BANH_MI,            "db/tenant/restaurant.sql"),
+        Map.entry(ShopType.BANH_CUON,          "db/tenant/restaurant.sql"),
+        Map.entry(ShopType.BUN_RIEU,           "db/tenant/restaurant.sql"),
+        Map.entry(ShopType.OFFICE_RICE,        "db/tenant/restaurant.sql"),
+        Map.entry(ShopType.CLAY_POT_RICE,      "db/tenant/restaurant.sql"),
+        Map.entry(ShopType.COM_TAM,            "db/tenant/restaurant.sql"),
+        Map.entry(ShopType.OC_QUAN,            "db/tenant/restaurant.sql"),
+        Map.entry(ShopType.CHAO_QUAN,          "db/tenant/restaurant.sql"),
+        Map.entry(ShopType.XOI_QUAN,           "db/tenant/restaurant.sql"),
+        Map.entry(ShopType.BANH_XEO,           "db/tenant/restaurant.sql"),
+        Map.entry(ShopType.BUN_DAU,            "db/tenant/restaurant.sql"),
+        Map.entry(ShopType.BANH_CANH,          "db/tenant/restaurant.sql"),
+        Map.entry(ShopType.AN_VAT,             "db/tenant/restaurant.sql"),
+        Map.entry(ShopType.GRILL_BBQ,          "db/tenant/restaurant.sql"),
+        Map.entry(ShopType.HOTPOT,             "db/tenant/restaurant.sql"),
+        Map.entry(ShopType.FRIED_CHICKEN,      "db/tenant/restaurant.sql"),
+        Map.entry(ShopType.VEGETARIAN,         "db/tenant/restaurant.sql"),
+        Map.entry(ShopType.PIZZA_PASTA,        "db/tenant/restaurant.sql"),
+        Map.entry(ShopType.KOREAN,             "db/tenant/restaurant.sql"),
+        Map.entry(ShopType.JAPANESE,           "db/tenant/restaurant.sql"),
+        // ── New F&B drink/dessert verticals → share the coffee seed (incl. size/topping modifier engine) ──
+        Map.entry(ShopType.MILK_TEA,           "db/tenant/coffee_shop.sql"),
+        Map.entry(ShopType.DESSERT_CHE,        "db/tenant/coffee_shop.sql"),
+        Map.entry(ShopType.JUICE,              "db/tenant/coffee_shop.sql"),
+        Map.entry(ShopType.ICE_CREAM,          "db/tenant/coffee_shop.sql"),
+        Map.entry(ShopType.YOGURT,             "db/tenant/coffee_shop.sql"),
+        Map.entry(ShopType.STREET_TEA,         "db/tenant/coffee_shop.sql"),
         Map.entry(ShopType.HOTEL,              "db/tenant/lodging.sql"),
         Map.entry(ShopType.MOTEL,              "db/tenant/lodging.sql"),
         Map.entry(ShopType.HOMESTAY,           "db/tenant/lodging.sql"),
@@ -80,7 +109,17 @@ public class TenantSeedService {
     /** F&B shops — get "Phiếu dịch vụ" template WITH showTable enabled. */
     private static final Set<ShopType> FOOD_SHOP_TYPES = EnumSet.of(
         ShopType.COFFEE_SHOP, ShopType.FOOD_BEVERAGE, ShopType.RESTAURANT,
-        ShopType.PUB, ShopType.PUB_SEAFOOD, ShopType.PUB_GOAT, ShopType.PUB_BEEF
+        ShopType.PUB, ShopType.PUB_SEAFOOD, ShopType.PUB_GOAT, ShopType.PUB_BEEF,
+        // New F&B food verticals
+        ShopType.PHO_NOODLE, ShopType.BANH_MI, ShopType.BANH_CUON, ShopType.BUN_RIEU,
+        ShopType.OFFICE_RICE, ShopType.CLAY_POT_RICE, ShopType.COM_TAM, ShopType.OC_QUAN,
+        ShopType.CHAO_QUAN, ShopType.XOI_QUAN, ShopType.BANH_XEO, ShopType.BUN_DAU,
+        ShopType.BANH_CANH, ShopType.AN_VAT, ShopType.GRILL_BBQ, ShopType.HOTPOT,
+        ShopType.FRIED_CHICKEN, ShopType.VEGETARIAN, ShopType.PIZZA_PASTA, ShopType.KOREAN,
+        ShopType.JAPANESE,
+        // New F&B drink/dessert verticals
+        ShopType.MILK_TEA, ShopType.DESSERT_CHE, ShopType.JUICE, ShopType.ICE_CREAM,
+        ShopType.YOGURT, ShopType.STREET_TEA
     );
 
     /** Lodging shops — get a room-folio checkout receipt ("Phiếu thanh toán phòng") with the room label shown. */
