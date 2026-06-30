@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -59,9 +60,21 @@ public class TenantProvisioningService {
     private final ShopConfigService shopConfigService;
     private final PasswordEncoder passwordEncoder;
 
+    /** New F&B verticals provisioned like RESTAURANT/COFFEE_SHOP (FNB profile + F&B widgets/nav). */
+    private static final Set<ShopType> NEW_FNB_SHOP_TYPES = EnumSet.of(
+        ShopType.PHO_NOODLE, ShopType.BANH_MI, ShopType.BANH_CUON, ShopType.BUN_RIEU,
+        ShopType.OFFICE_RICE, ShopType.CLAY_POT_RICE, ShopType.COM_TAM, ShopType.OC_QUAN,
+        ShopType.CHAO_QUAN, ShopType.XOI_QUAN, ShopType.BANH_XEO, ShopType.BUN_DAU,
+        ShopType.BANH_CANH, ShopType.AN_VAT, ShopType.GRILL_BBQ, ShopType.HOTPOT,
+        ShopType.FRIED_CHICKEN, ShopType.VEGETARIAN, ShopType.PIZZA_PASTA, ShopType.KOREAN,
+        ShopType.JAPANESE, ShopType.MILK_TEA, ShopType.DESSERT_CHE, ShopType.JUICE,
+        ShopType.ICE_CREAM, ShopType.YOGURT, ShopType.STREET_TEA
+    );
+
     private static final Map<ShopType, String> SHOP_TYPE_WIDGET_DEFAULTS;
     static {
         Map<ShopType, String> m = new EnumMap<>(ShopType.class);
+        for (ShopType t : NEW_FNB_SHOP_TYPES) m.put(t, "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.JEWELRY,            "ORDERS,REVENUE,PAWN,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.PAWN_SHOP,          "PAWN,REVENUE,EXPENSES,CUSTOMERS,EMPLOYEES");
         m.put(ShopType.CONVENIENCE_STORE,  "ORDERS,REVENUE,INVENTORY,EXPENSES,CUSTOMERS,EMPLOYEES");
@@ -84,6 +97,7 @@ public class TenantProvisioningService {
     private static final Map<ShopType, String> SHOP_TYPE_NAV_DEFAULTS;
     static {
         Map<ShopType, String> m = new EnumMap<>(ShopType.class);
+        for (ShopType t : NEW_FNB_SHOP_TYPES) m.put(t, "home,orders,pos,customers,dashboard,users");
         m.put(ShopType.JEWELRY,            "home,pawn,pos,customers,orders,dashboard,users");
         m.put(ShopType.PAWN_SHOP,          "home,pawn,pos,customers,orders,dashboard,users");
         m.put(ShopType.CONVENIENCE_STORE,  "home,pos,orders,customers,dashboard,users");
@@ -398,6 +412,8 @@ public class TenantProvisioningService {
         m.put(ShopType.PUB_SEAFOOD,        "FNB");
         m.put(ShopType.PUB_GOAT,           "FNB");
         m.put(ShopType.PUB_BEEF,           "FNB");
+        // New F&B verticals — same feature profile as the other F&B shops
+        for (ShopType t : NEW_FNB_SHOP_TYPES) m.put(t, "FNB");
         m.put(ShopType.BILLIARDS_HALL,     "RENTAL");   // time-rental: BOOKING engine + drinks/equipment
         m.put(ShopType.SPORT_COURT,        "RENTAL");   // time-rental: BOOKING engine + drinks/equipment
         m.put(ShopType.HOTEL,              "LODGING");

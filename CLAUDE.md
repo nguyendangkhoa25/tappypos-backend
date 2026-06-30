@@ -105,6 +105,7 @@ Features are enforced at three levels:
 | `FEEDBACK` | `FeedbackController` (shop-user submit methods only; admin review methods use `@MasterDatabaseOnly`) |
 | `MASTER_DASHBOARD` | `MasterDashboardController` (MASTER_TENANT + AGENT) |
 | `PRODUCT_CATALOG` | `ProductCatalogController` (MASTER_TENANT only; AGENT excluded) |
+| `PRODUCT_SUGGESTION_MGMT` | `ProductSuggestionController` (master-admin CRUD for `product_suggestions` — the per-shop-type onboarding seed list; MASTER_TENANT only; AGENT excluded) |
 | `BILLING_MGMT` | `PaymentAdminController` (master Billing & Revenue cockpit: stats, payment ledger, refund, record-offline; MASTER_TENANT only; AGENT excluded via `@RequiresFeature`) |
 | `CONTACT_LEAD_MGMT` | `ContactController` admin methods use `@MasterDatabaseOnly` (MASTER_TENANT only) |
 | `FEEDBACK_MGMT` | `FeedbackController` admin methods use `@MasterDatabaseOnly` (MASTER_TENANT only) |
