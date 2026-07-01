@@ -205,34 +205,12 @@ public class OnboardingController {
 
     @GetMapping("/shop-types")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getShopTypes() {
-        List<Map<String, Object>> types = Arrays.asList(
-                shopEntry("CONVENIENCE_STORE", "Cửa hàng tổng hợp"),
-                shopEntry("BUILDING_MATERIALS", "Cửa hàng vật liệu xây dựng"),
-                shopEntry("FOOD_BEVERAGE", "Thực phẩm / Đồ uống"),
-                shopEntry("BAKERY", "Tiệm bánh"),
-                shopEntry("RESTAURANT", "Quán ăn / Nhà hàng"),
-                shopEntry("COFFEE_SHOP", "Quán cà phê"),
-                shopEntry("PUB",         "Quán nhậu"),
-                shopEntry("PUB_SEAFOOD", "Quán nhậu hải sản"),
-                shopEntry("PUB_GOAT",    "Quán nhậu chuyên dê"),
-                shopEntry("PUB_BEEF",    "Quán nhậu chuyên bò"),
-                shopEntry("FASHION", "Thời trang"),
-                shopEntry("ELECTRONICS", "Điện tử / Điện máy"),
-                shopEntry("BARBER_SHOP",     "Salon / Cắt tóc"),
-                shopEntry("BARBER_SHOP_MEN", "Tiệm tóc nam / Barber"),
-                shopEntry("HAIR_SALON",      "Salon tóc nữ / Unisex"),
-                shopEntry("NAIL_SHOP",       "Tiệm nail / Làm móng"),
-                shopEntry("LASH_PMU_STUDIO", "Tiệm mi / Xăm thẩm mỹ"),
-                shopEntry("SPA_SHOP",        "Spa"),
-                shopEntry("MASSAGE_SHOP",    "Tiệm massage"),
-                shopEntry("BEAUTY_CLINIC",   "Thẩm mỹ viện"),
-                shopEntry("MAKEUP_STUDIO",   "Tiệm trang điểm / Cô dâu"),
-                shopEntry("BOOK_STORE", "Nhà sách"),
-                shopEntry("PHARMACY", "Nhà thuốc / Dược phẩm"),
-                shopEntry("JEWELRY", "Trang sức / Vàng bạc"),
-                shopEntry("PAWN_SHOP", "Tiệm cầm đồ"),
-                shopEntry("OTHER", "Khác")
-        );
+        // Derived from the ShopType enum so newly added shop types appear automatically —
+        // do NOT hand-maintain a list here (that drift is what hid the new F&B types).
+        List<Map<String, Object>> types = new ArrayList<>();
+        for (ShopType t : ShopType.values()) {
+            types.add(shopEntry(t.name(), t.getDisplayName()));
+        }
         return ResponseEntity.ok(ApiResponse.success(types, "OK"));
     }
 
